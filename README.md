@@ -25,3 +25,4 @@ This repository is a reusable coding assignment template for evaluating backend 
 - Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
 - The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
 - The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+- AI usage is not forbidden but disclosure is required. Please check the `ASSIGNMENT.md` file for details.
