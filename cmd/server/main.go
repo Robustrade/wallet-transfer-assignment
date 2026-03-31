@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Robustrade/wallet-transfer-assignment/internal/handler"
 	"github.com/Robustrade/wallet-transfer-assignment/internal/repository"
@@ -29,6 +30,12 @@ func main() {
 		log.Fatalf("Failed to ping db: %v", err)
 	}
 
+	// Optimization: Production Database Connection Pooling
+	// tuning these allows high throughput without exhausting Postgres RAM.
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(25)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	log.Println("Connected to PostgreSQL successfully")
 
 	// Initialize Layers
@@ -36,9 +43,13 @@ func main() {
 	svc := service.NewTransferService(repo)
 	h := handler.NewTransferHandler(svc)
 
-	// Setup Router
+	// Setup Router with Timeout Middleware Pattern (Golang Best Practice)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/transfers", h.CreateTransfer)
+
+	transferHandler := http.HandlerFunc(h.CreateTransfer)
+	timeoutMiddleware := http.TimeoutHandler(transferHandler, 5*time.Second, `{"error": "request timeout"}`)
+
+	mux.Handle("/transfers", timeoutMiddleware)
 
 	// A simple health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
