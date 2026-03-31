@@ -10,10 +10,14 @@ import (
 	"github.com/Robustrade/wallet-transfer-assignment/internal/handler"
 	"github.com/Robustrade/wallet-transfer-assignment/internal/repository"
 	"github.com/Robustrade/wallet-transfer-assignment/internal/service"
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
 
 func main() {
+	// Load .env file if it exists (great for local development)
+	_ = godotenv.Load()
+
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL environment variable is required")
@@ -40,16 +44,27 @@ func main() {
 
 	// Initialize Layers
 	repo := repository.NewPostgresRepository(db)
-	svc := service.NewTransferService(repo)
-	h := handler.NewTransferHandler(svc)
+
+	// Transfer Module
+	transferSvc := service.NewTransferService(repo)
+	transferHandler := handler.NewTransferHandler(transferSvc)
+
+	// Wallet Module (Optional Enhancement)
+	walletSvc := service.NewWalletService(repo)
+	walletAPIHandler := handler.NewWalletHandler(walletSvc)
 
 	// Setup Router with Timeout Middleware Pattern (Golang Best Practice)
 	mux := http.NewServeMux()
 
-	transferHandler := http.HandlerFunc(h.CreateTransfer)
-	timeoutMiddleware := http.TimeoutHandler(transferHandler, 5*time.Second, `{"error": "request timeout"}`)
+	// Transfer Routes
+	transferEndpoint := http.HandlerFunc(transferHandler.CreateTransfer)
+	transferTimeout := http.TimeoutHandler(transferEndpoint, 5*time.Second, `{"error": "request timeout"}`)
+	mux.Handle("/transfers", transferTimeout)
 
-	mux.Handle("/transfers", timeoutMiddleware)
+	// Wallet Routes
+	walletEndpoint := http.HandlerFunc(walletAPIHandler.GetWalletBalance)
+	walletTimeout := http.TimeoutHandler(walletEndpoint, 3*time.Second, `{"error": "request timeout"}`)
+	mux.Handle("/wallets/", walletTimeout)
 
 	// A simple health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
