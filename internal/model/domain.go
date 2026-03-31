@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 type TransferStatus string
 
@@ -26,6 +29,20 @@ type Transfer struct {
 	Status         TransferStatus `json:"status"`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
+// Validate executes core domain validation rules to ensure safe state transitions.
+func (t *Transfer) Validate() error {
+	if t.Amount <= 0 {
+		return errors.New("amount must be greater than zero")
+	}
+	if t.FromWalletID == t.ToWalletID {
+		return errors.New("cannot transfer to the same wallet")
+	}
+	if t.IdempotencyKey == "" {
+		return errors.New("idempotency key is required")
+	}
+	return nil
 }
 
 type LedgerEntryType string

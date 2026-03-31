@@ -35,28 +35,7 @@ func NewTransferService(repo repository.Repository) TransferService {
 }
 
 func (s *transferService) Transfer(ctx context.Context, req TransferRequest) (*model.Transfer, error) {
-	// 1. Basic validation
-	if req.Amount <= 0 {
-		return nil, ErrInvalidRequest
-	}
-	if req.FromWalletID == req.ToWalletID {
-		return nil, ErrInvalidRequest
-	}
-	if req.IdempotencyKey == "" {
-		return nil, errors.New("idempotency key is required")
-	}
-
-	// 2. Check Idempotency immediately
-	existing, err := s.repo.GetTransferByIdempotencyKey(ctx, req.IdempotencyKey)
-	if err == nil {
-		// Idempotent return: exactly the same response as the previous invocation.
-		return existing, nil
-	}
-	if !errors.Is(err, repository.ErrNotFound) {
-		return nil, err
-	}
-
-	// 3. Prepare Transfer Model
+	// 1. Prepare Transfer Model and Apply Domain Validation Rules
 	now := time.Now().UTC()
 	transfer := &model.Transfer{
 		ID:             uuid.New().String(),
@@ -69,7 +48,22 @@ func (s *transferService) Transfer(ctx context.Context, req TransferRequest) (*m
 		UpdatedAt:      now,
 	}
 
-	// 4. Delegate to repository for transactional processing
+	if err := transfer.Validate(); err != nil {
+		return nil, ErrInvalidRequest
+	}
+
+	// 2. Check Idempotency immediately cache read
+	existing, err := s.repo.GetTransferByIdempotencyKey(ctx, req.IdempotencyKey)
+	if err == nil {
+		// Idempotent return: exactly the same response as the previous invocation.
+		return existing, nil
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
+		return nil, err
+	}
+
+	// 3. Delegate to repository for transactional processing
+
 	err = s.repo.ExecuteTransferTx(ctx, transfer)
 	if err != nil {
 		if errors.Is(err, repository.ErrInsufficientFunds) {
