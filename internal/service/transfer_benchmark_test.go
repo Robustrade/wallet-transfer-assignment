@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Robustrade/wallet-transfer-assignment/internal/model"
+	"github.com/Robustrade/wallet-transfer-assignment/internal/repository"
 )
 
 // BenchmarkTransferService scales memory and CPU to prove the orchestration layer is highly performant.
@@ -12,7 +13,7 @@ import (
 func BenchmarkTransferService(b *testing.B) {
 	mockRepo := &mockRepository{
 		getIdempotentFunc: func(ctx context.Context, key string) (*model.Transfer, error) {
-			return nil, nil // Assume cache miss for new transfers
+			return nil, repository.ErrNotFound // Assume cache miss for new transfers
 		},
 		executeTxFunc: func(ctx context.Context, transfer *model.Transfer) error {
 			return nil // Assume fast DB execution

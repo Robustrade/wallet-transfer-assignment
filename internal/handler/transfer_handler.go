@@ -32,7 +32,7 @@ func (h *TransferHandler) CreateTransfer(w http.ResponseWriter, r *http.Request)
 
 	transfer, err := h.svc.Transfer(r.Context(), req)
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidRequest) || errors.Is(err, repository.ErrInsufficientFunds) {
+		if errors.Is(err, service.ErrInvalidRequest) || errors.Is(err, service.ErrInsufficientFunds) {
 			h.respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}

@@ -59,14 +59,14 @@ func TestTransferService_Transfer_Validation(t *testing.T) {
 		{
 			name:    "missing idempotency key",
 			req:     TransferRequest{Amount: 10, FromWalletID: "w1", ToWalletID: "w2", IdempotencyKey: ""},
-			wantErr: errors.New("idempotency key is required"),
+			wantErr: ErrInvalidRequest,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := svc.Transfer(context.Background(), tt.req)
-			if err == nil || err.Error() != tt.wantErr.Error() {
+			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("expected error %v, got %v", tt.wantErr, err)
 			}
 		})
