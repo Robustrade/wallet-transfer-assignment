@@ -381,7 +381,12 @@ Please include a note in your PR about how you used AI. The note should include 
 
 Good use of AI to create a quality solution is a plus point. Blindly using it to solve the entire problem is not. 
 
-We will have a short discussion on your PR and you should be able to to explain the PR and what all you did.
+We will have a short discussion on your PR.
+
+### Expectations 
+ 1. You should be able to to explain the PR and what all you did.
+ 2. You should have all your prompts ready
+ 3. You should be able to explain the tool(s) that you used to create your solution.
 
 ## Optional Enhancements
 
