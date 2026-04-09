@@ -25,3 +25,58 @@ This repository is a reusable coding assignment template for evaluating backend 
 - Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
 - The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
 - The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+
+
+# Wallet Transfer Service
+
+## Setup
+
+Run the application using Docker:
+
+```bash
+docker-compose up --build
+```
+
+---
+
+## API
+
+### POST /transfers
+
+Example request:
+
+```bash
+curl -X POST http://localhost:8080/transfers \
+-H "Content-Type: application/json" \
+-d '{
+  "idempotencyKey": "abc123",
+  "fromWalletId": "wallet_1",
+  "toWalletId": "wallet_2",
+  "amount": 100
+}'
+```
+
+---
+
+## Features
+
+* Idempotent transfers using idempotency key
+* Double-entry ledger system
+* Transaction-safe operations
+* Concurrency safety using row-level locking
+
+---
+
+## Design Decisions
+
+* Used PostgreSQL for strong consistency
+* Used database transactions to ensure atomicity
+* Used `SELECT FOR UPDATE` for concurrency control
+* Stored idempotency responses to ensure exactly-once behavior
+
+---
+
+## Notes
+
+* Tables are auto-created on startup
+* Sample wallets are pre-inserted
