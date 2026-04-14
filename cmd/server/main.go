@@ -2,7 +2,7 @@ package main
 
 import (
 	"database/sql"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -15,32 +15,38 @@ import (
 )
 
 func main() {
+	// Setup structured JSON logger for modern observability
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
 	// Load .env file if it exists (great for local development)
 	_ = godotenv.Load()
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
+		slog.Error("DATABASE_URL environment variable is required")
+		os.Exit(1)
 	}
 
 	// Connect to Database
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		log.Fatalf("Failed to open db connection: %v", err)
+		slog.Error("Failed to open db connection", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping db: %v", err)
+		slog.Error("Failed to ping db", "error", err)
+		os.Exit(1)
 	}
 
 	// Optimization: Production Database Connection Pooling
-	// tuning these allows high throughput without exhausting Postgres RAM.
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(25)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	log.Println("Connected to PostgreSQL successfully")
+	slog.Info("Connected to PostgreSQL successfully", "conns", 25)
 
 	// Initialize Layers
 	repo := repository.NewPostgresRepository(db)
@@ -49,24 +55,21 @@ func main() {
 	transferSvc := service.NewTransferService(repo)
 	transferHandler := handler.NewTransferHandler(transferSvc)
 
-	// Wallet Module (Optional Enhancement)
+	// Wallet Module
 	walletSvc := service.NewWalletService(repo)
 	walletAPIHandler := handler.NewWalletHandler(walletSvc)
 
-	// Setup Router with Timeout Middleware Pattern (Golang Best Practice)
+	// Setup Router with Timeout Middleware Pattern
 	mux := http.NewServeMux()
 
-	// Transfer Routes
 	transferEndpoint := http.HandlerFunc(transferHandler.CreateTransfer)
 	transferTimeout := http.TimeoutHandler(transferEndpoint, 5*time.Second, `{"error": "request timeout"}`)
 	mux.Handle("/transfers", transferTimeout)
 
-	// Wallet Routes
 	walletEndpoint := http.HandlerFunc(walletAPIHandler.GetWalletBalance)
 	walletTimeout := http.TimeoutHandler(walletEndpoint, 3*time.Second, `{"error": "request timeout"}`)
-	mux.Handle("/wallets/", walletTimeout)
+	mux.Handle("/wallets/", walletTimeout) // Automatically delegates to history sub-routes
 
-	// A simple health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
@@ -77,8 +80,9 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("Starting server on port %s", port)
+	slog.Info("Starting server", "port", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
-		log.Fatalf("Server failed: %v", err)
+		slog.Error("Server failed", "error", err)
+		os.Exit(1)
 	}
 }

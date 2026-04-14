@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Robustrade/wallet-transfer-assignment/internal/model"
 	"github.com/Robustrade/wallet-transfer-assignment/internal/repository"
@@ -9,6 +10,7 @@ import (
 
 type WalletService interface {
 	GetWalletBalance(ctx context.Context, walletID string) (*model.Wallet, error)
+	GetWalletTransfers(ctx context.Context, walletID string) ([]*model.Transfer, error)
 }
 
 type walletService struct {
@@ -20,6 +22,20 @@ func NewWalletService(repo repository.Repository) WalletService {
 }
 
 func (s *walletService) GetWalletBalance(ctx context.Context, walletID string) (*model.Wallet, error) {
-	// Directly delegates to the existing repository method
-	return s.repo.GetWallet(ctx, walletID)
+	wallet, err := s.repo.GetWallet(ctx, walletID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrWalletNotFound
+		}
+		return nil, err
+	}
+	return wallet, nil
+}
+
+func (s *walletService) GetWalletTransfers(ctx context.Context, walletID string) ([]*model.Transfer, error) {
+	_, err := s.GetWalletBalance(ctx, walletID) // Verify wallet exists natively
+	if err != nil {
+		return nil, err // Returns layer-decoupled ErrWalletNotFound natively
+	}
+	return s.repo.GetTransfersByWalletID(ctx, walletID)
 }

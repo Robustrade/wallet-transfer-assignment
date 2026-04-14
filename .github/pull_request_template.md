@@ -6,7 +6,7 @@ Additionally, it implements advanced backend resilience patterns including a gen
 
 ## AI disclosure
 
-I utilized the **Antigravity** AI agent for development to accelerate boilerplate and generate rigorous integration tests. To ensure correctness before cleverness, I directed the agent using highly specific, senior-level architectural constraints:
+I utilized the **Antigravity** AI agent for development to accelerate boilerplate and generate rigorous integration tests. To ensure correctness before cleverness, I directed the agent using highly specific, senior-level architectural constraints. **Crucially, I maintained full human oversight: I reviewed every single change during the planning phase, audited all generated iterations during implementation, and manually enforced strict edge-case validation throughout the testing phase.**
 
 1. **Architecture & Planning**: *"Act as a highly skilled Senior Golang Developer with deep architectural expertise. I am providing you the assignment.md file. Let's analyze the requirements and plan the core system architecture first, then split the development task into sensible, isolated commit chunks."*
 2. **Schema & Persistence Setup**: *"Design the PostgreSQL schema using strict numeric bounds. Enforce `balance >= 0` natively on the wallets table. Implement a unique index constraint on the mapped idempotency key inside the transfers table to mathematically guarantee zero data duplication on aggressive concurrent network retries. Establish double-entry ledger records utilizing Foreign Keys linked to the transfer ID representing strict debit and credit sequences."*
@@ -48,7 +48,13 @@ Utilizes a multi-layered defense mechanism:
 ## Tradeoffs / Assumptions
 
 - Using raw pessimistic DB locks trades tiny fractions of queue milliseconds vs relying on ultra-complex Kafka/Redis sagas, massively lowering operational monolithic footprint while guaranteeing absolute ACID validity.
-- The Wallet API (`GET /wallets/{id}`) was added as a cleanly isolated module as an Optional Enhancement without polluting the `transfer_handler.go`. 
+
+## Optional Enhancements Completed
+
+- **Wallet Balance API**: Added `GET /wallets/{id}` as a cleanly isolated module decoupled from the main transfer logic.
+- **Transfer History API**: Added `GET /wallets/{id}/transfers` returning chronologically sorted `LIMIT 100` subsets using efficient B-Tree SQL indexing.
+- **Observability & Logging**: Upgraded all generic server outputs into Go's native `log/slog` structured JSON telemetry system for production-grade observability.
+- **Retry-Safe Workflows**: Mathematically baked into the framework. The dual-path Idempotency logic gracefully catches aggressive retries, rendering all network splits fundamentally retry-safe.
 
 ## Checklist
 

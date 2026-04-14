@@ -23,4 +23,5 @@ type Repository interface {
 	// Admin / setup helpers
 	GetWallet(ctx context.Context, id string) (*model.Wallet, error)
 	CreateWallet(ctx context.Context, wallet *model.Wallet) error
+	GetTransfersByWalletID(ctx context.Context, walletID string) ([]*model.Transfer, error)
 }

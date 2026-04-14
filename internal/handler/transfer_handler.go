@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/Robustrade/wallet-transfer-assignment/internal/repository"
 	"github.com/Robustrade/wallet-transfer-assignment/internal/service"
 )
 
@@ -36,7 +35,7 @@ func (h *TransferHandler) CreateTransfer(w http.ResponseWriter, r *http.Request)
 			h.respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		if errors.Is(err, repository.ErrNotFound) {
+		if errors.Is(err, service.ErrWalletNotFound) {
 			h.respondJSON(w, http.StatusNotFound, map[string]string{"error": "wallet not found"})
 			return
 		}
@@ -45,7 +44,11 @@ func (h *TransferHandler) CreateTransfer(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	h.respondJSON(w, http.StatusOK, transfer)
+	if transfer.IsIdempotentReplay {
+		h.respondJSON(w, http.StatusOK, transfer)
+	} else {
+		h.respondJSON(w, http.StatusCreated, transfer)
+	}
 }
 
 func (h *TransferHandler) respondJSON(w http.ResponseWriter, status int, payload interface{}) {

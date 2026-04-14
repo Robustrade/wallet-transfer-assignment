@@ -13,6 +13,7 @@ import (
 var (
 	ErrInvalidRequest    = errors.New("invalid request: check amount and wallet IDs")
 	ErrInsufficientFunds = errors.New("insufficient funds")
+	ErrWalletNotFound    = errors.New("wallet not found")
 )
 
 type TransferRequest struct {
@@ -55,7 +56,11 @@ func (s *transferService) Transfer(ctx context.Context, req TransferRequest) (*m
 	// 2. Check Idempotency immediately cache read
 	existing, err := s.repo.GetTransferByIdempotencyKey(ctx, req.IdempotencyKey)
 	if err == nil {
+		if existing.Status == model.StatusFailed {
+			return nil, ErrInsufficientFunds
+		}
 		// Idempotent return: exactly the same response as the previous invocation.
+		existing.IsIdempotentReplay = true
 		return existing, nil
 	}
 	if !errors.Is(err, repository.ErrNotFound) {
@@ -66,13 +71,22 @@ func (s *transferService) Transfer(ctx context.Context, req TransferRequest) (*m
 
 	err = s.repo.ExecuteTransferTx(ctx, transfer)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrWalletNotFound
+		}
 		if errors.Is(err, repository.ErrInsufficientFunds) {
 			return nil, ErrInsufficientFunds
 		}
 		if errors.Is(err, repository.ErrIdempotencyConflict) {
-			// Extremely highly concurrent requests hit the idempotency exact same time.
-			// One succeeded, one got unique constraint violation. Just fetch the succeeded one.
-			return s.repo.GetTransferByIdempotencyKey(ctx, req.IdempotencyKey)
+			existing, fetchErr := s.repo.GetTransferByIdempotencyKey(ctx, req.IdempotencyKey)
+			if fetchErr != nil {
+				return nil, fetchErr
+			}
+			if existing.Status == model.StatusFailed {
+				return nil, ErrInsufficientFunds
+			}
+			existing.IsIdempotentReplay = true
+			return existing, nil
 		}
 		return nil, err
 	}

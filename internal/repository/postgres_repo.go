@@ -60,17 +60,29 @@ func (r *PostgresRepository) ExecuteTransferTx(ctx context.Context, transfer *mo
 
 	// 3. Balance verification
 	if sourceBalance < transfer.Amount {
-		// Log failed status but do not proceed with debit/credit. We could save the failed transfer here if required,
-		// but typically insufficient funds is just rejected flat out. Let's return error to handler.
+		transfer.Status = model.StatusFailed
+		_, insertErr := tx.ExecContext(ctx,
+			"INSERT INTO transfers (id, idempotency_key, from_wallet_id, to_wallet_id, amount, status) VALUES ($1, $2, $3, $4, $5, $6)",
+			transfer.ID, transfer.IdempotencyKey, transfer.FromWalletID, transfer.ToWalletID, transfer.Amount, transfer.Status)
+		if insertErr != nil {
+			var pgErr *pq.Error
+			if errors.As(insertErr, &pgErr) && pgErr.Code == "23505" {
+				return ErrIdempotencyConflict
+			}
+			return insertErr
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
 		return ErrInsufficientFunds
 	}
 
 	// 4. Update balances
-	_, err = tx.ExecContext(ctx, "UPDATE wallets SET balance = $1 WHERE id = $2", sourceBalance-transfer.Amount, transfer.FromWalletID)
+	_, err = tx.ExecContext(ctx, "UPDATE wallets SET balance = $1, updated_at = NOW() WHERE id = $2", sourceBalance-transfer.Amount, transfer.FromWalletID)
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, "UPDATE wallets SET balance = $1 WHERE id = $2", destBalance+transfer.Amount, transfer.ToWalletID)
+	_, err = tx.ExecContext(ctx, "UPDATE wallets SET balance = $1, updated_at = NOW() WHERE id = $2", destBalance+transfer.Amount, transfer.ToWalletID)
 	if err != nil {
 		return err
 	}
@@ -131,4 +143,21 @@ func (r *PostgresRepository) GetWallet(ctx context.Context, id string) (*model.W
 func (r *PostgresRepository) CreateWallet(ctx context.Context, wallet *model.Wallet) error {
 	_, err := r.db.ExecContext(ctx, "INSERT INTO wallets (id, balance) VALUES ($1, $2)", wallet.ID, wallet.Balance)
 	return err
+}
+
+func (r *PostgresRepository) GetTransfersByWalletID(ctx context.Context, walletID string) ([]*model.Transfer, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT id, idempotency_key, from_wallet_id, to_wallet_id, amount, status, created_at, updated_at FROM transfers WHERE from_wallet_id = $1 OR to_wallet_id = $1 ORDER BY created_at DESC LIMIT 100", walletID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var transfers []*model.Transfer
+	for rows.Next() {
+		var t model.Transfer
+		if err := rows.Scan(&t.ID, &t.IdempotencyKey, &t.FromWalletID, &t.ToWalletID, &t.Amount, &t.Status, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, err
+		}
+		transfers = append(transfers, &t)
+	}
+	return transfers, nil
 }

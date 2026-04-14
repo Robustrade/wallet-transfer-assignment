@@ -21,18 +21,22 @@ type Wallet struct {
 }
 
 type Transfer struct {
-	ID             string         `json:"id"`
-	IdempotencyKey string         `json:"idempotency_key"`
-	FromWalletID   string         `json:"from_wallet_id"`
-	ToWalletID     string         `json:"to_wallet_id"`
-	Amount         int64          `json:"amount"`
-	Status         TransferStatus `json:"status"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
+	ID                 string         `json:"id"`
+	IdempotencyKey     string         `json:"idempotency_key"`
+	FromWalletID       string         `json:"from_wallet_id"`
+	ToWalletID         string         `json:"to_wallet_id"`
+	Amount             int64          `json:"amount"`
+	Status             TransferStatus `json:"status"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+	IsIdempotentReplay bool           `json:"-"`
 }
 
 // Validate executes core domain validation rules to ensure safe state transitions.
 func (t *Transfer) Validate() error {
+	if t.FromWalletID == "" || t.ToWalletID == "" {
+		return errors.New("from and to wallet IDs are required")
+	}
 	if t.Amount <= 0 {
 		return errors.New("amount must be greater than zero")
 	}

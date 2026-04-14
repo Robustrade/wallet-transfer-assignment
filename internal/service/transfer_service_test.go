@@ -38,6 +38,10 @@ func (m *mockRepository) CreateWallet(ctx context.Context, wallet *model.Wallet)
 	return nil
 }
 
+func (m *mockRepository) GetTransfersByWalletID(ctx context.Context, walletID string) ([]*model.Transfer, error) {
+	return nil, nil
+}
+
 func TestTransferService_Transfer_Validation(t *testing.T) {
 	svc := NewTransferService(&mockRepository{})
 
@@ -133,5 +137,50 @@ func TestTransferService_Transfer_InsufficientFunds(t *testing.T) {
 	_, err := svc.Transfer(context.Background(), req)
 	if !errors.Is(err, ErrInsufficientFunds) {
 		t.Errorf("expected ErrInsufficientFunds, got %v", err)
+	}
+}
+
+func TestTransferService_Transfer_FailedIdempotency(t *testing.T) {
+	existingTransfer := &model.Transfer{
+		ID:             "t1",
+		IdempotencyKey: "idem_fail",
+		Amount:         100,
+		Status:         model.StatusFailed,
+	}
+	mockRepo := &mockRepository{
+		getIdempotentFunc: func(ctx context.Context, key string) (*model.Transfer, error) {
+			if key == "idem_fail" {
+				return existingTransfer, nil
+			}
+			return nil, repository.ErrNotFound
+		},
+		executeTxFunc: func(ctx context.Context, transfer *model.Transfer) error {
+			return repository.ErrIdempotencyConflict
+		},
+	}
+	svc := NewTransferService(mockRepo)
+	req := TransferRequest{IdempotencyKey: "idem_fail", FromWalletID: "w1", ToWalletID: "w2", Amount: 100}
+
+	_, err := svc.Transfer(context.Background(), req)
+	if !errors.Is(err, ErrInsufficientFunds) {
+		t.Errorf("expected ErrInsufficientFunds, got %v", err)
+	}
+}
+
+func TestTransferService_Transfer_WalletNotFound(t *testing.T) {
+	mockRepo := &mockRepository{
+		getIdempotentFunc: func(ctx context.Context, key string) (*model.Transfer, error) {
+			return nil, repository.ErrNotFound
+		},
+		executeTxFunc: func(ctx context.Context, transfer *model.Transfer) error {
+			return repository.ErrNotFound
+		},
+	}
+	svc := NewTransferService(mockRepo)
+	req := TransferRequest{IdempotencyKey: "idem_404", FromWalletID: "w1", ToWalletID: "w2", Amount: 100}
+
+	_, err := svc.Transfer(context.Background(), req)
+	if !errors.Is(err, ErrWalletNotFound) {
+		t.Errorf("expected ErrWalletNotFound, got %v", err)
 	}
 }

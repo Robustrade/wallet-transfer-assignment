@@ -66,6 +66,34 @@ func TestTransferHandler_CreateTransfer(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
+			name:   "insufficient funds",
+			method: http.MethodPost,
+			body: service.TransferRequest{
+				IdempotencyKey: "key_broke",
+				FromWalletID:   "w1",
+				ToWalletID:     "w2",
+				Amount:         999999,
+			},
+			mockService: func(ctx context.Context, req service.TransferRequest) (*model.Transfer, error) {
+				return nil, service.ErrInsufficientFunds
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:   "wallet not found",
+			method: http.MethodPost,
+			body: service.TransferRequest{
+				IdempotencyKey: "key_404",
+				FromWalletID:   "w1_missing",
+				ToWalletID:     "w2",
+				Amount:         10,
+			},
+			mockService: func(ctx context.Context, req service.TransferRequest) (*model.Transfer, error) {
+				return nil, service.ErrWalletNotFound
+			},
+			expectedStatus: http.StatusNotFound,
+		},
+		{
 			name:   "successful transfer",
 			method: http.MethodPost,
 			body: service.TransferRequest{
@@ -84,7 +112,7 @@ func TestTransferHandler_CreateTransfer(t *testing.T) {
 					UpdatedAt:      time.Now(),
 				}, nil
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusCreated,
 		},
 	}
 
