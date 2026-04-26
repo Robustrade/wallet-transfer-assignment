@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -26,4 +27,24 @@ func NewPostgresDB(cfg config.DatabaseConfig) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func WithTx(ctx context.Context, db *sql.DB, fn func(tx *sql.Tx) error) error {
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		}
+	}()
+	if err := fn(tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+
 }

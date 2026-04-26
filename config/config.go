@@ -42,9 +42,9 @@ func (d DatabaseConfig) ConnMaxLifetimeDuration() time.Duration {
 	return time.Duration(d.ConnMaxLifetime) * time.Minute
 }
 
-func LoadConfig() (*Config, error) {
+func LoadConfig(configPath string) (*Config, error) {
 
-	file, err := os.ReadFile("config.yml")
+	file, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
 	}

@@ -18,15 +18,24 @@ func NewTransferHandler(s *service.TransferService) *TransferHandler {
 
 func (h *TransferHandler) Transfer(c *gin.Context) {
 
-	var transfer model.Transfer
-	if err := c.ShouldBindJSON(&transfer); err != nil {
+	var transferRequest model.TransferRequest
+	if err := c.ShouldBindJSON(&transferRequest); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	err := h.service.Transfer(c.Request.Context(), &transfer)
+
+	transfer := &model.Transfer{
+		IdempotencyKey: transferRequest.IdempotencyKey,
+		FromWalletId:   transferRequest.FromWalletId,
+		ToWalletId:     transferRequest.ToWalletId,
+		Amount:         transferRequest.Amount,
+	}
+	err := h.service.Transfer(c.Request.Context(), transfer)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		status, msg := mapErrorToStatus(err)
+		c.JSON(status, gin.H{"error": msg})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"transfer_id": transfer.Id})
+
+	c.JSON(http.StatusOK, gin.H{"transfer_id": transfer.Id})
 }
