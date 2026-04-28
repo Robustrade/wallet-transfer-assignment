@@ -1,0 +1,15 @@
+server:
+  port: "8080"
+
+database:
+  driver: "postgres"
+  host: "localhost"
+  port: "5432"
+  user: "postgres"
+  password: "postgres"
+  name: "wallets"
+  sslmode: "disable"
+
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime_minutes: 30
