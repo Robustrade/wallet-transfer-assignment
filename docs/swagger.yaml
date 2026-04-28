@@ -1,0 +1,236 @@
+basePath: /api/v1
+definitions:
+  apperror.AppError:
+    properties:
+      code:
+        type: integer
+      message:
+        type: string
+    type: object
+  response.Success:
+    properties:
+      data: {}
+      message:
+        type: string
+      status:
+        type: integer
+    type: object
+  transfer.CreateTransferRequest:
+    properties:
+      amount:
+        type: number
+      fromWalletId:
+        type: string
+      idempotencyKey:
+        type: string
+      toWalletId:
+        type: string
+    required:
+    - amount
+    - fromWalletId
+    - toWalletId
+    type: object
+  wallet.CreateWalletRequest:
+    properties:
+      initial_balance:
+        minimum: 0
+        type: number
+      owner_email:
+        type: string
+      owner_name:
+        type: string
+    required:
+    - owner_email
+    - owner_name
+    type: object
+host: localhost:7000
+info:
+  contact: {}
+  description: Wallet-to-wallet transfer service with idempotency, double-entry ledger,
+    and concurrency safety.
+  title: Wallet Transfer API
+  version: "1.0"
+paths:
+  /transfers:
+    get:
+      description: API to get all transfers ordered by creation date.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Transfers fetched successfully
+          schema:
+            $ref: '#/definitions/response.Success'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+      tags:
+      - Transfer
+    post:
+      consumes:
+      - application/json
+      description: API for creating a wallet-to-wallet transfer. Supports idempotent
+        requests via idempotencyKey.
+      parameters:
+      - description: Request Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/transfer.CreateTransferRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Transfer created successfully
+          schema:
+            $ref: '#/definitions/response.Success'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+        "404":
+          description: Wallet not found
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+        "409":
+          description: Idempotency key reused with different parameters
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+      tags:
+      - Transfer
+  /transfers/{id}:
+    get:
+      description: API to get transfer details along with ledger entries by transfer
+        ID.
+      parameters:
+      - description: Transfer ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Transfer fetched successfully
+          schema:
+            $ref: '#/definitions/response.Success'
+        "404":
+          description: Transfer not found
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+      tags:
+      - Transfer
+  /wallets:
+    get:
+      description: API to get all wallets ordered by creation date.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Wallets fetched successfully
+          schema:
+            $ref: '#/definitions/response.Success'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+      tags:
+      - Wallet
+    post:
+      consumes:
+      - application/json
+      description: API for creating a new wallet with an optional initial balance.
+      parameters:
+      - description: Request Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/wallet.CreateWalletRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Wallet created successfully
+          schema:
+            $ref: '#/definitions/response.Success'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+        "409":
+          description: Wallet already exists
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+      tags:
+      - Wallet
+  /wallets/{id}:
+    get:
+      description: API to get wallet details by wallet ID.
+      parameters:
+      - description: Wallet ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Wallet fetched successfully
+          schema:
+            $ref: '#/definitions/response.Success'
+        "404":
+          description: Wallet not found
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+      tags:
+      - Wallet
+  /wallets/{id}/balance:
+    get:
+      description: API to get the current balance of a wallet by wallet ID.
+      parameters:
+      - description: Wallet ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Balance fetched successfully
+          schema:
+            $ref: '#/definitions/response.Success'
+        "404":
+          description: Wallet not found
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.AppError'
+      tags:
+      - Wallet
+schemes:
+- http
+swagger: "2.0"
