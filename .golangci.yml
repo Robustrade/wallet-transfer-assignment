@@ -1,0 +1,46 @@
+version: "2"
+
+run:
+  timeout: 3m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - revive
+    - unconvert
+  settings:
+    errcheck:
+      check-type-assertions: true
+    gosec:
+      # Production code does not use math/rand. The test-file gosec exclusion
+      # below also catches this, so the global G404 exclusion is intentionally
+      # absent — re-add it only if a future test pattern needs it outside the
+      # `_test.go` filename convention.
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+      - path: tests/integration
+        linters:
+          - errcheck
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

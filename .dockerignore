@@ -1,0 +1,40 @@
+# Mirror .gitignore plus repo-specific paths Docker should never see.
+# The builder stage uses `COPY . .`; this file is the allowlist boundary.
+
+# Version control / CI metadata.
+.git
+.gitignore
+.github
+
+# Local secrets — never enter the build context. .env.example is the
+# committed template and stays in the build context for documentation.
+.env
+.env.*
+!.env.example
+
+# Build artifacts and test outputs.
+bin/
+coverage/
+dist/
+build/
+.tmp/
+
+# Editor / OS noise.
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Things only useful outside the container build.
+docker-compose.yml
+Dockerfile
+.dockerignore
+Makefile
+*.md
+sonar-project.properties
+.golangci.yml
+LICENSE
+branch-protection-checklist.md
+
+# Integration tests are not exercised in the builder stage.
+tests/integration/
