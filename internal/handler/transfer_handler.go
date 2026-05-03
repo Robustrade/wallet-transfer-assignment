@@ -31,11 +31,15 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	requestID := uuid.New().String()
-	log.Printf("[START] request_id=%s idempotency_key=%s from=%s to=%s amount=%d",
+	log.Printf("[START] request_id=%s idempotency_key=%s from=%s to=%s amount=%f",
 		requestID, req.IdempotencyKey, req.FromWalletID, req.ToWalletID, req.Amount,
 	)
 
-	ctx := context.WithValue(r.Context(), "request_id", requestID)
+	type contextKey string
+
+	const RequestIDKey contextKey = "request_id"
+
+	ctx := context.WithValue(r.Context(), RequestIDKey, requestID)
 	resp, err := h.Service.CreateTransfer(ctx, req)
 	if err != nil {
 		log.Printf("[REQUEST_FAILED] request_id=%s error=%v", requestID, err)

@@ -51,9 +51,13 @@ func (s *Service) CreateTransfer(ctx context.Context, req CreateTransferRequest)
 	defer func() {
 		if err != nil {
 			log.Printf("[TX_ROLLBACK] request_id=%s rolling back transaction", rId)
+
+			if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+				log.Printf("[TX_ROLLBACK_ERROR] request_id=%s err=%v", rId, rbErr)
+			}
 		}
-		tx.Rollback()
 	}()
+
 	transfer := &domain.Transfer{
 		ID:             uuid.New().String(),
 		FromWalletID:   req.FromWalletID,
@@ -149,7 +153,7 @@ func (s *Service) CreateTransfer(ctx context.Context, req CreateTransferRequest)
 		Balance: balances[req.FromWalletID],
 	}
 
-	log.Printf("[BALANCE_CHECK] request_id=%s from_balance=%d amount=%d", rId, fromWallet.Balance, req.Amount)
+	log.Printf("[BALANCE_CHECK] request_id=%s from_balance=%f amount=%f", rId, fromWallet.Balance, req.Amount)
 
 	if !fromWallet.CanDebit(transfer.Amount) {
 		log.Printf("[BUSINESS_FAIL] request_id=%s reason=INSUFFICIENT_FUNDS", rId)
@@ -217,7 +221,7 @@ func (s *Service) CreateTransfer(ctx context.Context, req CreateTransferRequest)
 	}
 
 	// 4. Ledger
-	log.Printf("[LEDGER_WRITE] request_id=%s transfer_id=%s debit=%d credit=%d",
+	log.Printf("[LEDGER_WRITE] request_id=%s transfer_id=%s debit=%f credit=%f",
 		rId, transfer.ID, req.Amount, req.Amount)
 
 	if err := s.Repo.CreateLedgerEntry(ctx, tx, transfer.FromWalletID, transfer.ID, string(domain.Debit), transfer.Amount); err != nil {
@@ -231,7 +235,7 @@ func (s *Service) CreateTransfer(ctx context.Context, req CreateTransferRequest)
 	}
 
 	// 5. Update balances
-	log.Printf("[BALANCE_UPDATE] request_id=%s from_wallet=%s -%d to_wallet=%s +%d",
+	log.Printf("[BALANCE_UPDATE] request_id=%s from_wallet=%s -%f to_wallet=%s +%f",
 		rId, req.FromWalletID, req.Amount, req.ToWalletID, req.Amount)
 
 	err = s.Repo.UpdateBalance(ctx, tx, transfer.FromWalletID, -transfer.Amount)

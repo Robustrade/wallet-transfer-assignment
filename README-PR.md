@@ -1,5 +1,6 @@
 # Run
 go mod tidy
+golangci-lint run
 go run cmd/server/main.go
 
 # created DB wallet
@@ -190,6 +191,9 @@ Tests interact with the system via HTTP and verify database state, focusing on c
 I used ChatGPT as a supporting tool for validating design decisions (idempotency, concurrency control, transaction), refining edge cases, and improving logging and error handling.
 I primarily used it as a reviewer to sanity-check approaches rather than generate the full solution.
 
+Prompts used (summary):
+idempotency handling strategies in transactional systems
+logging and observability improvements
 
 
 
