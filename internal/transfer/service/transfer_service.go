@@ -108,8 +108,13 @@ func (s *TransferService) CreateTransfer(ctx context.Context, req dto.CreateTran
 		})
 		return nil, pkgerrors.ErrTransactionFailed
 	}
-	defer tx.Rollback()
-
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			s.logger.Error("failed to rollback transaction", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}()
 	// Step 3: Lock wallets in consistent order to prevent deadlock
 	fromWallet, toWallet, err := s.lockWalletsInOrder(ctx, tx, req.FromWalletID, req.ToWalletID)
 	if err != nil {
@@ -329,8 +334,13 @@ func (s *TransferService) GetTransfer(ctx context.Context, transferID string) (*
 	if err != nil {
 		return nil, pkgerrors.ErrTransactionFailed
 	}
-	defer tx.Rollback()
-
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			s.logger.Error("failed to rollback transaction", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}()
 	transfer, err := s.transferRepo.GetByID(ctx, tx, transferID)
 	if err != nil {
 		s.logger.Error("failed to get transfer", map[string]interface{}{

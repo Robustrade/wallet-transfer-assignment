@@ -12,7 +12,7 @@ permissions:
 jobs:
   lint-format-test:
     name: lint-format-test
-    runs-on: [actions_runner_dev_new]
+    runs-on: ubuntu-latest
     env:
       LINT_CMD: ${{ vars.LINT_CMD }}
       FORMAT_CHECK_CMD: ${{ vars.FORMAT_CHECK_CMD }}

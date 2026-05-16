@@ -8,6 +8,8 @@ import (
 	"wallet-transfer/internal/transfer/service"
 	"wallet-transfer/pkg/errors"
 	"wallet-transfer/pkg/logger"
+
+	"github.com/gorilla/mux"
 )
 
 // TransferHandler handles transfer HTTP requests
@@ -43,7 +45,7 @@ func (h *TransferHandler) CreateTransfer(w http.ResponseWriter, r *http.Request)
 
 // GetTransfer handles GET /transfers/{transferId}
 func (h *TransferHandler) GetTransfer(w http.ResponseWriter, r *http.Request) {
-	transferID := r.PathValue("transferId")
+	transferID := mux.Vars(r)["transferId"]
 	if transferID == "" {
 		h.sendError(w, errors.ErrInvalidRequest.WithDetails("reason", "transferId is required"))
 		return
@@ -75,7 +77,11 @@ func (h *TransferHandler) handleServiceError(w http.ResponseWriter, err error) {
 func (h *TransferHandler) sendJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		h.logger.Error("failed to encode JSON response", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
 }
 
 // sendError sends an error response
@@ -87,5 +93,9 @@ func (h *TransferHandler) sendError(w http.ResponseWriter, err *errors.CustomErr
 		Message: err.Message,
 		Details: err.Details,
 	}
-	json.NewEncoder(w).Encode(response)
+	if encodeErr := json.NewEncoder(w).Encode(response); encodeErr != nil {
+		h.logger.Error("failed to encode JSON error response", map[string]interface{}{
+			"error": encodeErr.Error(),
+		})
+	}
 }

@@ -12,7 +12,7 @@ permissions:
 jobs:
   sonarqube:
     name: sonarqube
-    runs-on: [actions_runner_dev_new]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4

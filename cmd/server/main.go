@@ -33,7 +33,7 @@ func main() {
 		Port:     5432,
 		User:     getEnv("DB_USER", "postgres"),
 		Password: getEnv("DB_PASSWORD", "postgres"),
-		DBName:   getEnv("DB_NAME", "wallet_transfer"),
+		DBName:   getEnv("DB_NAME", "testdb"),
 		SSLMode:  getEnv("DB_SSLMODE", "disable"),
 	}
 

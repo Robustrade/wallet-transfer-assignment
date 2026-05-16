@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 
 	"wallet-transfer/internal/database"
 	walletrepo "wallet-transfer/internal/wallet/repository"
@@ -31,8 +32,13 @@ func (s *WalletService) GetBalance(ctx context.Context, walletID string) (int64,
 	if err != nil {
 		return 0, errors.ErrInternalError
 	}
-	defer tx.Rollback()
-
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			s.log.Error("failed to rollback transaction", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}()
 	wallet, err := s.repo.GetByID(ctx, tx, walletID)
 	if err != nil {
 		s.log.Error("failed to get wallet", map[string]interface{}{
@@ -53,8 +59,13 @@ func (s *WalletService) GetWallet(ctx context.Context, walletID string) (*Wallet
 	if err != nil {
 		return nil, errors.ErrInternalError
 	}
-	defer tx.Rollback()
-
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			s.log.Error("failed to rollback transaction", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}()
 	wallet, err := s.repo.GetByID(ctx, tx, walletID)
 	if err != nil {
 		s.log.Error("failed to get wallet", map[string]interface{}{

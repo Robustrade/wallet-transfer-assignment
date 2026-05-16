@@ -3,9 +3,9 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: wallet-transfer-db
+    container_name: postgres-db
     environment:
-      POSTGRES_DB: wallet_transfer
+      POSTGRES_DB: testdb
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
@@ -29,7 +29,7 @@ services:
       DB_HOST: postgres
       DB_USER: postgres
       DB_PASSWORD: postgres
-      DB_NAME: wallet_transfer
+      DB_NAME: testdb
       DB_SSLMODE: disable
       SERVER_ADDR: :8080
     ports:
