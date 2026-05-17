@@ -37,6 +37,7 @@ func main() {
 	router := gin.Default()
 
 	router.GET("/wallets/:id", walletHandler.GetWallet)
+	router.POST("/transfers", walletHandler.CreateTransfer)
 
 	err = router.Run(":8080")
 	if err != nil {
