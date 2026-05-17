@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
+	"wallet-transfer-service/internal/handler"
+	"wallet-transfer-service/internal/repository"
+	"wallet-transfer-service/internal/service"
 
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 )
@@ -25,5 +28,18 @@ func main() {
 
 	defer conn.Close(context.Background())
 
-	fmt.Println("database connected successfully")
+	walletRepo := repository.NewWalletRepository(conn)
+
+	walletService := service.NewWalletService(walletRepo)
+
+	walletHandler := handler.NewWalletHandler(walletService)
+
+	router := gin.Default()
+
+	router.GET("/wallets/:id", walletHandler.GetWallet)
+
+	err = router.Run(":8080")
+	if err != nil {
+		log.Fatal(err)
+	}
 }
