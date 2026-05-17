@@ -48,7 +48,12 @@ func (h *WalletHandler) CreateTransfer(c *gin.Context) {
 		return
 	}
 
-	err = h.walletService.CreateTransfer(req.FromWalletID, req.ToWalletID, req.IdempotencyKey, req.Amount)
+	err = h.walletService.CreateTransfer(
+		req.FromWalletID,
+		req.ToWalletID,
+		req.Amount,
+		req.IdempotencyKey,
+	)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),

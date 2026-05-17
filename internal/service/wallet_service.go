@@ -2,17 +2,22 @@ package service
 
 import (
 	"context"
+
 	"errors"
 	"wallet-transfer-service/internal/domain"
 	"wallet-transfer-service/internal/repository"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type WalletService struct {
+	db         *pgx.Conn
 	walletRepo *repository.WalletRepository
 }
 
-func NewWalletService(walletRepo *repository.WalletRepository) *WalletService {
+func NewWalletService(db *pgx.Conn, walletRepo *repository.WalletRepository) *WalletService {
 	return &WalletService{
+		db:         db,
 		walletRepo: walletRepo,
 	}
 }
@@ -21,7 +26,7 @@ func (s *WalletService) GetWallet(ctx context.Context, id string) (*domain.Walle
 	return s.walletRepo.GetWalletByID(ctx, id)
 }
 
-func (s *WalletService) CreateTransfer(fromWalletID, toWalletID, idempotencyKey string, amount int64) error {
+func (s *WalletService) CreateTransfer(fromWalletID string, toWalletID string, amount int64, idempotencyKey string) error {
 
 	if amount <= 0 {
 		return errors.New("amount must be greater than zero")
@@ -34,6 +39,15 @@ func (s *WalletService) CreateTransfer(fromWalletID, toWalletID, idempotencyKey 
 	if idempotencyKey == "" {
 		return errors.New("idempotency key is required")
 	}
+
+	ctx := context.Background()
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback(ctx)
 
 	return nil
 }
