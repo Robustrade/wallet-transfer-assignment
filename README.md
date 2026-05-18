@@ -33,3 +33,21 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+## Solution Notes
+
+This repository now includes a Go wallet transfer service with:
+
+- SQLite persistence and schema migration in `internal/storage`
+- `wallets`, `transfers`, and `ledger_entries` tables with referential integrity and constraints
+- idempotent transfer creation using `idempotency_key` unique enforcement
+- double-entry ledger generation for every processed transfer
+- atomic transfer workflow with retry-safe SQLite transaction handling
+- optional wallet creation and balance lookup endpoints
+
+### Running Locally
+
+1. `go test ./...`
+2. `go run main.go`
+3. POST `/wallets` to create wallets and POST `/transfers` to execute transfers.
+4. GET `/wallets/{id}` to inspect wallet balances.
