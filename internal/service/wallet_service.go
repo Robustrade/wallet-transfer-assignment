@@ -7,18 +7,21 @@ import (
 	"wallet-transfer-service/internal/domain"
 	"wallet-transfer-service/internal/repository"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
 type WalletService struct {
-	db         *pgx.Conn
-	walletRepo *repository.WalletRepository
+	db           *pgx.Conn
+	walletRepo   *repository.WalletRepository
+	transferRepo *repository.TransferRepository
 }
 
-func NewWalletService(db *pgx.Conn, walletRepo *repository.WalletRepository) *WalletService {
+func NewWalletService(db *pgx.Conn, walletRepo *repository.WalletRepository, transferRepo *repository.TransferRepository) *WalletService {
 	return &WalletService{
-		db:         db,
-		walletRepo: walletRepo,
+		db:           db,
+		walletRepo:   walletRepo,
+		transferRepo: transferRepo,
 	}
 }
 
@@ -76,6 +79,24 @@ func (s *WalletService) CreateTransfer(fromWalletID string, toWalletID string, a
 	}
 
 	err = s.walletRepo.UpdateWalletBalance(ctx, tx, toWalletID, newToBalance)
+	if err != nil {
+		return err
+	}
+
+	transfer := &domain.Transfer{
+		ID:             uuid.New().String(),
+		IdempotencyKey: idempotencyKey,
+		FromWalletID:   fromWalletID,
+		ToWalletID:     toWalletID,
+		Amount:         amount,
+		Status:         domain.TransferProcessed,
+	}
+
+	err = s.transferRepo.CreateTransfer(
+		ctx,
+		tx,
+		transfer,
+	)
 	if err != nil {
 		return err
 	}

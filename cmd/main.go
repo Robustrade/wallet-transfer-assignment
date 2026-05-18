@@ -29,8 +29,9 @@ func main() {
 	defer conn.Close(context.Background())
 
 	walletRepo := repository.NewWalletRepository(conn)
+	transferRepo := repository.NewTransferRepository()
 
-	walletService := service.NewWalletService(conn, walletRepo)
+	walletService := service.NewWalletService(conn, walletRepo, transferRepo)
 
 	walletHandler := handler.NewWalletHandler(walletService)
 
