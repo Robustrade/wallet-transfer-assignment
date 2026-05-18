@@ -1,7 +1,11 @@
 .DS_Store
 coverage/
+coverage.out
+*.out
 dist/
 build/
 .tmp/
 .env
 .env.*
+*.db
+wallet_transfer.db
