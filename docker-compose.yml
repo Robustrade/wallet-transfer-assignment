@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wallet_transfer_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: wallet_user
+      POSTGRES_PASSWORD: wallet_password
+      POSTGRES_DB: wallet_transfer
+    ports:
+      - "5432:5432"
+    volumes:
+      - wallet_transfer_pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U wallet_user -d wallet_transfer" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  wallet_transfer_pgdata:
