@@ -15,13 +15,15 @@ type WalletService struct {
 	db           *pgx.Conn
 	walletRepo   *repository.WalletRepository
 	transferRepo *repository.TransferRepository
+	ledgerRepo   *repository.LedgerRepository
 }
 
-func NewWalletService(db *pgx.Conn, walletRepo *repository.WalletRepository, transferRepo *repository.TransferRepository) *WalletService {
+func NewWalletService(db *pgx.Conn, walletRepo *repository.WalletRepository, transferRepo *repository.TransferRepository, ledgerRepo *repository.LedgerRepository) *WalletService {
 	return &WalletService{
 		db:           db,
 		walletRepo:   walletRepo,
 		transferRepo: transferRepo,
+		ledgerRepo:   ledgerRepo,
 	}
 }
 
@@ -51,6 +53,20 @@ func (s *WalletService) CreateTransfer(fromWalletID string, toWalletID string, a
 	}
 
 	defer tx.Rollback(ctx)
+
+	_, err = s.transferRepo.GetTransferByIdempotencyKey(
+		ctx,
+		tx,
+		idempotencyKey,
+	)
+
+	if err == nil {
+		return nil
+	}
+
+	if err != pgx.ErrNoRows {
+		return err
+	}
 
 	fromWallet, err := s.walletRepo.GetWalletByIDForUpdate(ctx, tx, fromWalletID)
 	if err != nil {
@@ -96,6 +112,40 @@ func (s *WalletService) CreateTransfer(fromWalletID string, toWalletID string, a
 		ctx,
 		tx,
 		transfer,
+	)
+	if err != nil {
+		return err
+	}
+
+	debitEntry := &domain.LedgerEntry{
+		ID:         uuid.New().String(),
+		WalletID:   fromWalletID,
+		TransferID: transfer.ID,
+		EntryType:  domain.LedgerEntryDebit,
+		Amount:     amount,
+	}
+
+	err = s.ledgerRepo.CreateLedgerEntry(
+		ctx,
+		tx,
+		debitEntry,
+	)
+	if err != nil {
+		return err
+	}
+
+	creditEntry := &domain.LedgerEntry{
+		ID:         uuid.New().String(),
+		WalletID:   toWalletID,
+		TransferID: transfer.ID,
+		EntryType:  domain.LedgerEntryCredit,
+		Amount:     amount,
+	}
+
+	err = s.ledgerRepo.CreateLedgerEntry(
+		ctx,
+		tx,
+		creditEntry,
 	)
 	if err != nil {
 		return err

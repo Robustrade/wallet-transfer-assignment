@@ -30,8 +30,8 @@ func main() {
 
 	walletRepo := repository.NewWalletRepository(conn)
 	transferRepo := repository.NewTransferRepository()
-
-	walletService := service.NewWalletService(conn, walletRepo, transferRepo)
+	ledgerRepo := repository.NewLedgerRepository()
+	walletService := service.NewWalletService(conn, walletRepo, transferRepo, ledgerRepo)
 
 	walletHandler := handler.NewWalletHandler(walletService)
 
