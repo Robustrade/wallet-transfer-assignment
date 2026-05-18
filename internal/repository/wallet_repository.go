@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"wallet-transfer-service/internal/domain"
 
 	"github.com/jackc/pgx/v5"
@@ -44,7 +43,7 @@ func (r *WalletRepository) GetWalletByID(ctx context.Context, id string) (*domai
 	return &wallet, nil
 }
 
-func (r *WalletRepository) GetWalletByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*domain.Wallet, error) {
+func (r *WalletRepository) GetWalletByIDForUpdate(ctx context.Context, tx pgx.Tx, id string) (*domain.Wallet, error) {
 
 	query := `
 		SELECT id, balance, created_at, updated_at
@@ -53,7 +52,7 @@ func (r *WalletRepository) GetWalletByIDForUpdate(ctx context.Context, tx *sql.T
 		FOR UPDATE
 	`
 
-	row := tx.QueryRowContext(ctx, query, id)
+	row := tx.QueryRow(ctx, query, id)
 
 	var wallet domain.Wallet
 
@@ -73,7 +72,7 @@ func (r *WalletRepository) GetWalletByIDForUpdate(ctx context.Context, tx *sql.T
 
 func (r *WalletRepository) UpdateWalletBalance(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	id string,
 	balance int64,
 ) error {
@@ -85,6 +84,6 @@ func (r *WalletRepository) UpdateWalletBalance(
 		WHERE id = $2
 	`
 
-	_, err := tx.ExecContext(ctx, query, balance, id)
+	_, err := tx.Exec(ctx, query, balance, id)
 	return err
 }

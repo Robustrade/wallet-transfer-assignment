@@ -49,5 +49,42 @@ func (s *WalletService) CreateTransfer(fromWalletID string, toWalletID string, a
 
 	defer tx.Rollback(ctx)
 
+	fromWallet, err := s.walletRepo.GetWalletByIDForUpdate(ctx, tx, fromWalletID)
+	if err != nil {
+		return err
+	}
+
+	toWallet, err := s.walletRepo.GetWalletByIDForUpdate(
+		ctx,
+		tx,
+		toWalletID,
+	)
+	if err != nil {
+		return err
+	}
+
+	if fromWallet.Balance < amount {
+		return errors.New("insufficient balance")
+	}
+
+	newFromBalance := fromWallet.Balance - amount
+	newToBalance := toWallet.Balance + amount
+
+	err = s.walletRepo.UpdateWalletBalance(ctx, tx, fromWalletID, newFromBalance)
+	if err != nil {
+		return err
+	}
+
+	err = s.walletRepo.UpdateWalletBalance(ctx, tx, toWalletID, newToBalance)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return err
+	}
+
 	return nil
+
 }
