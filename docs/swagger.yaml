@@ -1,0 +1,322 @@
+basePath: /api/v1
+definitions:
+  github_com_candidate_wallet-transfer_internal_domain.LedgerEntry:
+    properties:
+      amount:
+        type: number
+      balance_after:
+        type: number
+      balance_before:
+        type: number
+      created_at:
+        type: string
+      entry_type:
+        $ref: '#/definitions/github_com_candidate_wallet-transfer_internal_domain.LedgerEntryType'
+      id:
+        type: integer
+      transaction_id:
+        type: integer
+      wallet_id:
+        type: integer
+    type: object
+  github_com_candidate_wallet-transfer_internal_domain.LedgerEntryType:
+    enum:
+    - debit
+    - credit
+    type: string
+    x-enum-varnames:
+    - EntryDebit
+    - EntryCredit
+  github_com_candidate_wallet-transfer_internal_domain.Transaction:
+    properties:
+      amount:
+        type: number
+      created_at:
+        type: string
+      currency:
+        type: string
+      description:
+        type: string
+      from_wallet_id:
+        type: integer
+      id:
+        type: integer
+      idempotency_key:
+        type: string
+      metadata:
+        type: string
+      reference_id:
+        type: string
+      status:
+        $ref: '#/definitions/github_com_candidate_wallet-transfer_internal_domain.TransactionStatus'
+      to_wallet_id:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  github_com_candidate_wallet-transfer_internal_domain.TransactionStatus:
+    enum:
+    - PENDING
+    - PROCESSED
+    - FAILED
+    type: string
+    x-enum-varnames:
+    - StatusPending
+    - StatusCompleted
+    - StatusFailed
+  github_com_candidate_wallet-transfer_internal_domain.Wallet:
+    properties:
+      balance:
+        type: number
+      created_at:
+        type: string
+      currency:
+        type: string
+      id:
+        type: integer
+      updated_at:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  github_com_candidate_wallet-transfer_internal_service.CreateWalletRequest:
+    properties:
+      currency:
+        type: string
+      user_id:
+        type: integer
+    required:
+    - currency
+    - user_id
+    type: object
+  github_com_candidate_wallet-transfer_internal_service.TransferRequest:
+    properties:
+      amount:
+        type: number
+      currency:
+        type: string
+      description:
+        type: string
+      fromWalletId:
+        type: integer
+      idempotencyKey:
+        type: string
+      metadata:
+        type: string
+      toWalletId:
+        type: integer
+    required:
+    - amount
+    - currency
+    - fromWalletId
+    - idempotencyKey
+    - toWalletId
+    type: object
+  github_com_candidate_wallet-transfer_internal_service.TransferResponse:
+    properties:
+      transaction:
+        $ref: '#/definitions/github_com_candidate_wallet-transfer_internal_domain.Transaction'
+    type: object
+  internal_handler.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  internal_handler.LedgerResponse:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/github_com_candidate_wallet-transfer_internal_domain.LedgerEntry'
+        type: array
+      limit:
+        type: integer
+      next_cursor:
+        type: integer
+    type: object
+  internal_handler.WalletResponse:
+    properties:
+      wallet:
+        $ref: '#/definitions/github_com_candidate_wallet-transfer_internal_domain.Wallet'
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Production-grade, concurrent-safe, and idempotent Wallet Transfer Service
+    in Go.
+  title: Wallet Transfer API
+  version: "1.0"
+paths:
+  /transfers:
+    post:
+      consumes:
+      - application/json
+      description: Performs an atomic, idempotent transfer between two wallets with
+        exactly-once guarantees.
+      parameters:
+      - description: Transfer request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_candidate_wallet-transfer_internal_service.TransferRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_candidate_wallet-transfer_internal_service.TransferResponse'
+        "400":
+          description: Bad Request (Same wallet, invalid amount, currency mismatch)
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "404":
+          description: Wallet Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "409":
+          description: Idempotency Conflict
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "422":
+          description: Insufficient Funds
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: Create a wallet transfer
+      tags:
+      - transfers
+  /transfers/{id}:
+    get:
+      description: Retrieves transaction details, status, and metadata.
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_candidate_wallet-transfer_internal_service.TransferResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: Get transfer transaction by ID
+      tags:
+      - transfers
+  /wallets:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new multi-currency wallet for a user initialized with
+        0 balance.
+      parameters:
+      - description: Wallet creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_candidate_wallet-transfer_internal_service.CreateWalletRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_handler.WalletResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: Create a new wallet
+      tags:
+      - wallets
+  /wallets/{id}:
+    get:
+      description: Retrieves wallet details and current balance.
+      parameters:
+      - description: Wallet ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.WalletResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: Get wallet by ID
+      tags:
+      - wallets
+  /wallets/{id}/ledger:
+    get:
+      description: Retrieves paginated double-entry ledger history for a wallet using
+        cursor pagination.
+      parameters:
+      - description: Wallet ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: 20
+        description: Page limit (max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Pagination cursor (entry ID)
+        in: query
+        name: cursor
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.LedgerResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: Get wallet ledger entries
+      tags:
+      - wallets
+swagger: "2.0"

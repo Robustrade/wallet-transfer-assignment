@@ -1,0 +1,4 @@
+{
+  "db_path": "wallet.db",
+  "server_port": "8080"
+}
