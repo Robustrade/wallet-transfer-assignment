@@ -1,0 +1,16 @@
+# Local Postgres for `make run` and manual verification.
+# Tests do NOT use this — they spin up throwaway Postgres via testcontainers.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

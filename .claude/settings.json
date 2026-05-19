@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go run *)",
+      "Bash(curl -s http://localhost:8080/healthz)",
+      "Bash(export DATABASE_URL=postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable)",
+      "Bash(curl -s -X POST http://localhost:8080/transfers -H 'Content-Type: application/json' -d '{\"idempotencyKey\":\"k1\",\"fromWalletId\":\"wallet_1\",\"toWalletId\":\"wallet_2\",\"amount\":500}')",
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}' -X POST http://localhost:8080/transfers -H 'Content-Type: application/json' -d '{\"idempotencyKey\":\"k1\",\"fromWalletId\":\"wallet_1\",\"toWalletId\":\"wallet_2\",\"amount\":999}')",
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}' -X POST http://localhost:8080/transfers -H 'Content-Type: application/json' -d '{\"idempotencyKey\":\"k-insuf\",\"fromWalletId\":\"wallet_3\",\"toWalletId\":\"wallet_1\",\"amount\":100}')",
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}' -X POST http://localhost:8080/transfers -H 'Content-Type: application/json' -d '{\"idempotencyKey\":\"k-nowallet\",\"fromWalletId\":\"wallet_x\",\"toWalletId\":\"wallet_1\",\"amount\":100}')",
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}' -X POST http://localhost:8080/transfers -H 'Content-Type: application/json' -d '{\"fromWalletId\":\"wallet_1\",\"toWalletId\":\"wallet_2\",\"amount\":100}')",
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}' -X POST http://localhost:8080/transfers -H 'Content-Type: application/json' -d '{\"idempotencyKey\":\"k-zero\",\"fromWalletId\":\"wallet_1\",\"toWalletId\":\"wallet_2\",\"amount\":0}')",
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}' -X POST http://localhost:8080/transfers -H 'Content-Type: application/json' -d '{\"idempotencyKey\":\"k-same\",\"fromWalletId\":\"wallet_1\",\"toWalletId\":\"wallet_1\",\"amount\":100}')",
+      "Bash(pkill -f \"go run ./cmd/server\")",
+      "Bash(make test-short *)",
+      "Bash(make help *)",
+      "Bash(make db-down *)"
+    ]
+  }
+}
