@@ -92,3 +92,27 @@ func (r *TransferRepository) GetTransferByIdempotencyKey(
 
 	return &transfer, nil
 }
+
+func (r *TransferRepository) UpdateTransferStatus(
+	ctx context.Context,
+	tx pgx.Tx,
+	transferID string,
+	status domain.TransferStatus,
+) error {
+
+	query := `
+		UPDATE transfers
+		SET status = $1,
+		    updated_at = NOW()
+		WHERE id = $2
+	`
+
+	_, err := tx.Exec(
+		ctx,
+		query,
+		status,
+		transferID,
+	)
+
+	return err
+}

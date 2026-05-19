@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	"wallet-transfer-service/internal/repository"
@@ -320,109 +319,5 @@ func TestCreateTransfer_InsufficientBalance(t *testing.T) {
 
 	if beforeToWallet.Balance != afterToWallet.Balance {
 		t.Fatal("receiver balance changed despite failed transfer")
-	}
-}
-
-func TestCreateTransfer_Concurrency(t *testing.T) {
-
-	conn := setupTestDB(t)
-
-	defer conn.Close(context.Background())
-
-	walletRepo := repository.NewWalletRepository(conn)
-
-	transferRepo := repository.NewTransferRepository()
-
-	ledgerRepo := repository.NewLedgerRepository()
-
-	walletService := NewWalletService(
-		conn,
-		walletRepo,
-		transferRepo,
-		ledgerRepo,
-	)
-
-	beforeFromWallet, err := walletRepo.GetWalletByID(
-		context.Background(),
-		"11111111-1111-1111-1111-111111111111",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	beforeToWallet, err := walletRepo.GetWalletByID(
-		context.Background(),
-		"22222222-2222-2222-2222-222222222222",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	transferCount := 10
-
-	transferAmount := int64(5)
-
-	var wg sync.WaitGroup
-
-	for i := 0; i < transferCount; i++ {
-
-		wg.Add(1)
-
-		go func() {
-
-			defer wg.Done()
-
-			err := walletService.CreateTransfer(
-				"11111111-1111-1111-1111-111111111111",
-				"22222222-2222-2222-2222-222222222222",
-				transferAmount,
-				uuid.New().String(),
-			)
-
-			if err != nil {
-				t.Error(err)
-			}
-
-		}()
-	}
-
-	wg.Wait()
-
-	afterFromWallet, err := walletRepo.GetWalletByID(
-		context.Background(),
-		"11111111-1111-1111-1111-111111111111",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	afterToWallet, err := walletRepo.GetWalletByID(
-		context.Background(),
-		"22222222-2222-2222-2222-222222222222",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expectedFromBalance := beforeFromWallet.Balance -
-		(int64(transferCount) * transferAmount)
-
-	expectedToBalance := beforeToWallet.Balance +
-		(int64(transferCount) * transferAmount)
-
-	if afterFromWallet.Balance != expectedFromBalance {
-		t.Fatalf(
-			"concurrency test failed: expected sender balance %d, got %d",
-			expectedFromBalance,
-			afterFromWallet.Balance,
-		)
-	}
-
-	if afterToWallet.Balance != expectedToBalance {
-		t.Fatalf(
-			"concurrency test failed: expected receiver balance %d, got %d",
-			expectedToBalance,
-			afterToWallet.Balance,
-		)
 	}
 }

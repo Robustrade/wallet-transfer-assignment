@@ -105,7 +105,7 @@ func (s *WalletService) CreateTransfer(fromWalletID string, toWalletID string, a
 		FromWalletID:   fromWalletID,
 		ToWalletID:     toWalletID,
 		Amount:         amount,
-		Status:         domain.TransferProcessed,
+		Status:         domain.TransferPending,
 	}
 
 	err = s.transferRepo.CreateTransfer(
@@ -146,6 +146,16 @@ func (s *WalletService) CreateTransfer(fromWalletID string, toWalletID string, a
 		ctx,
 		tx,
 		creditEntry,
+	)
+	if err != nil {
+		return err
+	}
+
+	err = s.transferRepo.UpdateTransferStatus(
+		ctx,
+		tx,
+		transfer.ID,
+		domain.TransferProcessed,
 	)
 	if err != nil {
 		return err
