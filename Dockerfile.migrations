@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+
+FROM alpine:3.22
+ARG GOOSE_VERSION=3.24.3
+
+RUN apk update && \
+    apk upgrade && \
+    apk add bash && \
+    rm -rf /var/cache/apk/*
+
+# Add psql client
+RUN apk add --update --no-cache postgresql-client
+
+ADD https://github.com/pressly/goose/releases/download/v${GOOSE_VERSION}/goose_linux_x86_64 /bin/goose
+RUN chmod +x /bin/goose
+
+WORKDIR /migrations
+COPY ./scripts/migrate_db /usr/bin/entrypoint.sh
+COPY ./scripts/create_migration /usr/bin/create
+
+CMD ["/usr/bin/entrypoint.sh"]

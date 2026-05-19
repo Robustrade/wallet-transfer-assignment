@@ -1,0 +1,124 @@
+-----------------------------------------------------------------------
+We are building a small POC but with real concepts to allow wallet to wallet transfer.
+
+The goal is to build only the backend with an API to support wallet to wallet transfer.
+Here's how the API would look:
+```text
+POST /transfers
+```
+
+Example request:
+
+```json
+{
+  "idempotencyKey": "abc123",
+  "fromWalletId": "wallet_1",
+  "toWalletId": "wallet_2",
+  "amount": 100
+}
+```
+
+Here are the important things that we need to take care of:
+- Idempotency
+- Concurrency
+- High Consistency
+
+We will discuss and solutionize the above points in details later but before that let's break down our end goal into smaller tasks.
+
+First create small hello world API while keeping the golang clean file structure in place. Let's do following:
+- Create a go.mod file.
+- We will be using `fiber` as our backend framework.
+- Create clean separation in directory structure. We can have:
+   -- cmd: for entrypoint
+   -- pkg: for application business logic, domain models etc.
+   -- api: for http handlers, routes etc.
+   -- test: for tests
+
+Once we do this we will move to the next phase.
+
+-----------------------------------------------------------------------
+
+Now that we have the basic structure ready with an empty transfer API let's move to the next phase.
+
+In this phase we are going to setup our service using docker-compose along with an postgres service so that we can use database.
+I have already done basic config and conenction pool setup using https://github.com/jackc/pgx.
+
+Now let's create a docker compose setup with postgres and goose migrations.
+
+Here's what we should do:
+- Create a Dockerfile to build and run the server
+- Create docker compose to run service and postgres
+- Create Dockerfile.migrations to run and create db migrations using goose.
+  - For this let's create two scripts inside a new scripts directory.
+  - One script to run migrations using `goose up`
+  - Other script to create a new migration using `goose create`
+
+Before continuing ask me for any clarifications and doubts.
+
+-----------------------------------------------------------------------
+
+Now we also have the database, docker compose and migrations setup for our service.
+
+Let's implement the wallet transfer now. The idea is as following:
+To keep the transfer highly consistent and atomic we will go with pessimistic locking (row-level locks) along with a double entry ledger mechasim. So here's how our tables going to look like:
+- wallets: Contains balance, wallet_id, created_at, updated_at etc. (PK: walled_id)
+- transactions: Keeps track of each transaction, handles idempotency, wallet id and the direction, state of transaction lie "PENDIG", "PROCESSED" and "FAILED". (PK: id, UniqueKey: Idempotency_key)
+- ledger_entries: will contain, transaction_id, type (CREDIT or DEBIT), amout, timestamps etc.(There will always be 2 entries for each transaction to maintain integrity) -- PK: entry_id, index on updated_at, wallet_id (maybe a composite index)
+
+Idea is to keep the entire transfer atomic. We will use `SELECT FOR UPDATE` along with READ COMMITTED isolation level on our postgres database to make sure our writes and reads are consistent.
+
+Now let's do following:
+- Create database migrations for above tables, create enums for the transaction states and ledger entry type, also add migration for isolation level set to READ COMMITTED.
+- Implement a new function in WalletRepository to create transaction with. This should be a databse level transaction which first locks the wallet rows for both sender and receiver wallet (smaller wallet id first) to avoid deadlock like situations. So the query could look like:
+```
+SELECT ... FROM wallets WHERE wallet_id IN (smaller_wallet_id, greater_wallet_id) FOR UPDATE 
+```
+
+Use sortable IDs for wallets (do not use UUID v4).
+
+After this, add transaction_record, ledger entries, update balance in wallets table.
+
+During this transaction there can be different scenarios:
+- If transaction already exists for the same idempotency key, simple return that transaction.
+- If wallet balance isn't sufficient return error.
+- If any error occurs between the transaction make sure to mark the transaction failed (if transaction table entry creation fails then return error from service level).
+- If concurrent request comes for the same idempotency key while the transaction is still processing then simply return the transaction with status PENDING.
+
+This should be your order of execution in the database transaction:
+- Lock the wallet rows
+- Create transaction entry with PENDING as default.
+- Create ledger entries
+- Update the wallet balance.
+- Commit the transaction
+
+Analyse the codebase and my approach and add your suggestions if you feel something is missing.
+
+Refer to `docs/HOW_TO_RUN.md` to create and run migrations.
+
+-----------------------------------------------------------------------
+
+In the selected lines we are checking if wallet exists but shouldn't this be the first check even before creating transaction?
+
+-----------------------------------------------------------------------
+Now, can you write units tests for the core `transfers` API?
+
+Make sure to:
+- Add behavioural tests instead of focusing on implementation (However with mocking database you might need to assert on queries).
+- We need to test scenarios like: insufficient funds, idempotency, concurrent wallet transfers, invalid wallets.
+- Make sure to avoid redundancy by using test setup and tear down for repeated test code.
+- Create test helpers if needed
+
+
+First come up with list of test cases for /transfers API then we will move forward after discussing those.
+
+-----------------------------------------------------------------------
+
+Let's setup integration tests. We already have the docker-compose which runs our service and migrations.
+
+We don't need to do an isolated integration test setup instead we can re-use our docker compose based running service. We will manually clean up the rows created by us in the test teardown.
+
+So here's how it will work to run integration tests:
+- Developer needs to run `docker compose up`.
+- Developer runs the integration tests which runs on existing docker compose setup but the tests should self-clean the clutter.
+
+That's it.

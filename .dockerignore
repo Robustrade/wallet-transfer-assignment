@@ -1,0 +1,39 @@
+# Ignore Git-related files and directories
+.git
+.gitignore
+
+# Ignore Go build artifacts and cache
+*.o
+*.so
+*.a
+*.exe
+vendor/
+go.mod.bak
+go.sum.bak
+.cache/
+app
+
+# Ignore IDE-specific files and directories
+.idea/
+.vscode/
+*.iml
+
+# Ignore environment files and sensitive data
+.env
+.env.*
+
+# Ignore log files
+*.log
+
+# Ignore temporary files
+tmp/
+
+# Exclude the Dockerfile itself and the .dockerignore file (optional, but good practice)
+Dockerfile
+.dockerignore
+docker-compose.yaml
+docker-compose.tools.yaml
+
+# Readme and docs
+docs/
+README.md

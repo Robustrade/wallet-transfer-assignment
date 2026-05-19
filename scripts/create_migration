@@ -1,0 +1,3 @@
+#!/bin/bash
+
+goose create -s $1 sql

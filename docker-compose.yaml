@@ -1,0 +1,52 @@
+services:
+  wallets:
+    image: wallets:latest
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://postgres:Test001@postgres:5432/wallets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    ports:
+      - 8080:8080
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: Test001
+      POSTGRES_USER: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+  migrator:
+    image: wallets-migrator:latest
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile.migrations
+    environment:
+      HOST: postgres
+      PORT: 5432
+      USER: postgres
+      PASSWORD: Test001
+      DB_NAME: wallets
+      SSL: disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations
+
+volumes:
+  postgres-data:
+  

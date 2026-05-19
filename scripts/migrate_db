@@ -1,0 +1,15 @@
+#!/bin/bash
+
+DBSTRING="host=$HOST port=$PORT user=$USER password=$PASSWORD dbname=$DB_NAME sslmode=$SSL"
+
+RESULT="`PGPASSWORD="${PASSWORD}" createdb $DB_NAME -h $HOST -p $PORT -U $USER 2>&1`"
+if [ -n "`echo -n "${RESULT}" | grep "already exists"`" ]; then
+  echo "Database '$DB_NAME' already exists. Skipping creation..."
+fi
+
+if [ -z `ls -A .` ]; then
+  echo "No migration files found. Exiting gracefully..."
+  exit 0
+fi
+
+goose postgres "$DBSTRING" up

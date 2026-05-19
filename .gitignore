@@ -5,3 +5,5 @@ build/
 .tmp/
 .env
 .env.*
+
+postgres-data/
