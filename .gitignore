@@ -5,3 +5,8 @@ build/
 .tmp/
 .env
 .env.*
+!.env.example
+
+# Project-local pinned dev tools (goose, golangci-lint) and build output
+/bin/
+PR_DESCRIPTION.md
