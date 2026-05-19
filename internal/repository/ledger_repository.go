@@ -47,3 +47,26 @@ func (r *LedgerRepository) CreateLedgerEntry(
 
 	return err
 }
+
+func (r *LedgerRepository) CountLedgerEntriesByTransferID(
+	ctx context.Context,
+	conn *pgx.Conn,
+	transferID string,
+) (int, error) {
+
+	query := `
+		SELECT COUNT(*)
+		FROM ledger_entries
+		WHERE transfer_id = $1
+	`
+
+	var count int
+
+	err := conn.QueryRow(
+		ctx,
+		query,
+		transferID,
+	).Scan(&count)
+
+	return count, err
+}
