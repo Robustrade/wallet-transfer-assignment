@@ -1,0 +1,99 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+  Wallet Transfer Service — Checkstyle ruleset.
+
+  Philosophy: catch real bugs and consistency issues, not religious style
+  arguments. Spotless owns formatting (whitespace, imports, indentation);
+  Checkstyle here is restricted to semantics, naming, and code-smell checks.
+-->
+<module name="Checker">
+    <property name="charset" value="UTF-8"/>
+    <property name="severity" value="error"/>
+    <property name="fileExtensions" value="java"/>
+
+    <!-- No tab characters anywhere. -->
+    <module name="FileTabCharacter">
+        <property name="eachLine" value="true"/>
+    </module>
+
+    <!-- No trailing whitespace (belt-and-braces with Spotless). -->
+    <module name="RegexpSingleline">
+        <property name="format" value="\s+$"/>
+        <property name="message" value="Trailing whitespace is not allowed."/>
+    </module>
+
+    <!-- Per-file suppressions. -->
+    <module name="SuppressionSingleFilter">
+        <!--
+          Spring Boot @SpringBootApplication classes have a static main() and
+          no instance methods. Checkstyle's HideUtilityClassConstructor
+          misidentifies them as utility classes; suppress.
+        -->
+        <property name="checks" value="HideUtilityClassConstructor"/>
+        <property name="files" value="[/\\]WalletApplication\.java$"/>
+    </module>
+
+    <module name="TreeWalker">
+
+        <!-- ── Naming ──────────────────────────────────────────────────── -->
+        <module name="TypeName"/>
+        <module name="MethodName"/>
+        <module name="ParameterName"/>
+        <module name="LocalVariableName"/>
+        <module name="MemberName"/>
+        <!--
+          Allow the conventional SLF4J `log` identifier on
+          `private static final Logger log` fields (matches the Lombok @Slf4j
+          convention). Other constants must still be UPPER_SNAKE_CASE.
+        -->
+        <module name="ConstantName">
+            <property name="format" value="^(log|[A-Z][A-Z0-9]*(_[A-Z0-9]+)*)$"/>
+        </module>
+        <module name="PackageName">
+            <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+        </module>
+
+        <!-- ── Code smells / real bugs ────────────────────────────────── -->
+        <module name="EmptyBlock">
+            <property name="option" value="text"/>
+            <property name="tokens" value="LITERAL_TRY,LITERAL_FINALLY,LITERAL_IF,LITERAL_ELSE,LITERAL_FOR,LITERAL_WHILE,LITERAL_DO,LITERAL_SYNCHRONIZED,STATIC_INIT,INSTANCE_INIT"/>
+        </module>
+        <module name="EmptyCatchBlock">
+            <property name="exceptionVariableName" value="ignored?|expected"/>
+        </module>
+        <module name="EqualsHashCode"/>
+        <module name="FallThrough"/>
+        <module name="MissingSwitchDefault"/>
+        <module name="ModifiedControlVariable"/>
+        <module name="SimplifyBooleanExpression"/>
+        <module name="SimplifyBooleanReturn"/>
+        <module name="StringLiteralEquality"/>
+        <module name="DefaultComesLast"/>
+        <module name="OneStatementPerLine"/>
+        <module name="UnnecessarySemicolonAfterTypeMemberDeclaration"/>
+        <module name="UnnecessarySemicolonInTryWithResources"/>
+        <module name="UnnecessarySemicolonInEnumeration"/>
+        <module name="UnusedLocalVariable"/>
+
+        <!-- ── Imports ────────────────────────────────────────────────── -->
+        <module name="AvoidStarImport"/>
+        <module name="RedundantImport"/>
+        <module name="UnusedImports">
+            <property name="processJavadoc" value="true"/>
+        </module>
+
+        <!-- ── Misc ──────────────────────────────────────────────────── -->
+        <module name="UpperEll"/>
+        <module name="ArrayTypeStyle"/>
+        <module name="HideUtilityClassConstructor"/>
+        <module name="NeedBraces">
+            <property name="tokens" value="LITERAL_IF,LITERAL_ELSE,LITERAL_FOR,LITERAL_WHILE,LITERAL_DO"/>
+            <property name="allowSingleLineStatement" value="true"/>
+        </module>
+
+    </module>
+</module>
