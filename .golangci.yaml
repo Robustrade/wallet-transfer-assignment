@@ -1,0 +1,105 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  # Allow multiple issues to be reported for the same line
+  allow-parallel-runners: true
+
+linters:
+  default: none
+  enable:
+    # Essential Core
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    
+    # Performance & Best Practices
+    - bodyclose     # Checks whether HTTP response body is closed
+    - noctx         # Checks for sending HTTP request without context
+    - sqlclosecheck # Checks that sql.Rows and sql.Stmt are closed
+    - rowserrcheck  # Checks whether Rows.Err() is checked
+    - prealloc      # Finds slice declarations that could potentially be pre-allocated
+    - makezero      # Finds non-zero slice initializations with make
+    
+    # Complexity & Maintenance
+    - gocyclo       # Checks complexity of functions
+    - gocognit      # Checks cognitive complexity of functions
+    - funlen        # Checks length of functions
+    - cyclop        # Checks function complexity (newer alternative)
+    - nakedret      # Finds naked returns in functions longer than a certain limit
+    
+    # Style & Consistency
+    - revive        # Fast, configurable, extensible linter for Go
+    - gocritic      # Provides diagnostics that check for bugs, performance and style issues
+    - misspell      # Finds commonly misspelled English words
+    - whitespace    # Finds leading and trailing whitespace
+    - dogsled       # Checks assignments with too many blank identifiers (e.g. x, _, _, _ := ...)
+    - goconst       # Finds repeated strings that could be constants
+    
+    # Security
+    - gosec         # Inspects source code for security problems
+
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: line-length-limit
+          arguments: [120]
+        - name: unhandled-error
+          arguments: ["fmt.Printf", "fmt.Fprintf"]
+    
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - appendAssign
+        - ifElseChain
+    
+    gosec:
+      excludes:
+        - G114 # Use of net/http serve without timeouts
+        - G104 # Unhandled error (covered by errcheck)
+    
+    funlen:
+      lines: 100
+      statements: 50
+      
+    gocyclo:
+      min-complexity: 15
+      
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+  exclusions:
+    rules:
+      # Relax rules for tests
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - gocritic
+          - funlen
+          - goconst
+      # Standard Go idiom for Rollback in defer
+      - text: "Rollback"
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - wallet-transfer-assignment
