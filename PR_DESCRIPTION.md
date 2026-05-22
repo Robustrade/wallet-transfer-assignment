@@ -12,7 +12,7 @@ through `pgx`. The full transfer workflow is a single atomic transaction.
 
 **Tool:** Claude Code (Claude Opus 4.7).
 
-**How I used it:** as a design and review partner, not a code generator. I
+**How I used it:** as a design and review partner, and a code generator. I
 drove every design decision through discussion and made the final calls myself;
 the assistant explained trade-offs, scaffolded code to my specifications, and
 helped write tests. A full transcript of the session is included in the repo.
@@ -111,6 +111,11 @@ negative, ledger reconciles), and concurrent same-key delivery (exactly once).
 
 - **Stored balance over derived** for an atomic, DB-enforced overdraft guard;
   a test asserts stored balances reconcile with the ledger.
+- **Amount is taken as Integer** for current scope the amount of currency is 
+  assumed as Integer. If we require it to be decimal, we won't be using float 
+  datatype because of rounding errors. We will be using DECIMAL or NUMERIC. Or
+  we will store money as an integer in the smallest possible unit 
+  (e.g., $10.00 is stored as 1000 cents). 
 - **Pessimistic locking over optimistic** for simpler, retry-free handling of
   hot-wallet contention.
 - **Single database**, so no two-phase commit / sagas — called out as a
