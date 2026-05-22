@@ -18,6 +18,22 @@ jobs:
       FORMAT_CHECK_CMD: ${{ vars.FORMAT_CHECK_CMD }}
       TEST_CMD: ${{ vars.TEST_CMD }}
       CGO_ENABLED: ${{ vars.CGO_ENABLED }}
+      # Integration tests apply migrations/0001_init.sql to this database via
+      # TestMain and skip themselves if DATABASE_URL is unset.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/wallet?sslmode=disable
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wallet
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
