@@ -8,6 +8,7 @@ import (
 
 type WalletRepository interface {
 	Create(ctx context.Context, wallet *domain.Wallet) (*domain.Wallet, error)
+	Get(ctx context.Context, walletID string) (*domain.Wallet, error)
 }
 
 type WalletService struct {
@@ -34,4 +35,9 @@ func (w *WalletService) CreateWallet(ctx context.Context, req CreateWalletReques
 	}
 
 	return w.walletRepository.Create(ctx, wallet)
+}
+
+func (w *WalletService) GetWallet(ctx context.Context, walletID string) (*domain.Wallet, error) {
+
+	return w.walletRepository.Get(ctx, walletID)
 }

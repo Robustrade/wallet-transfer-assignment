@@ -8,6 +8,8 @@ import (
 
 	"wallet-transfer-assignment/internal/domain"
 	"wallet-transfer-assignment/internal/service"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type createWalletRequest struct {
@@ -37,10 +39,37 @@ func createWallet(walletService *service.WalletService) http.HandlerFunc {
 			InitialBalance: req.InitialBalance,
 		})
 		if err != nil {
+
 			if errors.Is(err, domain.ErrInvalidAmount) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+			if errors.Is(err, domain.ErrWalletAlreadyExists) {
+
+				http.Error(w, "walletId already exists", http.StatusConflict)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			log.Printf("encode response error: %v", err)
+		}
+	}
+}
+
+func getWallet(walletService *service.WalletService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		walletID := chi.URLParam(r, "walletId")
+
+		resp, err := walletService.GetWallet(r.Context(), walletID)
+
+		if err != nil {
+
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

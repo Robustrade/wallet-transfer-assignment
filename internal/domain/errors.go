@@ -9,4 +9,5 @@ var (
 	ErrSameWalletTransfer   = errors.New("cannot transfer to same wallet")
 	ErrTransferNotFound     = errors.New("transfer not found")
 	ErrInvalidTransferState = errors.New("invalid transfer state")
+	ErrWalletAlreadyExists  = errors.New("wallet already exists")
 )

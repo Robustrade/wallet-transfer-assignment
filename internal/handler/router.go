@@ -13,6 +13,7 @@ func NewRouter(walletService *service.WalletService) http.Handler {
 
 	r.Get("/health", health)
 	r.Post("/wallets", createWallet(walletService))
+	r.Get("/wallets/{walletId}", getWallet(walletService))
 
 	return r
 }
