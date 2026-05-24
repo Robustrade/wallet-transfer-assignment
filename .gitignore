@@ -4,4 +4,6 @@ dist/
 build/
 .tmp/
 .env
-.env.*
+.env.local
+.env.*.local
+node_modules/

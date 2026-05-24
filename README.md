@@ -6,7 +6,7 @@ This repository is a reusable coding assignment template for evaluating backend 
 
 - `ASSIGNMENT.md` - candidate-facing prompt
 - `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
+- `.github/workflows/ci.yml` - lint, format, test workflow
 - `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
 - `.github/copilot-instructions.md` - repository-level Copilot review guidance
 - `evaluation_guide.md` - reviewer rubric
@@ -33,3 +33,96 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+---
+
+## Solution — Prathap Chandra
+
+> This section covers the implemented solution on the `solution/prathap-chandra` branch.
+
+### Stack
+
+- **Runtime**: Node.js 20 / TypeScript 5
+- **HTTP**: Express 4
+- **Database**: PostgreSQL 16 (via `pg`)
+- **Tests**: Jest 29 + Supertest
+- **Validation**: Zod
+
+### Prerequisites
+
+- Node.js ≥ 18
+- Docker + Docker Compose (for PostgreSQL)
+
+### Setup & Run
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Start PostgreSQL
+docker compose up -d postgres
+
+# 3. Copy environment config
+cp .env.example .env
+
+# 4. Apply migrations and start server
+npm run migrate
+npm run dev
+```
+
+Server listens on `http://localhost:3000`.
+
+### API
+
+#### Create a transfer
+
+```bash
+POST /transfers
+Content-Type: application/json
+
+{
+  "idempotencyKey": "unique-client-key",
+  "fromWalletId": "wallet_1",
+  "toWalletId": "wallet_2",
+  "amount": 100
+}
+```
+
+Response `201` on success, `200` on duplicate key (idempotent replay), `422` on insufficient balance, `404` on missing wallet.
+
+#### Get wallet balance
+
+```bash
+GET /wallets/:id
+```
+
+#### Get wallet ledger
+
+```bash
+GET /wallets/:id/ledger
+```
+
+### Run Tests
+
+```bash
+# Start the test database (port 5433)
+docker compose up -d postgres-test
+
+# Run all tests
+TEST_DATABASE_URL=postgresql://wallet:wallet@localhost:5433/wallet_transfer_test npm test
+```
+
+Tests cover: happy path, idempotency, concurrent debits, insufficient balance, request validation.
+
+### Architecture
+
+```
+src/
+  handler/      ← Express route handlers (thin: validate → call service → respond)
+  service/      ← Business logic, idempotency orchestration, state machine
+  repository/   ← SQL queries and database mapping
+  domain/       ← Types, custom error classes
+  db/           ← Connection pool, migration runner
+```
+
+See [`APPROACH.md`](./APPROACH.md) for detailed design decisions.
