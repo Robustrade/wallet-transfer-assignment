@@ -28,7 +28,10 @@ func main() {
 	walletRepository := repository.NewWalletRepository(pool)
 	walletService := service.NewWalletService(walletRepository)
 
-	if err := http.ListenAndServe(":8080", handler.NewRouter(walletService)); err != nil {
+	transferRepository := repository.NewTransferRepository(pool)
+	transferService := service.NewTransferService(transferRepository)
+
+	if err := http.ListenAndServe(":8080", handler.NewRouter(walletService, transferService)); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
 }

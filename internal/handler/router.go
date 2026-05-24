@@ -8,12 +8,13 @@ import (
 	"wallet-transfer-assignment/internal/service"
 )
 
-func NewRouter(walletService *service.WalletService) http.Handler {
+func NewRouter(walletService *service.WalletService, transferService *service.TransferService) http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/health", health)
 	r.Post("/wallets", createWallet(walletService))
 	r.Get("/wallets/{walletId}", getWallet(walletService))
+	r.Post("/transfers", createTransfer(transferService))
 
 	return r
 }
