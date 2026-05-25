@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -98,28 +97,19 @@ func (t *TransferTx) CreateTransfer(ctx context.Context, transfer *domain.Transf
 	return &created, nil
 }
 
-func (t *TransferTx) GetTransferByIdempotencyKey(ctx context.Context, key string) (*domain.Transfer, error) {
-	var transfer domain.Transfer
-
-	err := t.tx.QueryRow(ctx, `
-		SELECT tr.transfer_id, tr.from_wallet_id, tr.to_wallet_id, tr.amount, tr.status
-		FROM idempotency_records ir
-		JOIN transfers tr ON tr.transfer_id = ir.transfer_id
-		WHERE ir.idempotency_key = $1
-	`, key).Scan(
-		&transfer.ID,
-		&transfer.FromWalletID,
-		&transfer.ToWalletID,
-		&transfer.Amount,
-		&transfer.Status,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-
+func (t *TransferTx) UpdateTransferStatus(ctx context.Context, transferID domain.TransferID, status domain.TransferStatus) error {
+	tag, err := t.tx.Exec(ctx, `
+		UPDATE transfers
+		SET status = $1, updated_at = now()
+		WHERE transfer_id = $2
+	`, status, transferID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &transfer, nil
+	if tag.RowsAffected() == 0 {
+		return domain.ErrTransferNotFound
+	}
+
+	return nil
 }

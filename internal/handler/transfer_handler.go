@@ -34,7 +34,7 @@ func createTransfer(transferService *service.TransferService) http.HandlerFunc {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		resp, err := transferService.CreateTransfer(r.Context(),
+		resp, alreadyExists, err := transferService.CreateTransfer(r.Context(),
 			service.CreateTransferRequest{
 				FromWalletId:   req.FromWalletId,
 				ToWalletId:     req.ToWalletId,
@@ -49,6 +49,10 @@ func createTransfer(transferService *service.TransferService) http.HandlerFunc {
 				return
 			}
 			if errors.Is(err, domain.ErrSameWalletTransfer) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if errors.Is(err, domain.ErrInsufficientFunds) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -70,7 +74,11 @@ func createTransfer(transferService *service.TransferService) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
+		if alreadyExists {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusCreated)
+		}
 
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			log.Printf("encode response error: %v", err)
