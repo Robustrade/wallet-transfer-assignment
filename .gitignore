@@ -1,7 +1,13 @@
 .DS_Store
 coverage/
+coverage
 dist/
 build/
 .tmp/
 .env
 .env.*
+!.env.example
+coverage.out
+coverage.html
+service_coverage.out
+service_coverage.html
