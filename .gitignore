@@ -1,7 +1,39 @@
+# OS
 .DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environment
+wallet-transfer-env/
+venv/
+.venv/
+
+# Django
+db.sqlite3
+*.sqlite3
+staticfiles/
+media/
+
+# Build / dist
 coverage/
 dist/
 build/
 .tmp/
+htmlcov/
+.coverage
+.coverage.*
+
+# Env files
 .env
 .env.*
+
+# Claude Code
+CLAUDE.md
+plans_&_assumptions.txt
