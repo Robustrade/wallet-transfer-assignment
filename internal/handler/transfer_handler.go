@@ -36,8 +36,8 @@ func createTransfer(transferService *service.TransferService) http.HandlerFunc {
 		}
 		resp, err := transferService.CreateTransfer(r.Context(),
 			service.CreateTransferRequest{
-				FromWalletId:   &req.FromWalletId,
-				ToWalletId:     &req.ToWalletId,
+				FromWalletId:   req.FromWalletId,
+				ToWalletId:     req.ToWalletId,
 				Amount:         req.Amount,
 				IdempotencyKey: req.IdempotencyKey,
 			},
@@ -48,15 +48,31 @@ func createTransfer(transferService *service.TransferService) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+			if errors.Is(err, domain.ErrSameWalletTransfer) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if errors.Is(err, domain.ErrWalletNotFound) {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
 
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
+		response := TransferResponse{
+			TransferId:   string(resp.ID),
+			Status:       string(resp.Status),
+			FromWalletId: string(resp.FromWalletID),
+			ToWalletId:   string(resp.ToWalletID),
+			Amount:       resp.Amount,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
+		if err := json.NewEncoder(w).Encode(response); err != nil {
 			log.Printf("encode response error: %v", err)
 		}
 	}

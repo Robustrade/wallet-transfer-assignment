@@ -7,10 +7,10 @@ import (
 )
 
 type CreateTransferRequest struct {
-	FromWalletId   *string `json:"fromWalletId"`
-	ToWalletId     *string `json:"toWalletId"`
-	Amount         int64   `json:"amount"`
-	IdempotencyKey string  `json:"idempotencyKey"`
+	FromWalletId   string `json:"fromWalletId"`
+	ToWalletId     string `json:"toWalletId"`
+	Amount         int64  `json:"amount"`
+	IdempotencyKey string `json:"idempotencyKey"`
 }
 type TransferRepository interface {
 	Create(ctx context.Context, transfer *domain.Transfer) (*domain.Transfer, error)
@@ -25,7 +25,17 @@ func NewTransferService(TransferRepository TransferRepository) *TransferService 
 }
 
 func (t *TransferService) CreateTransfer(ctx context.Context, req CreateTransferRequest) (*domain.Transfer, error) {
-	transfer := &domain.Transfer{}
+	transfer := &domain.Transfer{
+		FromWalletID: domain.WalletID(req.FromWalletId),
+		ToWalletID:   domain.WalletID(req.ToWalletId),
+		Status:       domain.TransferStatusPending,
+
+		Amount: req.Amount,
+	}
+	err := transfer.Validate()
+	if err != nil {
+		return nil, err
+	}
 
 	return t.TransferRepository.Create(ctx, transfer)
 
