@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -66,6 +67,31 @@ func (r *TransferRepository) Create(ctx context.Context, transfer *domain.Transf
 	}
 
 	return &created, nil
+}
+
+func (r *TransferRepository) Get(ctx context.Context, transferID string) (*domain.Transfer, error) {
+	var transfer domain.Transfer
+
+	err := r.db.QueryRow(ctx, `
+		SELECT transfer_id, from_wallet_id, to_wallet_id, amount, status
+		FROM transfers
+		WHERE transfer_id = $1
+	`, transferID).Scan(
+		&transfer.ID,
+		&transfer.FromWalletID,
+		&transfer.ToWalletID,
+		&transfer.Amount,
+		&transfer.Status,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrTransferNotFound
+		}
+
+		return nil, err
+	}
+
+	return &transfer, nil
 }
 
 func (t *TransferTx) CreateTransfer(ctx context.Context, transfer *domain.Transfer) (*domain.Transfer, error) {

@@ -17,6 +17,18 @@ type createWalletRequest struct {
 	InitialBalance int64   `json:"initialBalance"`
 }
 
+type ledgerEntryResponse struct {
+	EntryID    string `json:"entryId"`
+	TransferID string `json:"transferId"`
+	Type       string `json:"type"`
+	Amount     int64  `json:"amount"`
+}
+
+type walletLedgerResponse struct {
+	WalletID string                `json:"walletId"`
+	Entries  []ledgerEntryResponse `json:"entries"`
+}
+
 func createWallet(walletService *service.WalletService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req createWalletRequest
@@ -62,6 +74,43 @@ func createWallet(walletService *service.WalletService) http.HandlerFunc {
 	}
 }
 
+func getWalletLedger(transferService *service.TransferService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		walletID := chi.URLParam(r, "walletId")
+
+		entries, err := transferService.ListWalletLedgerEntries(r.Context(), walletID)
+		if err != nil {
+			if errors.Is(err, domain.ErrWalletNotFound) {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		response := walletLedgerResponse{
+			WalletID: walletID,
+			Entries:  make([]ledgerEntryResponse, 0, len(entries)),
+		}
+		for _, entry := range entries {
+			response.Entries = append(response.Entries, ledgerEntryResponse{
+				EntryID:    string(entry.ID),
+				TransferID: string(entry.TransferID),
+				Type:       string(entry.Type),
+				Amount:     entry.Amount,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("encode response error: %v", err)
+		}
+	}
+}
+
 func getWallet(walletService *service.WalletService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		walletID := chi.URLParam(r, "walletId")
@@ -69,13 +118,17 @@ func getWallet(walletService *service.WalletService) http.HandlerFunc {
 		resp, err := walletService.GetWallet(r.Context(), walletID)
 
 		if err != nil {
+			if errors.Is(err, domain.ErrWalletNotFound) {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
 
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
+		w.WriteHeader(http.StatusOK)
 
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			log.Printf("encode response error: %v", err)

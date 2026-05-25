@@ -5,6 +5,9 @@ import (
 	"errors"
 	"log"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
+
 	"wallet-transfer-assignment/internal/domain"
 	"wallet-transfer-assignment/internal/service"
 )
@@ -21,6 +24,39 @@ type TransferResponse struct {
 	FromWalletId string `json:"fromWalletId"`
 	ToWalletId   string `json:"toWalletId"`
 	Amount       int64  `json:"amount"`
+}
+
+func getTransfer(transferService *service.TransferService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		transferID := chi.URLParam(r, "transferId")
+
+		resp, err := transferService.GetTransfer(r.Context(), transferID)
+
+		if err != nil {
+			if errors.Is(err, domain.ErrTransferNotFound) {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		response := TransferResponse{
+			TransferId:   string(resp.ID),
+			Status:       string(resp.Status),
+			FromWalletId: string(resp.FromWalletID),
+			ToWalletId:   string(resp.ToWalletID),
+			Amount:       resp.Amount,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("encode response error: %v", err)
+		}
+	}
 }
 
 func createTransfer(transferService *service.TransferService) http.HandlerFunc {
@@ -53,6 +89,10 @@ func createTransfer(transferService *service.TransferService) http.HandlerFunc {
 				return
 			}
 			if errors.Is(err, domain.ErrInsufficientFunds) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if errors.Is(err, domain.ErrIdempotencyKeyRequired) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"wallet-transfer-assignment/internal/domain"
 	"wallet-transfer-assignment/internal/repository"
@@ -15,6 +16,9 @@ type CreateTransferRequest struct {
 }
 type TransferRepository interface {
 	BeginTx(ctx context.Context) (*repository.TransferTx, error)
+	Get(ctx context.Context, transferID string) (*domain.Transfer, error)
+	GetTransferByIdempotencyKey(ctx context.Context, key string) (*domain.Transfer, error)
+	ListWalletLedgerEntries(ctx context.Context, walletID string) ([]domain.LedgerEntry, error)
 }
 
 type TransferService struct {
@@ -25,7 +29,19 @@ func NewTransferService(TransferRepository TransferRepository) *TransferService 
 	return &TransferService{TransferRepository: TransferRepository}
 }
 
+func (t *TransferService) GetTransfer(ctx context.Context, transferID string) (*domain.Transfer, error) {
+	return t.TransferRepository.Get(ctx, transferID)
+}
+
+func (t *TransferService) ListWalletLedgerEntries(ctx context.Context, walletID string) ([]domain.LedgerEntry, error) {
+	return t.TransferRepository.ListWalletLedgerEntries(ctx, walletID)
+}
+
 func (t *TransferService) CreateTransfer(ctx context.Context, req CreateTransferRequest) (*domain.Transfer, bool, error) {
+	if req.IdempotencyKey == "" {
+		return nil, false, domain.ErrIdempotencyKeyRequired
+	}
+
 	transfer := &domain.Transfer{
 		FromWalletID: domain.WalletID(req.FromWalletId),
 		ToWalletID:   domain.WalletID(req.ToWalletId),
@@ -104,6 +120,20 @@ func (t *TransferService) CreateTransfer(ctx context.Context, req CreateTransfer
 	}
 
 	if err := tx.SaveIdempotencyRecord(ctx, req.IdempotencyKey, createdTransfer.ID); err != nil {
+		if errors.Is(err, domain.ErrIdempotencyKeyExists) {
+			if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
+				return nil, false, rollbackErr
+			}
+
+			existingTransfer, lookupErr := t.TransferRepository.GetTransferByIdempotencyKey(ctx, req.IdempotencyKey)
+			if lookupErr != nil {
+				return nil, false, lookupErr
+			}
+			if existingTransfer != nil {
+				return existingTransfer, true, nil
+			}
+		}
+
 		return nil, false, err
 	}
 
