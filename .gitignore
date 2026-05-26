@@ -5,3 +5,9 @@ build/
 .tmp/
 .env
 .env.*
+
+# IDE
+.idea/
+
+# Gradle build cache
+.gradle/
