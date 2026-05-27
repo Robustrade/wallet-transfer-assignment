@@ -1,7 +1,23 @@
+# OS files
 .DS_Store
+
+# Build artifacts
 coverage/
 dist/
 build/
-.tmp/
+bin/
+
+# Environment and config
 .env
 .env.*
+*.env
+config.json
+
+# Temporary files
+.tmp/
+*.log
+server.log
+
+# Local documentation
+.local-docs/
+.github_summary.txt
