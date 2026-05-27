@@ -14,7 +14,7 @@ func TestWallet_Validate(t *testing.T) {
 			name: "valid wallet",
 			wallet: &Wallet{
 				ID:      "wallet_1",
-				Balance: 100.0,
+				Balance: 10000,
 			},
 			wantErr: false,
 		},
@@ -22,7 +22,7 @@ func TestWallet_Validate(t *testing.T) {
 			name: "empty ID",
 			wallet: &Wallet{
 				ID:      "",
-				Balance: 100.0,
+				Balance: 10000,
 			},
 			wantErr: true,
 		},
@@ -30,7 +30,7 @@ func TestWallet_Validate(t *testing.T) {
 			name: "negative balance",
 			wallet: &Wallet{
 				ID:      "wallet_1",
-				Balance: -10.0,
+				Balance: -1000,
 			},
 			wantErr: true,
 		},
@@ -47,16 +47,16 @@ func TestWallet_Validate(t *testing.T) {
 }
 
 func TestWallet_HasSufficientBalance(t *testing.T) {
-	wallet := &Wallet{ID: "wallet_1", Balance: 100.0}
+	wallet := &Wallet{ID: "wallet_1", Balance: 10000}
 
 	tests := []struct {
 		name   string
-		amount float64
+		amount int64
 		want   bool
 	}{
-		{"sufficient", 50.0, true},
-		{"exact", 100.0, true},
-		{"insufficient", 150.0, false},
+		{"sufficient", 5000, true},
+		{"exact", 10000, true},
+		{"insufficient", 15000, false},
 	}
 
 	for _, tt := range tests {
@@ -71,31 +71,31 @@ func TestWallet_HasSufficientBalance(t *testing.T) {
 func TestWallet_Debit(t *testing.T) {
 	tests := []struct {
 		name           string
-		initialBalance float64
-		amount         float64
+		initialBalance int64
+		amount         int64
 		wantErr        bool
-		wantBalance    float64
+		wantBalance    int64
 	}{
 		{
 			name:           "successful debit",
-			initialBalance: 100.0,
-			amount:         30.0,
+			initialBalance: 10000,
+			amount:         3000,
 			wantErr:        false,
-			wantBalance:    70.0,
+			wantBalance:    7000,
 		},
 		{
 			name:           "insufficient balance",
-			initialBalance: 50.0,
-			amount:         100.0,
+			initialBalance: 5000,
+			amount:         10000,
 			wantErr:        true,
-			wantBalance:    50.0,
+			wantBalance:    5000,
 		},
 		{
 			name:           "negative amount",
-			initialBalance: 100.0,
-			amount:         -10.0,
+			initialBalance: 10000,
+			amount:         -1000,
 			wantErr:        true,
-			wantBalance:    100.0,
+			wantBalance:    10000,
 		},
 	}
 
@@ -118,24 +118,24 @@ func TestWallet_Debit(t *testing.T) {
 func TestWallet_Credit(t *testing.T) {
 	tests := []struct {
 		name           string
-		initialBalance float64
-		amount         float64
+		initialBalance int64
+		amount         int64
 		wantErr        bool
-		wantBalance    float64
+		wantBalance    int64
 	}{
 		{
 			name:           "successful credit",
-			initialBalance: 100.0,
-			amount:         50.0,
+			initialBalance: 10000,
+			amount:         5000,
 			wantErr:        false,
-			wantBalance:    150.0,
+			wantBalance:    15000,
 		},
 		{
 			name:           "negative amount",
-			initialBalance: 100.0,
-			amount:         -10.0,
+			initialBalance: 10000,
+			amount:         -1000,
 			wantErr:        true,
-			wantBalance:    100.0,
+			wantBalance:    10000,
 		},
 	}
 

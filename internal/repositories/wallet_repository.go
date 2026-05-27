@@ -60,7 +60,7 @@ func (r *walletRepository) GetByIDForUpdate(tx *sql.Tx, id string) (*models.Wall
 }
 
 // UpdateBalance updates wallet balance atomically
-func (r *walletRepository) UpdateBalance(tx *sql.Tx, id string, amount float64, isCredit bool) error {
+func (r *walletRepository) UpdateBalance(tx *sql.Tx, id string, amount int64, isCredit bool) error {
 	var query string
 	if isCredit {
 		// Credit: increase balance

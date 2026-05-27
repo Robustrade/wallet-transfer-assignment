@@ -19,7 +19,7 @@ type Transfer struct {
 	ID           string
 	FromWalletID string
 	ToWalletID   string
-	Amount       float64
+	Amount       int64 // Amount in cents (minor units)
 	Status       TransferStatus
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

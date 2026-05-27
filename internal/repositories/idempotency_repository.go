@@ -26,7 +26,7 @@ func (r *idempotencyRepository) Create(tx *sql.Tx, record *models.IdempotencyRec
 
 	// Convert empty response_data to NULL for JSONB field
 	var responseData any
-	if record.ResponseData != "" {
+	if len(record.ResponseData) > 0 {
 		responseData = record.ResponseData
 	}
 
@@ -84,7 +84,7 @@ func (r *idempotencyRepository) GetByKey(tx *sql.Tx, key string) (*models.Idempo
 		record.TransferID = &transferID.String
 	}
 	if responseData.Valid {
-		record.ResponseData = responseData.String
+		record.ResponseData = []byte(responseData.String)
 	}
 
 	return &record, nil

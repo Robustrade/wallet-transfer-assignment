@@ -8,7 +8,7 @@ import (
 // Wallet represents a wallet entity
 type Wallet struct {
 	ID        string
-	Balance   float64
+	Balance   int64 // Balance in cents (minor units)
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -25,12 +25,12 @@ func (w *Wallet) Validate() error {
 }
 
 // HasSufficientBalance checks if wallet has enough balance for a transfer
-func (w *Wallet) HasSufficientBalance(amount float64) bool {
+func (w *Wallet) HasSufficientBalance(amount int64) bool {
 	return w.Balance >= amount
 }
 
 // Debit reduces the wallet balance
-func (w *Wallet) Debit(amount float64) error {
+func (w *Wallet) Debit(amount int64) error {
 	if amount <= 0 {
 		return errors.New("debit amount must be positive")
 	}
@@ -43,7 +43,7 @@ func (w *Wallet) Debit(amount float64) error {
 }
 
 // Credit increases the wallet balance
-func (w *Wallet) Credit(amount float64) error {
+func (w *Wallet) Credit(amount int64) error {
 	if amount <= 0 {
 		return errors.New("credit amount must be positive")
 	}

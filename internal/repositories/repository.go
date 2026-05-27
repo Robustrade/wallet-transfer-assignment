@@ -11,7 +11,7 @@ import (
 type WalletRepository interface {
 	GetByID(tx *sql.Tx, id string) (*models.Wallet, error)
 	GetByIDForUpdate(tx *sql.Tx, id string) (*models.Wallet, error)
-	UpdateBalance(tx *sql.Tx, id string, amount float64, isCredit bool) error
+	UpdateBalance(tx *sql.Tx, id string, amount int64, isCredit bool) error
 	Create(tx *sql.Tx, wallet *models.Wallet) error
 }
 

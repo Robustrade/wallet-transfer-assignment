@@ -2,10 +2,10 @@ package models
 
 // CreateTransferRequest represents the API request for creating a transfer
 type CreateTransferRequest struct {
-	IdempotencyKey string  `json:"idempotencyKey"`
-	FromWalletID   string  `json:"fromWalletId"`
-	ToWalletID     string  `json:"toWalletId"`
-	Amount         float64 `json:"amount"`
+	IdempotencyKey string `json:"idempotencyKey"`
+	FromWalletID   string `json:"fromWalletId"`
+	ToWalletID     string `json:"toWalletId"`
+	Amount         int64  `json:"amount"` // Amount in cents (minor units)
 }
 
 // Validate validates the create transfer request
@@ -30,12 +30,12 @@ func (r *CreateTransferRequest) Validate() error {
 
 // TransferResponse represents the API response for a transfer
 type TransferResponse struct {
-	ID           string  `json:"id"`
-	FromWalletID string  `json:"fromWalletId"`
-	ToWalletID   string  `json:"toWalletId"`
-	Amount       float64 `json:"amount"`
-	Status       string  `json:"status"`
-	CreatedAt    string  `json:"createdAt"`
+	ID           string `json:"id"`
+	FromWalletID string `json:"fromWalletId"`
+	ToWalletID   string `json:"toWalletId"`
+	Amount       int64  `json:"amount"` // Amount in cents (minor units)
+	Status       string `json:"status"`
+	CreatedAt    string `json:"createdAt"`
 }
 
 // ErrorResponse represents an API error response

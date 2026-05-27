@@ -9,12 +9,12 @@ func TestGenerateRequestHash(t *testing.T) {
 		name         string
 		fromWalletID string
 		toWalletID   string
-		amount       float64
+		amount       int64
 	}{
-		{"test 1", "wallet_1", "wallet_2", 100.0},
-		{"test 2", "wallet_1", "wallet_2", 100.0}, // Same as test 1
-		{"test 3", "wallet_1", "wallet_2", 200.0}, // Different amount
-		{"test 4", "wallet_2", "wallet_1", 100.0}, // Swapped wallets
+		{"test 1", "wallet_1", "wallet_2", 10000},
+		{"test 2", "wallet_1", "wallet_2", 10000}, // Same as test 1
+		{"test 3", "wallet_1", "wallet_2", 20000}, // Different amount
+		{"test 4", "wallet_2", "wallet_1", 10000}, // Swapped wallets
 	}
 
 	hash1 := GenerateRequestHash(tests[0].fromWalletID, tests[0].toWalletID, tests[0].amount)
@@ -44,8 +44,8 @@ func TestGenerateRequestHash(t *testing.T) {
 }
 
 func TestIdempotencyRecord_ValidateRequestHash(t *testing.T) {
-	correctHash := GenerateRequestHash("wallet_1", "wallet_2", 100.0)
-	wrongHash := GenerateRequestHash("wallet_1", "wallet_2", 200.0)
+	correctHash := GenerateRequestHash("wallet_1", "wallet_2", 10000)
+	wrongHash := GenerateRequestHash("wallet_1", "wallet_2", 20000)
 
 	record := &IdempotencyRecord{
 		IdempotencyKey: "key_1",

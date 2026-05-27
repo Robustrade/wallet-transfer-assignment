@@ -76,25 +76,29 @@ The service will automatically run migrations and start on port 8080.
 
 ### Create test wallets:
 ```sql
+-- Note: balances are in cents (100000 = $1000.00, 50000 = $500.00)
 INSERT INTO wallets (id, balance, created_at, updated_at)
 VALUES
-  ('wallet_1', 1000.00, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('wallet_2', 500.00, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+  ('wallet_1', 100000, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('wallet_2', 50000, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 ```
 
 ### Test the API:
 ```bash
+# Note: amount is in cents (10050 = $100.50)
 curl -X POST http://localhost:8080/transfers \
   -H "Content-Type: application/json" \
   -d '{
     "idempotencyKey": "test-001",
     "fromWalletId": "wallet_1",
     "toWalletId": "wallet_2",
-    "amount": 100.50
+    "amount": 10050
   }'
 ```
 
 ## API
+
+> **Important:** All monetary amounts are represented as integers in **cents** (minor currency units) to avoid floating-point precision issues. For example, $100.50 is represented as `10050`.
 
 ### POST /transfers
 
@@ -106,7 +110,7 @@ Creates a new transfer between wallets.
   "idempotencyKey": "unique-key-123",
   "fromWalletId": "wallet_1",
   "toWalletId": "wallet_2",
-  "amount": 100.50
+  "amount": 10050
 }
 ```
 
@@ -116,14 +120,21 @@ Creates a new transfer between wallets.
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "fromWalletId": "wallet_1",
   "toWalletId": "wallet_2",
-  "amount": 100.50,
+  "amount": 10050,
   "status": "PROCESSED",
   "createdAt": "2026-05-25T00:00:00Z"
 }
 ```
 
 **Error Responses:**
-- `400 Bad Request` - Validation error
+```json
+{
+  "error": "Bad Request",
+  "message": "insufficient balance",
+  "field": ""
+}
+```
+- `400 Bad Request` - Validation error or business logic error
 - `409 Conflict` - Duplicate idempotency key with different payload or request still processing
 
 ### GET /health

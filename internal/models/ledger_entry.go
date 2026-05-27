@@ -20,7 +20,7 @@ type LedgerEntry struct {
 	WalletID   string
 	TransferID string
 	EntryType  EntryType
-	Amount     float64
+	Amount     int64 // Amount in cents (minor units)
 	CreatedAt  time.Time
 }
 
@@ -60,7 +60,7 @@ func (l *LedgerEntry) IsCredit() bool {
 }
 
 // NewDebitEntry creates a new debit ledger entry
-func NewDebitEntry(id, walletID, transferID string, amount float64) *LedgerEntry {
+func NewDebitEntry(id, walletID, transferID string, amount int64) *LedgerEntry {
 	return &LedgerEntry{
 		ID:         id,
 		WalletID:   walletID,
@@ -72,7 +72,7 @@ func NewDebitEntry(id, walletID, transferID string, amount float64) *LedgerEntry
 }
 
 // NewCreditEntry creates a new credit ledger entry
-func NewCreditEntry(id, walletID, transferID string, amount float64) *LedgerEntry {
+func NewCreditEntry(id, walletID, transferID string, amount int64) *LedgerEntry {
 	return &LedgerEntry{
 		ID:         id,
 		WalletID:   walletID,

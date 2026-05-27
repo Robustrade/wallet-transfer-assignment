@@ -22,8 +22,8 @@ type IdempotencyRecord struct {
 	IdempotencyKey string
 	RequestHash    string
 	Status         IdempotencyStatus
-	TransferID     *string // Nullable until transfer is created
-	ResponseData   string  // JSON string of cached response
+	TransferID     *string    // Nullable until transfer is created
+	ResponseData   []byte     // JSON-encoded response (stored as JSONB in DB)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
@@ -68,7 +68,7 @@ func (i *IdempotencyRecord) IsFailed() bool {
 }
 
 // MarkAsCompleted updates status to COMPLETED
-func (i *IdempotencyRecord) MarkAsCompleted(transferID string, responseData string) {
+func (i *IdempotencyRecord) MarkAsCompleted(transferID string, responseData []byte) {
 	i.Status = IdempotencyStatusCompleted
 	i.TransferID = &transferID
 	i.ResponseData = responseData
@@ -76,7 +76,7 @@ func (i *IdempotencyRecord) MarkAsCompleted(transferID string, responseData stri
 }
 
 // MarkAsFailed updates status to FAILED
-func (i *IdempotencyRecord) MarkAsFailed(responseData string) {
+func (i *IdempotencyRecord) MarkAsFailed(responseData []byte) {
 	i.Status = IdempotencyStatusFailed
 	i.ResponseData = responseData
 	i.UpdatedAt = time.Now()
@@ -91,8 +91,8 @@ func (i *IdempotencyRecord) ValidateRequestHash(requestHash string) error {
 }
 
 // GenerateRequestHash creates a SHA256 hash from request parameters
-func GenerateRequestHash(fromWalletID, toWalletID string, amount float64) string {
-	data := fmt.Sprintf("%s:%s:%.4f", fromWalletID, toWalletID, amount)
+func GenerateRequestHash(fromWalletID, toWalletID string, amount int64) string {
+	data := fmt.Sprintf("%s:%s:%d", fromWalletID, toWalletID, amount)
 	hash := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(hash[:])
 }

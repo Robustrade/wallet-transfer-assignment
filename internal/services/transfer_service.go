@@ -104,9 +104,8 @@ func (s *TransferService) CreateTransfer(req *models.CreateTransferRequest) (*mo
 	for _, walletID := range walletIDs {
 		wallet, err := s.walletRepo.GetByIDForUpdate(tx, walletID)
 		if err != nil {
-			// Don't cache validation errors - wallet might be created later
-			// Just rollback and return error (defer will handle rollback)
-			return nil, &BusinessError{Message: fmt.Sprintf("wallet not found: %s", walletID)}
+			// Return the actual error - don't mask DB errors or other issues
+			return nil, fmt.Errorf("failed to lock wallet %s: %w", walletID, err)
 		}
 
 		if walletID == req.FromWalletID {
@@ -187,7 +186,7 @@ func (s *TransferService) CreateTransfer(req *models.CreateTransferRequest) (*mo
 		return nil, fmt.Errorf("failed to marshal response: %w", err)
 	}
 
-	idempotencyRecord.MarkAsCompleted(transferID, string(responseData))
+	idempotencyRecord.MarkAsCompleted(transferID, responseData)
 	if err := s.idempotencyRepo.Update(tx, idempotencyRecord); err != nil {
 		return nil, fmt.Errorf("failed to update idempotency record: %w", err)
 	}
@@ -217,14 +216,14 @@ func (s *TransferService) handleDuplicateRequest(record *models.IdempotencyRecor
 	case models.IdempotencyStatusCompleted:
 		// Return cached response
 		var response models.TransferResponse
-		if err := json.Unmarshal([]byte(record.ResponseData), &response); err != nil {
+		if err := json.Unmarshal(record.ResponseData, &response); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal cached response: %w", err)
 		}
 		return &response, nil
 
 	case models.IdempotencyStatusFailed:
 		// Return cached error
-		return nil, &BusinessError{Message: record.ResponseData}
+		return nil, &BusinessError{Message: string(record.ResponseData)}
 
 	default:
 		return nil, fmt.Errorf("unknown idempotency status: %s", record.Status)
@@ -235,7 +234,7 @@ func (s *TransferService) handleDuplicateRequest(record *models.IdempotencyRecor
 func (s *TransferService) markIdempotencyAsFailed(tx *sql.Tx, key string, errorMessage string) {
 	record, _ := s.idempotencyRepo.GetByKey(tx, key)
 	if record != nil {
-		record.MarkAsFailed(errorMessage)
+		record.MarkAsFailed([]byte(errorMessage))
 		s.idempotencyRepo.Update(tx, record)
 	}
 }

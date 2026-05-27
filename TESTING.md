@@ -112,12 +112,14 @@ VALUES
 SELECT * FROM wallets;
 ```
 
-Expected output:
+Expected output (balances in cents):
 ```
-    id     | balance  |         created_at         |         updated_at
------------+----------+----------------------------+----------------------------
- wallet_1  | 1000.00  | 2026-05-27 10:00:00.000000 | 2026-05-27 10:00:00.000000
- wallet_2  |  500.00  | 2026-05-27 10:00:00.000000 | 2026-05-27 10:00:00.000000
+    id     | balance |         created_at         |         updated_at
+-----------+---------+----------------------------+----------------------------
+ wallet_1  | 100000  | 2026-05-27 10:00:00.000000 | 2026-05-27 10:00:00.000000
+ wallet_2  |  50000  | 2026-05-27 10:00:00.000000 | 2026-05-27 10:00:00.000000
+
+(100000 cents = $1000.00, 50000 cents = $500.00)
 ```
 
 ---
@@ -126,6 +128,8 @@ Expected output:
 
 ### Test 1: Successful Transfer
 
+**Note:** Amounts are in cents (minor units). 10050 cents = $100.50
+
 ```bash
 curl -X POST http://localhost:8080/transfers \
   -H "Content-Type: application/json" \
@@ -133,7 +137,7 @@ curl -X POST http://localhost:8080/transfers \
     "idempotencyKey": "test-001",
     "fromWalletId": "wallet_1",
     "toWalletId": "wallet_2",
-    "amount": 100.50
+    "amount": 10050
   }'
 ```
 
@@ -143,7 +147,7 @@ curl -X POST http://localhost:8080/transfers \
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "fromWalletId": "wallet_1",
   "toWalletId": "wallet_2",
-  "amount": 100.5,
+  "amount": 10050,
   "status": "PROCESSED",
   "createdAt": "2026-05-27T10:00:00Z"
 }
@@ -151,9 +155,9 @@ curl -X POST http://localhost:8080/transfers \
 
 **Verify in Database:**
 ```sql
--- Check balances updated
+-- Check balances updated (in cents)
 SELECT id, balance FROM wallets;
--- wallet_1: 899.50, wallet_2: 600.50
+-- wallet_1: 89950 ($899.50), wallet_2: 60050 ($600.50)
 
 -- Check transfer created
 SELECT * FROM transfers;
@@ -176,7 +180,7 @@ curl -X POST http://localhost:8080/transfers \
     "idempotencyKey": "test-001",
     "fromWalletId": "wallet_1",
     "toWalletId": "wallet_2",
-    "amount": 100.50
+    "amount": 10050
   }'
 ```
 
@@ -186,7 +190,7 @@ curl -X POST http://localhost:8080/transfers \
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "fromWalletId": "wallet_1",
   "toWalletId": "wallet_2",
-  "amount": 100.5,
+  "amount": 10050,
   "status": "PROCESSED",
   "createdAt": "2026-05-27T10:00:00Z"
 }
@@ -195,8 +199,8 @@ curl -X POST http://localhost:8080/transfers \
 **Verify Balance NOT Changed:**
 ```sql
 SELECT id, balance FROM wallets;
--- wallet_1: 899.50 (unchanged)
--- wallet_2: 600.50 (unchanged)
+-- wallet_1: 89950 (unchanged) = $899.50
+-- wallet_2: 60050 (unchanged) = $600.50
 ```
 
 **Key Point:** Duplicate request returns cached response, balance NOT debited twice.
@@ -214,14 +218,15 @@ curl -X POST http://localhost:8080/transfers \
     "idempotencyKey": "test-001",
     "fromWalletId": "wallet_1",
     "toWalletId": "wallet_2",
-    "amount": 200.00
+    "amount": 20000
   }'
 ```
 
 **Expected Response (409 Conflict):**
 ```json
 {
-  "error": "idempotency key reused with different payload"
+  "error": "Conflict",
+  "message": "idempotency key reused with different payload"
 }
 ```
 
@@ -240,14 +245,15 @@ curl -X POST http://localhost:8080/transfers \
     "idempotencyKey": "test-002",
     "fromWalletId": "wallet_2",
     "toWalletId": "wallet_1",
-    "amount": 999999.00
+    "amount": 99999900
   }'
 ```
 
 **Expected Response (400 Bad Request):**
 ```json
 {
-  "error": "insufficient balance"
+  "error": "Bad Request",
+  "message": "insufficient balance"
 }
 ```
 
@@ -260,14 +266,15 @@ curl -X POST http://localhost:8080/transfers \
     "idempotencyKey": "test-002",
     "fromWalletId": "wallet_2",
     "toWalletId": "wallet_1",
-    "amount": 999999.00
+    "amount": 99999900
   }'
 ```
 
 **Expected Response (400 Bad Request - SAME ERROR, NOT CACHED):**
 ```json
 {
-  "error": "insufficient balance"
+  "error": "Bad Request",
+  "message": "insufficient balance"
 }
 ```
 
