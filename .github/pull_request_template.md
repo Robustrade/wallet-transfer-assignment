@@ -38,8 +38,10 @@ Explain how you prevent race conditions and double spending.
 
 ## Checklist
 
-- [ ] Tests pass
-- [ ] Lint passes
-- [ ] Format check passes
+- [ ] Tests pass (`make test-all`)
+- [ ] Lint passes (`make lint` and `make lint-int`)
+- [ ] Format check passes (`make fmt-check`)
 - [ ] README or notes updated
 - [ ] PR description explains schema, idempotency, and concurrency
+- [ ] `AGENTS.md` and `.claude/skills/` updated if conventions or
+      project structure changed

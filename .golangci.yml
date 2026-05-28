@@ -1,0 +1,63 @@
+# golangci-lint config tuned for a financial service.
+# Reference: https://golangci-lint.run/usage/configuration/
+# Pinned version: 1.64.8 (matches .github/workflows/ci.yml).
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    # --- correctness / security ---
+    - bodyclose       # http.Response.Body must be closed
+    - errcheck        # unchecked errors
+    - gosec           # security-focused static checks
+    - govet           # standard go vet
+    - ineffassign     # ineffective assignments
+    - sqlclosecheck   # *sql.Rows / *sql.Stmt must be closed
+    - staticcheck     # broad static analysis
+    - unused          # unused identifiers
+    # --- style / hygiene ---
+    - gofmt           # formatting
+    - misspell        # misspelled English words
+    - unconvert       # redundant type conversions
+
+linters-settings:
+  errcheck:
+    # These calls are commonly discarded on purpose in HTTP handlers and
+    # response writers. The reviewer comments on the diff still apply.
+    exclude-functions:
+      - (net/http.ResponseWriter).Write
+      - encoding/json.(*Encoder).Encode
+      - (*encoding/json.Encoder).Encode
+      - io.Copy
+  gosec:
+    excludes:
+      # G104 (audit errors not checked) - errcheck already enforces this
+      #     and is more precise.
+      - G104
+  govet:
+    enable-all: true
+    disable:
+      # fieldalignment is rarely worth the churn for small structs.
+      - fieldalignment
+  staticcheck:
+    checks:
+      - "all"
+
+issues:
+  # Tests intentionally use patterns golangci-lint dislikes (panic-on-error
+  # helpers, ignored body.Close in tight loops, weak randomness for fixtures).
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec
+        - bodyclose
+    # The TxManager deliberately re-panics inside a defer; gosec flags the
+    # bare panic but the context is documented in postgres.go.
+    - path: internal/repository/postgres/postgres\.go
+      text: "G104"
+  max-issues-per-linter: 0
+  max-same-issues: 0

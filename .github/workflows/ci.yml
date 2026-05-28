@@ -12,53 +12,70 @@ permissions:
 jobs:
   lint-format-test:
     name: lint-format-test
-    runs-on: [actions_runner_dev_new]
+    runs-on: ubuntu-latest
     env:
-      LINT_CMD: ${{ vars.LINT_CMD }}
-      FORMAT_CHECK_CMD: ${{ vars.FORMAT_CHECK_CMD }}
-      TEST_CMD: ${{ vars.TEST_CMD }}
-      CGO_ENABLED: ${{ vars.CGO_ENABLED }}
+      CGO_ENABLED: "1"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wallet
+          POSTGRES_PASSWORD: wallet
+          POSTGRES_DB: wallet
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wallet -d wallet"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check OS
-        run: cat /etc/os-release
-
-      - name: Install gcc
-        run: sudo apt-get update && sudo apt-get install -y gcc
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
+          # 1.24 matches the floor declared in go.mod. Bumping
+          # pgx/v5 ≥ 5.9.0, OpenTelemetry ≥ v1.42.0, or
+          # testcontainers-go ≥ v0.41.0 would force this up to 1.25.
           go-version: '1.24'
 
       - name: Install golangci-lint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $HOME/.local/bin v1.64.8 echo "$HOME/.local/bin" >> $GITHUB_PATH
+        # Build from source via `go install` so the resulting binary
+        # is compiled with the same Go toolchain the workflow uses
+        # above. Published binary releases of older golangci-lint
+        # versions are built with a fixed Go and trip the "language
+        # version used to build golangci-lint is lower than the
+        # targeted Go version" check when the module's go directive
+        # is higher. Building locally sidesteps that.
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
 
-      - name: Validate commands configured
-        shell: bash
+      - name: gofmt check
         run: |
           set -euo pipefail
-          test -n "${LINT_CMD:-}" || { echo "Missing repository variable LINT_CMD"; exit 1; }
-          test -n "${FORMAT_CHECK_CMD:-}" || { echo "Missing repository variable FORMAT_CHECK_CMD"; exit 1; }
-          test -n "${TEST_CMD:-}" || { echo "Missing repository variable TEST_CMD"; exit 1; }
+          test -z "$(gofmt -l .)" || { gofmt -d .; exit 1; }
 
-      - name: Run lint
-        shell: bash
-        run: |
-          set -euo pipefail
-          eval "$LINT_CMD"
+      - name: go vet
+        run: go vet ./...
 
-      - name: Run format check
-        shell: bash
-        run: |
-          set -euo pipefail
-          eval "$FORMAT_CHECK_CMD"
+      - name: golangci-lint (default)
+        run: golangci-lint run ./...
 
-      - name: Run tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          eval "$TEST_CMD"
+      - name: golangci-lint (integration build tag)
+        run: golangci-lint run --build-tags=integration ./...
+
+      - name: Unit tests
+        run: go test -race -cover ./...
+
+      - name: Integration tests
+        env:
+          # The job's `services.postgres` block above exposes Postgres
+          # on localhost:5432 with the wallet/wallet/wallet creds.
+          # internal/testdb reads DATABASE_URL and skips integration
+          # tests when it's unset.
+          DATABASE_URL: postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable
+        # `-p 1` forces one package binary at a time. Cross-package
+        # parallelism would let two packages TRUNCATE the same shared
+        # Postgres mid-test.
+        run: go test -race -tags=integration -count=1 -timeout=300s -p 1 ./...
