@@ -1,7 +1,62 @@
+# MacOS
 .DS_Store
-coverage/
+
+# Environment
+.env
+.env.*
+
+# Build / Distribution
 dist/
 build/
 .tmp/
-.env
-.env.*
+bin/
+out/
+
+# Coverage
+coverage/
+coverage.out
+*.coverprofile
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace
+go.work.sum
+
+# Vendor (optional - ignore only if you don't commit vendor/)
+vendor/
+
+# Logs
+*.log
+
+# IDEs
+.idea/
+.vscode/
+
+# JetBrains
+*.iml
+
+# Vim
+*.swp
+
+# Temporary files
+tmp/
+temp/
+
+# Generated files
+*.generated.go
+
+# Air live reload
+.air/
+
+# Delve debugger
+__debug_bin
+
+# OS files
+Thumbs.db
