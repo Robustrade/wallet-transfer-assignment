@@ -13,7 +13,7 @@ import (
 	"github.com/example/wallet-transfer-assignment/internal/repository"
 )
 
-const maxRetries = 10
+const maxRetries = 20
 
 func isRetryableError(err error) bool {
 	if err == nil {
@@ -23,6 +23,10 @@ func isRetryableError(err error) bool {
 	return strings.Contains(msg, "serialization") ||
 		strings.Contains(msg, "locked") ||
 		strings.Contains(msg, "busy")
+}
+
+func retryDelay(attempt int) time.Duration {
+	return time.Duration(5+attempt*5) * time.Millisecond
 }
 
 type TransferService struct {
@@ -92,7 +96,7 @@ func (s *TransferService) CreateTransfer(ctx context.Context, req CreateTransfer
 			return nil, err
 		}
 		if attempt < maxRetries-1 {
-			time.Sleep(time.Duration(attempt+1) * 10 * time.Millisecond)
+			time.Sleep(retryDelay(attempt))
 		}
 	}
 
