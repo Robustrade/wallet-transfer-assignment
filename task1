@@ -1,0 +1,5 @@
+# Tasks
+
+- [x] Update `internal/platform/postgres/connection.go` to seed the default wallet.
+- [ ] Add `FundWallet` route and handler method to `internal/domain/transfer/handler.go`.
+- [ ] Verify compilation and execution.

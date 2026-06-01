@@ -1,0 +1,42 @@
+# Unit Tests Implementation Walkthrough
+
+All the unit test cases from the [implementation_plan.md](file:///C:/Users/91961/.gemini/antigravity-ide/brain/9111ae7c-facb-47d8-af88-6877e233739e/implementation_plan.md) have been successfully written using the standard Go testing library and manual repository mock implementations.
+
+## What was completed
+
+The unit tests have been structured into the three main domains. Here is what has been tested:
+
+### 1. Domain: Wallet
+- **Model Tests**: [model_test.go](file:///c:/Users/91961/Documents/Yash_Work/Kulu/wallet-transfer-assignment/internal/domain/wallet/model_test.go)
+  - Validation checks on wallet creation (e.g. enforcing presence of `ID`, `OwnerID`, `Currency`).
+  - Active status checks via `IsActive()`.
+- **Service Tests**: [service_test.go](file:///c:/Users/91961/Documents/Yash_Work/Kulu/wallet-transfer-assignment/internal/domain/wallet/service_test.go)
+  - Full mocking of `wallet.Repository`.
+  - Testing `Create` service and checking that it wraps repository errors properly.
+  - Testing `GetByID` success and error paths.
+
+### 2. Domain: Transfer
+- **Model Tests**: [model_test.go](file:///c:/Users/91961/Documents/Yash_Work/Kulu/wallet-transfer-assignment/internal/domain/transfer/model_test.go)
+  - Structural validation constraints (must have positive amount, unique sender and recipient wallets).
+  - State machine transitions (`CanTransitionTo`) to ensure a transfer can only move from `PENDING` to `PROCESSED` or `FAILED`.
+- **Service Tests**: [service_test.go](file:///c:/Users/91961/Documents/Yash_Work/Kulu/wallet-transfer-assignment/internal/domain/transfer/service_test.go)
+  - Idempotency logic: checks if executing an existing `TxnID` early-returns the original status.
+  - Multi-mocking environment to mimic `wallet.Repository` validation and `ledger.Service` execution.
+  - Step-by-step failure validation: confirming errors roll up and update the transfer state to `FAILED` correctly across the execution workflow.
+
+### 3. Domain: Ledger
+- **Service Tests**: [service_test.go](file:///c:/Users/91961/Documents/Yash_Work/Kulu/wallet-transfer-assignment/internal/domain/ledger/service_test.go)
+  - Includes mocks for the ledger-specific repositories (`LedgerRepository` and `BalanceRepository`), as well as a mock transactional system (`tx.Starter` and `tx.Tx`).
+  - Validation of transaction integrity: verifying that on any individual failure (balance insufficient, DB down, commit fails), a `Rollback()` is triggered.
+  - Verification that when all queries succeed, exactly two ledger entries (one Debit, one Credit) are pushed.
+
+## How to execute
+
+You can run the tests yourself directly via the terminal to observe the coverage and success cases:
+
+```bash
+go test -v -cover ./internal/domain/...
+```
+
+> [!TIP]
+> The tests run exceptionally fast and safely as they use mock structs and do not actually hit the PostgreSQL driver.

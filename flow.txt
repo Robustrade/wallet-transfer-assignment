@@ -1,0 +1,73 @@
+
+Database Design : 
+
+Transfers 
+
+txn_id -> UUIDV7 PRIMARY KEY 
+src_wallet_id -> Reference to Wallet
+dest_wallet_id -> Reference to Wallet
+txn_amount -> float 
+txn_state -> PENDING/PROCESSED/FAILED
+created_at -> Timestamp
+updated_at
+
+Could be faild in case of Insufficient Balance.
+
+(Insert Only No Updates)
+
+LedgerTransfers
+txn_id -> References id from Txn 
+wallet_balance_id  -> 
+txn_amount -> float
+transfer_type -> D/C
+created_at -> Timestamp 
+
+
+
+Wallets 
+id 
+name/user
+created_at
+updated_at 
+
+
+WalletBalance
+id
+wallet_id
+last_txn_id
+balance 
+last_updated_at
+
+outbox_events
+idempotency_key
+event_type
+payload
+created_at
+published
+
+/transfers 
+/get-wallet-balance 
+
+Create Transfer -> PENDING state . 
+
+Balance Check
+
+
+2 Inserts on LedgerTransfers
+
+Happens via outbox(Redis,Database)
+
+1 Update on balance
+1 Update on Transfers
+
+
+Ledger Transrfers can be made atomic and safe via one of two options. 
+1st  Use Redis Decrement to make no incorrect transactions proceed 
+have complimentary redis transactions to handle failures . 
+2nd  Use Update via outbox on both Redis and Postgres
+
+Also what isolation level should be used by Postgres Serializable or Repeatable read 
+
+
+
+

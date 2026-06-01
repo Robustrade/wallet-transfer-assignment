@@ -1,0 +1,49 @@
+# Default Wallet Seeding and Funding Endpoint
+
+This plan outlines the changes required to ensure a default "faucet" wallet is always present in the database, and to provide an endpoint for users to fund their newly created wallets.
+
+## Open Questions
+
+> [!WARNING]
+> **Endpoint Location**: I plan to add the funding endpoint to the `transfer` domain as `POST /transfers/fund` because funding is fundamentally a transfer operation. The alternative is `POST /wallets/:id/fund` in the `wallet` domain, but that would require the `wallet` handler to depend on the `transfer` service. Are you okay with `POST /transfers/fund`?
+
+> [!WARNING]
+> **Default Wallet ID**: I will use `"default_wallet"` as the literal string ID for the default wallet. Does this work for you, or do you prefer a specific UUID?
+
+## Proposed Changes
+
+### Platform (Database Seeding)
+
+We will modify the database connection initialization to automatically seed the default wallet if it doesn't already exist.
+
+#### [MODIFY] [connection.go](file:///C:/Users/91961/Documents/Yash_Work/Kulu/wallet-transfer-assignment/internal/platform/postgres/connection.go)
+- After `AutoMigrate` runs, execute a raw GORM query using `FirstOrCreate` or `OnConflict` to ensure a record exists in the `wallets` table with:
+  - `ID`: `"default_wallet"`
+  - `OwnerID`: `"0"`
+  - `Currency`: `"USD"`
+  - `Status`: `"ACTIVE"`
+- Immediately ensure a corresponding record exists in the `wallet_balances` table with:
+  - `WalletID`: `"default_wallet"`
+  - `Amount`: `9999999999999999`
+
+### Transfer Domain (Funding Endpoint)
+
+We will add a simplified endpoint that acts as a wrapper around the existing Transfer Service `Execute` method.
+
+#### [MODIFY] [transfer/handler.go](file:///C:/Users/91961/Documents/Yash_Work/Kulu/wallet-transfer-assignment/internal/domain/transfer/handler.go)
+- Add a new route: `rg.POST("/transfers/fund", h.FundWallet)`
+- Implement `FundWallet`:
+  - Parses an incoming JSON request `{ "toWalletId": "...", "amount": 100 }`.
+  - Generates a unique `txnId` automatically (since this is an internal funding request, the client doesn't need to provide idempotency keys unless we want them to).
+  - Calls `h.svc.Execute(ctx, &CreateRequest{ TxnID: newUUID(), FromWalletID: "default_wallet", ToWalletID: req.ToWalletId, Amount: req.Amount })`.
+
+## Verification Plan
+
+### Automated Tests
+- Run `go build` to ensure all changes compile successfully.
+- Run the server locally and verify startup logs confirm the DB migration and seed.
+
+### Manual Verification
+- **Create Wallet**: Issue a `POST /wallets` request.
+- **Fund Wallet**: Issue a `POST /transfers/fund` targeting the newly created wallet.
+- **Verify Balance**: Issue a `GET /wallet/balance/:id` to confirm the funds arrived successfully.

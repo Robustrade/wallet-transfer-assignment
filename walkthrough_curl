@@ -1,0 +1,50 @@
+# Walkthrough: Default Seed Wallet & Funding Endpoint
+
+I have successfully completed the implementation based on the approved plan. Here's a breakdown of the changes and how to use the new features.
+
+## What Was Added
+
+### 1. Database Seeding for the "Default" Wallet
+Whenever the server starts, it will now automatically check if a default wallet exists. If it doesn't, it creates it!
+- **Wallet ID**: `default_wallet`
+- **Owner ID**: `0`
+- **Starting Balance**: `9999999999999999` (in the `wallet_balances` table).
+
+This logic leverages GORM's `OnConflict{DoNothing: true}` to ensure the database is safely initialized without overwriting data on subsequent server restarts.
+[See connection.go changes](file:///C:/Users/91961/Documents/Yash_Work/Kulu/wallet-transfer-assignment/internal/platform/postgres/connection.go)
+
+### 2. The Funding Endpoint
+We added a new endpoint specifically designed to fund newly created user wallets using the default wallet we seeded above.
+
+- **Endpoint**: `POST /transfers/fund`
+- **Payload**:
+  ```json
+  {
+    "toWalletId": "<your-new-wallet-id>",
+    "amount": 1000
+  }
+  ```
+- **How it works**: The handler automatically grabs the `default_wallet` ID as the source of funds and generates a unique `txnId` for you so you don't have to worry about idempotency keys just to get started!
+[See handler.go changes](file:///C:/Users/91961/Documents/Yash_Work/Kulu/wallet-transfer-assignment/internal/domain/transfer/handler.go)
+
+## How to Test
+
+You can now test the entire flow end-to-end:
+
+1. **Start the server**: `go run ./server/main.go`
+2. **Create a new wallet**:
+   ```bash
+   curl -X POST http://localhost:8080/wallets -d '{"ownerId":"123", "currency":"USD"}'
+   ```
+   *(Copy the generated `ID` from the response)*
+3. **Fund your new wallet**:
+   ```bash
+   curl -X POST http://localhost:8080/transfers/fund -d '{"toWalletId":"wallet_xyz", "amount": 5000}'
+   ```
+4. **Check your balance**:
+   ```bash
+   curl -X GET http://localhost:8080/wallet/balance/wallet_xyz
+   ```
+
+> [!TIP]
+> The funding endpoint is deliberately built on top of the exact same Transfer Service logic as standard transfers. This means all of your double-entry bookkeeping, atomic transactions, and transaction histories work flawlessly out of the box!

@@ -1,0 +1,16 @@
+# Dockerfile for running tests against a dedicated Postgres instance
+FROM postgres:15-alpine
+
+# Environment variables matching our test environment
+ENV POSTGRES_DB=wallet_test
+ENV POSTGRES_USER=postgres
+ENV POSTGRES_PASSWORD=postgres
+
+# Expose the standard PostgreSQL port
+EXPOSE 5432
+
+# Note: The test integration suite uses testcontainers-go to spin up 
+# this exact image and applies the auto-migrations dynamically.
+# If you want to use this Dockerfile manually, run:
+#   docker build -t wallet-test-db -f Dockerfile.test.postgres .
+#   docker run -p 5432:5432 wallet-test-db
