@@ -15,7 +15,7 @@ var migrationsFS embed.FS
 
 func Connect(databaseURL string) (*sql.DB, error) {
 	driver := "postgres"
-	if strings.HasPrefix(databaseURL, ":memory:") || strings.HasPrefix(databaseURL, "file:") {
+	if strings.HasPrefix(databaseURL, ":memory:") || strings.HasPrefix(databaseURL, "file:") || strings.Contains(databaseURL, ".db") {
 		driver = "sqlite3"
 	}
 
@@ -26,13 +26,6 @@ func Connect(databaseURL string) (*sql.DB, error) {
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("ping db: %w", err)
-	}
-
-	if driver == "sqlite3" {
-		// Enable foreign keys for SQLite
-		if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
-			return nil, fmt.Errorf("enable foreign keys: %w", err)
-		}
 	}
 
 	if err := runMigrations(db); err != nil {

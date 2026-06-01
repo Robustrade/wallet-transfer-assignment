@@ -18,9 +18,6 @@ func NewWalletRepo(db *sql.DB) *WalletRepo {
 
 func (r *WalletRepo) GetByID(ctx context.Context, tx *sql.Tx, id string) (*domain.Wallet, error) {
 	query := `SELECT id, balance, created_at, updated_at FROM wallets WHERE id = $1`
-	if tx != nil {
-		query = `SELECT id, balance, created_at, updated_at FROM wallets WHERE id = $1 FOR UPDATE`
-	}
 
 	executor := r.queryExecutor(tx)
 	w := &domain.Wallet{}

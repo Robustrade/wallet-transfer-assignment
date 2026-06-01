@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +12,18 @@ import (
 	"github.com/example/wallet-transfer-assignment/internal/domain"
 	"github.com/example/wallet-transfer-assignment/internal/repository"
 )
+
+const maxRetries = 10
+
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "serialization") ||
+		strings.Contains(msg, "locked") ||
+		strings.Contains(msg, "busy")
+}
 
 type TransferService struct {
 	db              *sql.DB
@@ -57,7 +70,7 @@ func (s *TransferService) CreateTransfer(ctx context.Context, req CreateTransfer
 		return nil, fmt.Errorf("idempotency key is required")
 	}
 
-	// Fast-path duplicate check outside transaction
+	// Check for existing transfer by idempotency key (before transaction)
 	existing, err := s.transferRepo.GetByIdempotencyKey(ctx, req.IdempotencyKey)
 	if err != nil {
 		return nil, err
@@ -70,25 +83,30 @@ func (s *TransferService) CreateTransfer(ctx context.Context, req CreateTransfer
 		}, nil
 	}
 
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		resp, err := s.createTransferTx(ctx, req)
+		if err == nil {
+			return resp, nil
+		}
+		if !isRetryableError(err) {
+			return nil, err
+		}
+		if attempt < maxRetries-1 {
+			time.Sleep(time.Duration(attempt+1) * 10 * time.Millisecond)
+		}
+	}
+
+	return nil, fmt.Errorf("max retries exceeded")
+}
+
+func (s *TransferService) createTransferTx(ctx context.Context, req CreateTransferRequest) (*CreateTransferResponse, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Re-check idempotency inside transaction for race safety
-	existing, err = s.transferRepo.GetByIdempotencyKey(ctx, req.IdempotencyKey)
-	if err != nil {
-		return nil, err
-	}
-	if existing != nil {
-		return &CreateTransferResponse{
-			TransferID: existing.ID,
-			State:      existing.State,
-			Message:    "duplicate request",
-		}, nil
-	}
-
+	// Lock and read wallets
 	fromWallet, err := s.walletRepo.GetByID(ctx, tx, req.FromWalletID)
 	if err != nil {
 		return nil, err
@@ -117,9 +135,24 @@ func (s *TransferService) CreateTransfer(ctx context.Context, req CreateTransfer
 	}
 
 	if err := s.transferRepo.Create(ctx, tx, transfer); err != nil {
+		// UNIQUE constraint violation on idempotency_key means a concurrent request won
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			existing, lookupErr := s.transferRepo.GetByIdempotencyKey(ctx, req.IdempotencyKey)
+			if lookupErr != nil {
+				return nil, lookupErr
+			}
+			if existing != nil {
+				return &CreateTransferResponse{
+					TransferID: existing.ID,
+					State:      existing.State,
+					Message:    "duplicate request",
+				}, nil
+			}
+		}
 		return nil, err
 	}
 
+	// Atomic balance update
 	if err := s.walletRepo.UpdateBalance(ctx, tx, fromWallet.ID, -req.Amount); err != nil {
 		return nil, err
 	}
@@ -127,6 +160,7 @@ func (s *TransferService) CreateTransfer(ctx context.Context, req CreateTransfer
 		return nil, err
 	}
 
+	// Double-entry ledger
 	entries := []*domain.LedgerEntry{
 		{WalletID: fromWallet.ID, TransferID: transferID, EntryType: "DEBIT", Amount: req.Amount},
 		{WalletID: toWallet.ID, TransferID: transferID, EntryType: "CREDIT", Amount: req.Amount},
@@ -135,10 +169,12 @@ func (s *TransferService) CreateTransfer(ctx context.Context, req CreateTransfer
 		return nil, err
 	}
 
+	// Update state to PROCESSED
 	if err := s.transferRepo.UpdateState(ctx, tx, transferID, domain.TransferStateProcessed); err != nil {
 		return nil, err
 	}
 
+	// Record idempotency key
 	if err := s.idempotencyRepo.RecordKey(ctx, tx, req.IdempotencyKey, transferID); err != nil {
 		return nil, err
 	}
