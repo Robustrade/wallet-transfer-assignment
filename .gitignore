@@ -5,3 +5,6 @@ build/
 .tmp/
 .env
 .env.*
+*.jar
+/target/*
+target/*

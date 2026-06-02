@@ -1,0 +1,44 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/serverapp
+    driver-class-name: org.postgresql.Driver
+    username: postgres
+    password: shyam@12345
+    hikari:
+      maximum-pool-size: '10'
+      minimum-idle: '2'
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: '20'
+        order_updates: 'true'
+        order_inserts: 'true'
+        format_sql: 'true'
+    hibernate:
+      ddl-auto: update
+    show-sql: 'false'
+  application:
+    name: wallet-transfer-service
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+    enabled: 'true'
+  profiles:
+    active: '@spring.profiles.active@'
+logging:
+  level:
+    com:
+      walletservice: DEBUG
+    org:
+      hibernate:
+        type:
+          descriptor:
+            sql:
+              BasicBinder: TRACE
+        SQL: DEBUG
+    root: INFO
+server:
+  servlet:
+    context-path: /api/v1
+  port: '8080'
