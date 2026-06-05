@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:16:///wallet_test_db?TimeZone=Asia/Kolkata
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+management:
+  server:
+    port: 0   # random port in tests — avoids conflict with parallel runs
+
+logging:
+  level:
+    com.example.wallet: WARN    # suppress DEBUG noise in test output

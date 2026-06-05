@@ -1,0 +1,38 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/wallet_db?TimeZone=Asia/Kolkata
+    username: wallet_user
+    password: wallet_pass
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: 8080
+
+management:
+  server:
+    port: 9090                         # separate management port — don't expose on public port
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: wallet-transfer-service   # common tag on every metric
+
+wallet:
+  idempotency:
+    ttl-hours: 24
+  pending-transfer:
+    stuck-after-minutes: 5
+    cleanup-interval-ms: 60000
+
+logging:
+  level:
+    com.example.wallet: DEBUG
+    org.springframework.jdbc: DEBUG
