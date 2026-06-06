@@ -1,0 +1,81 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - gocritic
+    - unconvert
+    - unused
+    - gosimple
+    - gofmt
+    - misspell
+    - bodyclose
+    - contextcheck
+    - noctx
+    - exhaustive
+    - godot
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+      - name: var-naming
+        severity: warning
+      - name: error-return
+        severity: warning
+      - name: error-strings
+        severity: warning
+      - name: if-return
+        severity: warning
+      - name: increment-decrement
+        severity: warning
+      - name: var-declaration
+        severity: warning
+      - name: package-comments
+        severity: warning
+      - name: range
+        severity: warning
+      - name: receiver-naming
+        severity: warning
+      - name: time-naming
+        severity: warning
+      - name: unexported-return
+        severity: warning
+      - name: indent-error-flow
+        severity: warning
+      - name: errorf
+        severity: warning
+      - name: empty-block
+        severity: warning
+      - name: superfluous-else
+        severity: warning
+      - name: unused-parameter
+        severity: warning
+      - name: unreachable-code
+        severity: warning
+      - name: redefines-builtin-id
+        severity: warning
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+
+  errcheck:
+    check-type-assertions: true
+
+  exhaustive:
+    default-signifies-exhaustive: true
+
+issues:
+  max-same-issues: 0
+  exclude-rules:
+    - path: "_test.go"
+      linters:
+        - errcheck
+        - gocritic

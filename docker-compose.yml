@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wallet_postgres
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── dev service: runs fmt / lint / test / build via `make` targets ───────────
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    volumes:
+      - .:/app
+      # expose the host Docker socket so testcontainers can spin up containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    environment:
+      GOFLAGS: ""
+      GOTOOLCHAIN: local
+      CGO_ENABLED: "1"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: wallet_app
+    environment:
+      DATABASE_URL: postgres://wallet:wallet@postgres:5432/wallet_db?sslmode=disable
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  postgres_data:
