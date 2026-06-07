@@ -1,0 +1,36 @@
+# Local development stack: the wallet transfer API backed by PostgreSQL.
+# Usage: docker compose up --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Ensure the API only starts once the database accepts connections.
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HTTP_ADDR: ":8080"
+      # sslmode=disable is fine for local development only.
+      DATABASE_URL: "postgres://wallet:wallet@postgres:5432/wallet?sslmode=disable"
+      DB_MAX_CONNS: "10"
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:

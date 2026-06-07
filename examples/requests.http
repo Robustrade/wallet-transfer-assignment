@@ -1,0 +1,81 @@
+### Wallet Transfer Service — example requests.
+### Use with the VS Code "REST Client" extension or copy into curl.
+### Start the server first:  make run   (in-memory store, no DB needed)
+
+@baseUrl = http://localhost:8080
+
+### Health check
+GET {{baseUrl}}/healthz
+
+### Create source wallet with an opening balance of 1000.
+### The server generates the id and returns it in the body and Location header.
+POST {{baseUrl}}/api/v1/wallets
+Content-Type: application/json
+
+{
+  "openingBalance": 1000,
+  "currency": "USD"
+}
+
+### Create destination wallet with an opening balance of 0.
+POST {{baseUrl}}/api/v1/wallets
+Content-Type: application/json
+
+{
+  "openingBalance": 0,
+  "currency": "USD"
+}
+
+### Create a transfer (first call -> 201 Created, status PROCESSED).
+### Replace the wallet ids below with the ids returned by the calls above.
+POST {{baseUrl}}/api/v1/transfers
+Content-Type: application/json
+
+{
+  "idempotencyKey": "abc123",
+  "fromWalletId": "REPLACE_WITH_SOURCE_WALLET_ID",
+  "toWalletId": "REPLACE_WITH_DEST_WALLET_ID",
+  "amount": 100
+}
+
+### Replay the SAME request (same key + params) -> 200 OK, same transfer, no double spend
+POST {{baseUrl}}/api/v1/transfers
+Content-Type: application/json
+
+{
+  "idempotencyKey": "abc123",
+  "fromWalletId": "REPLACE_WITH_SOURCE_WALLET_ID",
+  "toWalletId": "REPLACE_WITH_DEST_WALLET_ID",
+  "amount": 100
+}
+
+### Reuse the key with DIFFERENT params -> 409 Conflict
+POST {{baseUrl}}/api/v1/transfers
+Content-Type: application/json
+
+{
+  "idempotencyKey": "abc123",
+  "fromWalletId": "REPLACE_WITH_SOURCE_WALLET_ID",
+  "toWalletId": "REPLACE_WITH_DEST_WALLET_ID",
+  "amount": 500
+}
+
+### Transfer that exceeds the balance -> 201 Created, status FAILED (no ledger entries)
+POST {{baseUrl}}/api/v1/transfers
+Content-Type: application/json
+
+{
+  "idempotencyKey": "overdraw-1",
+  "fromWalletId": "REPLACE_WITH_DEST_WALLET_ID",
+  "toWalletId": "REPLACE_WITH_SOURCE_WALLET_ID",
+  "amount": 999999
+}
+
+### Get a transfer by id (replace with an id returned above)
+GET {{baseUrl}}/api/v1/transfers/REPLACE_WITH_TRANSFER_ID
+
+### Get a wallet (shows current balance)
+GET {{baseUrl}}/api/v1/wallets/REPLACE_WITH_SOURCE_WALLET_ID
+
+### Get a wallet's double-entry ledger history (newest first)
+GET {{baseUrl}}/api/v1/wallets/REPLACE_WITH_SOURCE_WALLET_ID/ledger

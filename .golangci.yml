@@ -1,0 +1,43 @@
+version: "2"
+# golangci-lint v2 configuration. Run `golangci-lint migrate` if upgrading an
+# older v1 config. The default linters (errcheck, govet, ineffassign,
+# staticcheck, unused) are enabled automatically in v2; below we add a few
+# high-signal correctness and resource-handling linters on top.
+linters:
+  enable:
+    - bodyclose # HTTP response bodies are closed
+    - misspell # common typos in comments/strings
+    - revive # style/lint checks
+    - unconvert # redundant type conversions
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Test helpers don't need exported-symbol doc comments.
+      - path: _test\.go
+        linters:
+          - revive
+      # The test HTTP client closes every response body through shared helpers
+      # (closeBody/decode); bodyclose can't follow that indirection, so its
+      # warnings here are false positives. Keep bodyclose on for production code.
+      - path: _test\.go
+        linters:
+          - bodyclose
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
