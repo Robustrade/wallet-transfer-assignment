@@ -1,7 +1,13 @@
 .DS_Store
 coverage/
+coverage.out
 dist/
 build/
+bin/
 .tmp/
 .env
 .env.*
+# Keep the committed example env file tracked.
+!.env.example
+PR_DESCRIPTION.md
+.vscode/
