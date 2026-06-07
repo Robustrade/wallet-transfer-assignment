@@ -5,3 +5,14 @@ build/
 .tmp/
 .env
 .env.*
+
+# Go
+bin/
+*.exe
+*.test
+*.prof
+
+# IDE
+.idea/
+.vscode/
+*.swp
