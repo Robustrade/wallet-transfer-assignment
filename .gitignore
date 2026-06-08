@@ -5,3 +5,9 @@ build/
 .tmp/
 .env
 .env.*
+
+# Go
+bin/
+*.exe
+*.test
+vendor/
