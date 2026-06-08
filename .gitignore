@@ -1,7 +1,6 @@
-.DS_Store
-coverage/
-dist/
-build/
-.tmp/
-.env
-.env.*
+bin/
+*.env
+.env.local
+*.test
+*.out
+vendor/

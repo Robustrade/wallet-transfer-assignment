@@ -1,0 +1,53 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - revive
+    - gocritic
+    - gosec
+    - noctx
+    - bodyclose
+    - sqlclosecheck
+    - rowserrcheck
+
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+    gocritic:
+      disabled-checks:
+        - appendAssign
+    gosec:
+      excludes:
+        - G114
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - gocritic
+      - linters:
+          - errcheck
+        text: "Rollback"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/benjamin-benny/wallet-transfer
