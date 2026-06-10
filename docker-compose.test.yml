@@ -1,0 +1,27 @@
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet_secret
+      POSTGRES_DB: wallet_transfer_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet_transfer_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  test-runner:
+    image: golang:1.24-alpine
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgres://wallet:wallet_secret@postgres-test:5432/wallet_transfer_test?sslmode=disable
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    command: >
+      sh -c "go test ./internal/... -v -count=1 && go test ./tests/integration/... -v -count=1 -tags=integration"
