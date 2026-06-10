@@ -36,6 +36,13 @@ Explain how you prevent race conditions and double spending.
 
 - 
 
+## Implementation notes (for reviewers)
+
+- Idempotency: pre-claiming semantics implemented (`PENDING` → `COMPLETED`/`FAILED`), server-side `requestHash`, response replay, and a cleanup worker with metric `wallet_transfer_idempotency_pending`.
+- Transfer IDs: server generates `transferId` when omitted by client; clients may supply an ID but it's optional.
+- Concurrency: pessimistic locking (`SELECT ... FOR UPDATE`) is used; a `version` column exists for future optimistic-locking work.
+- Reconciliation: stored balance updates are performed in the same transaction as ledger writes; a reconcile endpoint exists for verification.
+
 ## Checklist
 
 - [ ] Tests pass
@@ -43,3 +50,4 @@ Explain how you prevent race conditions and double spending.
 - [ ] Format check passes
 - [ ] README or notes updated
 - [ ] PR description explains schema, idempotency, and concurrency
+ - [ ] PR description explains schema, idempotency, concurrency, and any implementation deviations from ADRs

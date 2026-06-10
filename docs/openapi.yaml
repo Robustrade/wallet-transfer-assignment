@@ -1,0 +1,495 @@
+openapi: 3.0.3
+info:
+  title: Wallet Transfer API
+  description: |
+    Wallet Transfer Service API supporting wallet creation, balance lookup, idempotent transfers, health checks, and metrics.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /wallets:
+    post:
+      summary: Create a wallet
+      description: Create a new wallet with an initial balance.
+      tags:
+        - wallets
+      parameters:
+        - name: X-Correlation-ID
+          in: header
+          description: Optional correlation identifier for request tracing.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWalletRequest'
+            examples:
+              createWallet:
+                summary: Create wallet example
+                value:
+                  id: wallet-123
+                  balance: 10000
+      responses:
+        '201':
+          description: Wallet created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletResponse'
+              examples:
+                walletCreated:
+                  summary: New wallet
+                  value:
+                    id: wallet-123
+                    balance: 10000
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /wallets/{id}:
+    get:
+      summary: Retrieve wallet details
+      description: Get a wallet by its ID.
+      tags:
+        - wallets
+      parameters:
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Wallet identifier
+      responses:
+        '200':
+          description: Wallet details returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /wallets/{id}/reconcile:
+    get:
+      summary: Reconcile wallet balance
+      description: Compare the stored wallet balance with the ledger-derived balance.
+      tags:
+        - wallets
+      parameters:
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Wallet identifier
+      responses:
+        '200':
+          description: Wallet reconciliation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletReconciliationResponse'
+              examples:
+                reconciliation:
+                  summary: Reconciliation result
+                  value:
+                    walletId: wallet-123
+                    storedBalance: 10000
+                    ledgerBalance: 10000
+                    match: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /transfers:
+    post:
+      summary: Create a transfer
+      description: Transfer funds from one wallet to another with idempotency support.
+      tags:
+        - transfers
+      parameters:
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransferRequest'
+            examples:
+              createTransfer:
+                summary: Create transfer example
+                value:
+                  transferId: transfer-456
+                  idempotencyKey: idem-abc-123
+                  fromWalletId: wallet-123
+                  toWalletId: wallet-456
+                  amount: 2500
+                  requestHash: 2026-06-09T12:00:00Z
+      responses:
+        '201':
+          description: Transfer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResponse'
+              examples:
+                transferCreated:
+                  summary: Successful transfer
+                  value:
+                    transferId: transfer-456
+                    idempotencyKey: idem-abc-123
+                    fromWalletId: wallet-123
+                    toWalletId: wallet-456
+                    amount: 2500
+                    status: COMPLETED
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /transfers/{id}:
+    get:
+      summary: Retrieve transfer details
+      description: Get a transfer by its ID.
+      tags:
+        - transfers
+      parameters:
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Transfer identifier
+      responses:
+        '200':
+          description: Transfer details returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /health/live:
+    get:
+      summary: Liveness probe
+      description: Returns the service liveness status.
+      tags:
+        - health
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                liveUp:
+                  summary: Liveness response
+                  value:
+                    status: UP
+  /health/ready:
+    get:
+      summary: Readiness probe
+      description: Indicates whether the service is ready to receive traffic, including PostgreSQL connectivity.
+      tags:
+        - health
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                readyUp:
+                  summary: Ready response
+                  value:
+                    status: UP
+                    checks:
+                      - name: postgres
+                        status: UP
+                        details:
+                          totalConnections: 3
+                          idleConnections: 2
+                          acquiredConnections: 1
+                          maxConnections: 10
+                          acquireCount: 10
+                          emptyAcquireCount: 0
+                          emptyAcquireWaitTime: 0s
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                readyDown:
+                  summary: Readiness failure
+                  value:
+                    status: DOWN
+                    checks:
+                      - name: postgres
+                        status: DOWN
+                        details:
+                          error: connection timeout
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      description: Exposes Prometheus metrics for monitoring.
+      tags:
+        - metrics
+      responses:
+        '200':
+          description: Metrics payload
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                metrics:
+                  summary: Metrics sample
+                  value: |-
+                    # HELP http_requests_total Total HTTP requests
+                    # TYPE http_requests_total counter
+                    http_requests_total{method="get",path="/health/live",status="200"} 5
+components:
+  schemas:
+    CreateWalletRequest:
+      type: object
+      required:
+        - id
+        - balance
+      properties:
+        id:
+          type: string
+          example: wallet-123
+        balance:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 10000
+    WalletResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: wallet-123
+        balance:
+          type: integer
+          format: int64
+          example: 10000
+    WalletReconciliationResponse:
+      type: object
+      properties:
+        walletId:
+          type: string
+          example: wallet-123
+        storedBalance:
+          type: integer
+          format: int64
+          example: 10000
+        ledgerBalance:
+          type: integer
+          format: int64
+          example: 10000
+        match:
+          type: boolean
+          example: true
+    CreateTransferRequest:
+      type: object
+      required:
+            - idempotencyKey
+            - fromWalletId
+            - toWalletId
+            - amount
+      properties:
+        transferId:
+          type: string
+          example: transfer-456
+        idempotencyKey:
+          type: string
+          example: idem-abc-123
+        fromWalletId:
+          type: string
+          example: wallet-123
+        toWalletId:
+          type: string
+          example: wallet-456
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 2500
+        requestHash:
+          type: string
+          example: 2026-06-09T12:00:00Z
+    TransferResponse:
+      type: object
+      properties:
+        transferId:
+          type: string
+          example: transfer-456
+        idempotencyKey:
+          type: string
+          example: idem-abc-123
+        fromWalletId:
+          type: string
+          example: wallet-123
+        toWalletId:
+          type: string
+          example: wallet-456
+        amount:
+          type: integer
+          format: int64
+          example: 2500
+        status:
+          type: string
+          example: COMPLETED
+        failureReason:
+          type: string
+          nullable: true
+          example: Insufficient funds
+    HealthCheck:
+      type: object
+      properties:
+        name:
+          type: string
+          example: postgres
+        status:
+          type: string
+          example: UP
+        details:
+          type: object
+          additionalProperties: true
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: UP
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthCheck'
+    ApiErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: Bad Request
+        message:
+          type: string
+          example: invalid request body
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+        correlationId:
+          type: string
+          example: 3f1d4a8c-2c71-4bcd-91a4-7b96f2c2e5b0
+  responses:
+    BadRequest:
+      description: Invalid request or validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          examples:
+            badRequest:
+              summary: Validation error
+              value:
+                code: Bad Request
+                message: invalid request body
+                details:
+                  error: request body is required
+                correlationId: 3f1d4a8c-2c71-4bcd-91a4-7b96f2c2e5b0
+    Conflict:
+      description: Conflict or idempotency violation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          examples:
+            conflict:
+              summary: Conflict error
+              value:
+                code: Conflict
+                message: transfer already processed
+                correlationId: 3f1d4a8c-2c71-4bcd-91a4-7b96f2c2e5b0
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          examples:
+            notFound:
+              summary: Not found error
+              value:
+                code: Not Found
+                message: wallet not found
+                correlationId: 3f1d4a8c-2c71-4bcd-91a4-7b96f2c2e5b0
+    UnprocessableEntity:
+      description: Business validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          examples:
+            unprocessableEntity:
+              summary: Insufficient funds
+              value:
+                code: Unprocessable Entity
+                message: insufficient funds
+                correlationId: 3f1d4a8c-2c71-4bcd-91a4-7b96f2c2e5b0
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          examples:
+            internalError:
+              summary: Internal error
+              value:
+                code: Internal Server Error
+                message: internal server error
+                correlationId: 3f1d4a8c-2c71-4bcd-91a4-7b96f2c2e5b0
