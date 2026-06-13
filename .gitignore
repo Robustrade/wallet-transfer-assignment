@@ -5,3 +5,5 @@ build/
 .tmp/
 .env
 .env.*
+coverage.out
+coverage.html

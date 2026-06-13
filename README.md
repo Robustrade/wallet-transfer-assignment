@@ -1,3 +1,68 @@
+# Wallet Transfer — Minimal Go Implementation
+
+Run tests:
+
+```bash
+go test ./...
+```
+
+Run server (creates wallets.db):
+
+```bash
+go run .
+```
+
+POST /transfers accepts JSON:
+
+```json
+{
+  "idempotencyKey":"abc",
+  "fromWalletId":"wallet_1",
+  "toWalletId":"wallet_2",
+  "amount":100
+}
+```
+
+**How to run (quick)**
+
+- Start server: `go run .` (listens on `:8080`).
+- Create or seed wallets (SQLite file `wallets.db` created automatically):
+
+```bash
+sqlite3 wallets.db "INSERT INTO wallets (id, balance) VALUES ('wallet_1', 1000);"
+sqlite3 wallets.db "INSERT INTO wallets (id, balance) VALUES ('wallet_2', 100);"
+```
+
+- Send a transfer request:
+
+```bash
+curl -s -X POST http://localhost:8080/transfers \
+  -H 'Content-Type: application/json' \
+  -d '{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100}' | jq
+```
+
+**Working scenarios & expected behavior**
+
+- **Successful transfer**: valid `fromWalletId`, `toWalletId`, and sufficient balance.
+  - Behavior: a `transfers` row is created (`PENDING` -> `PROCESSED`), two `ledger_entries` are written (DEBIT on source, CREDIT on destination), and both wallet balances update atomically.
+  - Example outcome: `wallet_1` balance decreases, `wallet_2` increases by the `amount`.
+
+- **Idempotent retry (duplicate request)**: resend the same `idempotencyKey` payload.
+  - Behavior: the service returns the original transfer result and does not create duplicate ledger entries or modify balances again.
+  - Use case: client retries after a network timeout — exactly-once semantics at API-level when `idempotencyKey` is provided.
+
+- **Insufficient funds**: attempting to debit more than the source balance.
+  - Behavior: transfer is marked `FAILED`, balances unchanged, and the API returns a 422 with `insufficient funds`.
+
+- **Concurrent debits on same wallet**: multiple simultaneous requests attempting to debit the same wallet.
+  - Behavior: repository uses a conditional `UPDATE ... WHERE balance >= ?` inside a DB transaction to prevent overdrafts; at-most-one successful debit per available funds. On SQLite tests we restricted DB connections to serialize writes; on Postgres use row-level locking or serializable transactions.
+
+**Implementation notes (summary)**
+
+- **Idempotency**: stored in `idempotency_records`. Service inserts a claim (`IN_PROGRESS`) and later updates the record to `COMPLETED` with `transfer_id` on success. Duplicate requests with the same key return the stored result.
+- **Ledger**: double-entry ledger in `ledger_entries` (DEBIT + CREDIT) for every successful transfer to ensure accounting correctness.
+- **Balances**: balances stored on `wallets.balance` and updated inside the same transfer transaction for fast reads and strong consistency.
+
 # Wallet Transfer Assignment Repository
 
 This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
