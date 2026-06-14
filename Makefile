@@ -1,7 +1,7 @@
 .PHONY: up down migrate migrate-down build run test lint fmt help
 
-DATABASE_URL ?= postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable
-TEST_DATABASE_URL ?= postgres://wallet:wallet@localhost:5432/wallet_test?sslmode=disable
+DATABASE_URL ?= postgres://wallet:wallet@localhost:5434/wallet?sslmode=disable
+TEST_DATABASE_URL ?= postgres://wallet:wallet@localhost:5434/wallet_test?sslmode=disable
 
 ## up: start the Postgres container in the background
 up:
