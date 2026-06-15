@@ -24,11 +24,12 @@ Recommended required checks:
 
 ## Repository variables for CI
 
-Set these repository variables or replace the workflow commands directly:
+The workflow has Go defaults, so these repository variables are optional overrides:
 
 - `LINT_CMD`
 - `FORMAT_CHECK_CMD`
 - `TEST_CMD`
+- `CGO_ENABLED`
 
 Examples:
 
