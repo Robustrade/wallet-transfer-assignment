@@ -1,8 +1,6 @@
 // Package testutil provides shared test infrastructure for integration tests.
-// It requires a live PostgreSQL instance — tests skip automatically when
-// TEST_DATABASE_URL is unset and the default DSN is unreachable.
-// All helpers require a live PostgreSQL instance pointed to by the
-// TEST_DATABASE_URL environment variable.
+// It requires a live PostgreSQL instance pointed to by the TEST_DATABASE_URL
+// environment variable. Tests skip automatically when the variable is unset.
 package testutil
 
 import (
@@ -18,18 +16,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const defaultTestDSN = "postgres://wallet:wallet@localhost:5434/wallet_test?sslmode=disable"
-
-// NewTestPool opens a pool to the test database, runs all migrations, and
-// registers a cleanup that truncates all data tables after each test.
-// It calls t.Skip if TEST_DATABASE_URL is unset and the default DSN is
-// unreachable, so unit-only CI passes without a database.
+// NewTestPool opens a pool to the test database, applies any pending
+// migrations, and registers a cleanup that truncates all data tables after
+// each test so tests are fully isolated from each other.
+//
+// If TEST_DATABASE_URL is not set the test is skipped. This allows the
+// domain unit tests (which need no database) to run in environments where
+// Postgres is not available.
 func NewTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
-		dsn = defaultTestDSN
+		t.Skip("skipping integration test: TEST_DATABASE_URL is not set")
 	}
 
 	ctx := context.Background()
@@ -76,12 +75,6 @@ func truncateAll(t *testing.T, pool *pgxpool.Pool) {
 			t.Errorf("truncate %s: %v", tbl, err)
 		}
 	}
-}
-
-// Pools bundles the pool so test helpers can access it via a named field,
-// making call sites easier to read.
-type Pools struct {
-	Pool *pgxpool.Pool
 }
 
 // SeedWallet inserts a wallet with the given id and balance for test setup.

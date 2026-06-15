@@ -18,20 +18,20 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER:     wallet
-          POSTGRES_PASSWORD: wallet
-          POSTGRES_DB:       wallet
+          POSTGRES_USER:     ${{ vars.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB:       ${{ vars.POSTGRES_DB }}
         ports:
-          - 5434:5432
+          - ${{ vars.POSTGRES_PORT }}:5432
         options: >-
-          --health-cmd "pg_isready -U wallet -d wallet"
+          --health-cmd "pg_isready -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }}"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
 
     env:
-      DATABASE_URL:      postgres://wallet:wallet@localhost:5434/wallet?sslmode=disable
-      TEST_DATABASE_URL: postgres://wallet:wallet@localhost:5434/wallet_test?sslmode=disable
+      DATABASE_URL:      ${{ vars.DATABASE_URL }}
+      TEST_DATABASE_URL: ${{ vars.TEST_DATABASE_URL }}
       CGO_ENABLED:       ${{ vars.CGO_ENABLED }}
 
     steps:
@@ -58,7 +58,7 @@ jobs:
 
       - name: Create test database
         run: |
-          psql "$DATABASE_URL" -c "CREATE DATABASE wallet_test OWNER wallet;"
+          psql "$DATABASE_URL" -c "CREATE DATABASE ${{ vars.POSTGRES_TEST_DB }} OWNER ${{ vars.POSTGRES_USER }};"
 
       - name: Apply migrations
         run: |
