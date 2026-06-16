@@ -64,7 +64,8 @@ public class WalletRepository implements WalletOperations {
         return jdbcTemplate.update(
                 """
                 UPDATE wallets
-                SET balance = balance - ?
+                SET balance = balance - ?,
+                updated_at = CURRENT_TIMESTAMP
                 WHERE wallet_id = ?
                   AND balance >= ?
                 """,
@@ -79,7 +80,8 @@ public class WalletRepository implements WalletOperations {
         return jdbcTemplate.update(
                 """
                 UPDATE wallets
-                SET balance = balance + ?
+                SET balance = balance + ?,
+                updated_at = CURRENT_TIMESTAMP
                 WHERE wallet_id = ?
                 """,
                 amount,

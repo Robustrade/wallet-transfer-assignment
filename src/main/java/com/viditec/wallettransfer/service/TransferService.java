@@ -129,6 +129,11 @@ public class TransferService {
     }
 
     private void validateRequest(CreateTransferDto request) {
+        if (request.amount() <= 0) {
+            throw new InvalidTransferRequestException(
+                    "Transfer amount must be greater than zero."
+            );
+        }
         if (request.fromWalletId().equals(request.toWalletId())) {
             throw new InvalidTransferRequestException("Source and destination wallets must be different.");
         }
