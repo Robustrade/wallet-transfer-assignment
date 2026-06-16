@@ -35,5 +35,9 @@ migrate:
 	@command -v migrate >/dev/null 2>&1 || { echo "install golang-migrate: https://github.com/golang-migrate/migrate"; exit 1; }
 	migrate -path internal/migrate/migrations -database "$${DATABASE_URL}" up
 
+swagger:
+	@command -v swag >/dev/null 2>&1 || { echo "install swag: go install github.com/swaggo/swag/cmd/swag@latest"; exit 1; }
+	swag init -g cmd/server/main.go -o docs --parseDependency --parseInternal
+
 docker-build:
 	docker compose build

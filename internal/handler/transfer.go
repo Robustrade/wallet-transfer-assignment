@@ -26,6 +26,20 @@ type createTransferRequest struct {
 	Amount         int64  `json:"amount"`
 }
 
+// CreateTransfer godoc
+// @Summary      Create a wallet transfer
+// @Description  Creates an idempotent wallet-to-wallet transfer. Replaying the same idempotencyKey returns the original result (HTTP 200).
+// @Tags         transfers
+// @Accept       json
+// @Produce      json
+// @Param        request body CreateTransferRequest true "Transfer request"
+// @Success      201 {object} TransferResponse "Transfer created"
+// @Success      200 {object} TransferResponse "Idempotent replay"
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      422 {object} TransferResponse "Insufficient funds (FAILED status)"
+// @Failure      500 {object} ErrorResponse
+// @Router       /transfers [post]
 func (h *TransferHandler) CreateTransfer(c *gin.Context) {
 	var req createTransferRequest
 	if err := bindJSON(c, &req); err != nil {
@@ -71,6 +85,14 @@ func NewHealthHandler(pinger Pinger) *HealthHandler {
 	return &HealthHandler{pinger: pinger}
 }
 
+// Health godoc
+// @Summary      Health check
+// @Description  Returns service health; verifies database connectivity.
+// @Tags         ops
+// @Produce      json
+// @Success      200 {object} HealthResponse
+// @Failure      503 {object} HealthResponse
+// @Router       /health [get]
 func (h *HealthHandler) Health(c *gin.Context) {
 	if err := h.pinger.Ping(c); err != nil {
 		writeJSON(c, http.StatusServiceUnavailable, gin.H{
@@ -94,6 +116,16 @@ func NewWalletHandler(reader WalletBalanceReader) *WalletHandler {
 	return &WalletHandler{balances: reader}
 }
 
+// GetBalance godoc
+// @Summary      Get wallet balance
+// @Description  Returns the current stored balance for a wallet.
+// @Tags         wallets
+// @Produce      json
+// @Param        id path string true "Wallet ID" example(wallet_1)
+// @Success      200 {object} WalletBalanceResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /wallets/{id}/balance [get]
 func (h *WalletHandler) GetBalance(c *gin.Context) {
 	walletID := c.Param("id")
 	balance, err := h.balances.GetWalletBalance(c, walletID)

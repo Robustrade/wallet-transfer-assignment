@@ -1,5 +1,19 @@
 package main
 
+// @title           Wallet Transfer API
+// @version         1.0
+// @description     Wallet-to-wallet transfer service with idempotency, double-entry ledger, and PostgreSQL.
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name   API Support
+
+// @license.name  MIT
+// @license.url   https://opensource.org/licenses/MIT
+
+// @host      localhost:8080
+// @BasePath  /
+
+// @schemes   http
 import (
 	"context"
 	"fmt"
@@ -13,6 +27,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/synchone/wallet-transfer-assignment/internal/config"
+	_ "github.com/synchone/wallet-transfer-assignment/docs"
 	"github.com/synchone/wallet-transfer-assignment/internal/handler"
 	appmigrate "github.com/synchone/wallet-transfer-assignment/internal/migrate"
 	"github.com/synchone/wallet-transfer-assignment/internal/observability"

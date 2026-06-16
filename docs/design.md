@@ -23,6 +23,10 @@ Creates a transfer. Amounts are integer minor units (e.g. cents).
 - **404** — wallet not found
 - **422** — insufficient funds (transfer recorded as `FAILED`)
 
+### GET /swagger/index.html
+
+Interactive Swagger UI (OpenAPI 3).
+
 ### GET /health
 
 Returns `{"status":"ok"}` when PostgreSQL is reachable.

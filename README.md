@@ -7,6 +7,7 @@ Production-grade Go service for wallet-to-wallet transfers with idempotency, dou
 - `POST /transfers` — atomic transfers with idempotency keys
 - `GET /wallets/{id}/balance` — wallet balance lookup
 - `GET /health` — database health check
+- `GET /swagger/index.html` — interactive OpenAPI (Swagger UI)
 - Embedded migrations, Docker Compose, structured logging
 
 ## Prerequisites
@@ -48,6 +49,23 @@ curl -s -X POST http://localhost:8080/transfers \
 ```
 
 Seed wallets (`wallet_1` = 10000, `wallet_2` = 5000) are created by migration.
+
+## Swagger / OpenAPI
+
+With the server running:
+
+```text
+http://localhost:8080/swagger/index.html
+```
+
+Regenerate docs after API changes:
+
+```bash
+make swagger
+# requires: go install github.com/swaggo/swag/cmd/swag@latest
+```
+
+Generated files live in `docs/` (`swagger.json`, `swagger.yaml`, `docs.go`).
 
 ## Configuration
 
