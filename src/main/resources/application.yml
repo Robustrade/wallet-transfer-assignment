@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: wallet-transfer-assignment
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/wallet_transfer}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+  sql:
+    init:
+      mode: always
+
+server:
+  error:
+    include-message: never
