@@ -1,4 +1,4 @@
-package com.wallet.transfer.exception;
+package com.wallet.transfer.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import com.wallet.transfer.exception.ConflictException;
 
 @Service
 @RequiredArgsConstructor
