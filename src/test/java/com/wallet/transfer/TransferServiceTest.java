@@ -44,6 +44,9 @@ public class TransferServiceTest {
     @Mock
     private ObjectMapper objectMapper;
 
+    @Mock
+    private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
+
     @InjectMocks
     private TransferService transferService;
 
@@ -56,6 +59,12 @@ public class TransferServiceTest {
         request.setFromWalletId("w1");
         request.setToWalletId("w2");
         request.setAmount(new BigDecimal("100.00"));
+
+        // Mock transaction template to execute the callback directly
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            org.springframework.transaction.support.TransactionCallback callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
     }
 
     @Test
@@ -67,7 +76,7 @@ public class TransferServiceTest {
 
         Wallet w1 = new Wallet("w1", new BigDecimal("50.00"), null);
         Wallet w2 = new Wallet("w2", new BigDecimal("100.00"), null);
-        
+
         when(walletRepository.findByIdsForUpdateOrdered(anyList())).thenReturn(Arrays.asList(w1, w2));
         when(transferRepository.save(any())).thenAnswer(i -> i.getArguments()[0]);
 
@@ -90,7 +99,7 @@ public class TransferServiceTest {
 
         Wallet w1 = new Wallet("w1", new BigDecimal("150.00"), null);
         Wallet w2 = new Wallet("w2", new BigDecimal("100.00"), null);
-        
+
         when(walletRepository.findByIdsForUpdateOrdered(anyList())).thenReturn(Arrays.asList(w1, w2));
         when(transferRepository.save(any())).thenAnswer(i -> {
             com.wallet.transfer.entity.Transfer t = (com.wallet.transfer.entity.Transfer) i.getArguments()[0];

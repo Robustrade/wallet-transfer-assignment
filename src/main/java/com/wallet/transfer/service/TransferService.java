@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +27,7 @@ public class TransferService {
     private final LedgerEntryRepository ledgerEntryRepository;
     private final IdempotencyService idempotencyService;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
 
     public TransferResponse executeTransfer(TransferRequest request) {
         // 1. Check Idempotency
@@ -44,7 +46,7 @@ public class TransferService {
         TransferResponse response;
         int status;
         try {
-            response = processTransferInternal(request);
+            response = transactionTemplate.execute(txStatus -> processTransferInternal(request));
             status = response.getState() == TransferState.FAILED ? 400 : 201; // Example status codes
         } catch (Exception e) {
             response = TransferResponse.builder()
