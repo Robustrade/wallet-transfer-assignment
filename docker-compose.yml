@@ -1,0 +1,58 @@
+# Local dev / CI compose — NOT a production deployment.
+# DB credentials default to checked-in values; override via .env (gitignored).
+# The `test` profile mounts the Docker socket — effective root-on-host.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wallet-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-wallet_db}
+      POSTGRES_USER: ${DB_USER:-wallet_user}
+      POSTGRES_PASSWORD: ${DB_PASS:-wallet_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-wallet_user} -d ${DB_NAME:-wallet_db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wallet-app
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-wallet_db}
+      DB_USER: ${DB_USER:-wallet_user}
+      DB_PASS: ${DB_PASS:-wallet_pass}
+      SPRING_PROFILES_ACTIVE: default
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: wallet-tests
+    environment:
+      TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: /var/run/docker.sock
+      DOCKER_HOST: unix:///var/run/docker.sock
+    # Privileged mount: socket access is effectively root-on-host. Dev/CI only.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    profiles:
+      - test
+
+volumes:
+  pgdata:

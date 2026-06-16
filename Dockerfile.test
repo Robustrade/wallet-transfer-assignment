@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1.7
+# Test image — intentionally NOT hardened to non-root: it needs Docker
+# socket access to drive Testcontainers (see docker-compose.yml).
+FROM maven:3.9-eclipse-temurin-21
+
+WORKDIR /app
+
+COPY pom.xml .
+COPY src/ src/
+
+# `test-compile` warms the test classpath at build time (Mockito,
+# Testcontainers, surefire plugin), so the runtime `mvn test` only spends
+# I/O on running tests, not resolving dependencies. Cache mount makes
+# rebuilds authoritative — dependency:go-offline misses test-scope and
+# plugin transitives on Spring Boot.
+RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+    mvn -B -ntp test-compile
+
+CMD ["mvn", "-B", "-ntp", "test"]

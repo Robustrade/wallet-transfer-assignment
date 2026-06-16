@@ -1,0 +1,44 @@
+# Build artefacts
+target/
+**/target/
+*.jar
+*.war
+
+# VCS / IDE / OS
+.git/
+.gitignore
+.gitattributes
+.github/
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+.DS_Store
+Thumbs.db
+
+# Tooling and scratch — none consumed by the build
+.claude/
+.qmd/
+problems/
+docs/
+input/
+
+# Docs
+*.md
+LICENSE*
+
+# Secrets (defence in depth — .gitignore catches these too)
+.env
+.env.*
+!.env.example
+
+# Compose / dev infra not consumed by the production Dockerfile
+docker-compose*.yml
+Dockerfile.test
+
+# Test reports
+**/surefire-reports/
+**/jacoco/
+coverage/

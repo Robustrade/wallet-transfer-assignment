@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: wallet-transfer-service-test
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration,classpath:db/seed
+
+logging:
+  level:
+    com.wallet: DEBUG
+
+security:
+  signature:
+    enabled: true
+    secret: my-super-secret-key-that-is-at-least-256-bits-long-for-hmac-sha256
+    # Wider window than production (5 min) — integration tests run on shared CI
+    # workers whose clocks can drift; 30 minutes is enough for normal runs but
+    # leaves no margin for slow startup or paused containers.
+    ttl-minutes: 30

@@ -1,0 +1,120 @@
+spring:
+  application:
+    name: wallet-transfer-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:wallet_db}
+    username: ${DB_USER:wallet_user}
+    password: ${DB_PASS:wallet_pass}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 10000
+      idle-timeout: 600000          # 10m — recycle idle connections to release DB-side resources.
+      max-lifetime: 1800000         # 30m — bound for any single connection; helps refresh creds and dodge stale TCP state.
+      leak-detection-threshold: 30000  # 30s — log a warning if a connection isn't returned, surfacing leaks early.
+      # Bound DB-side wait time so a row-lock contention or runaway query can
+      # never exceed the request budget. Spring's @Transactional timeout
+      # only fires at statement boundaries, which leaves blocked-on-lock
+      # threads unbounded; lock_timeout and statement_timeout are enforced
+      # by Postgres itself. lock_timeout fires SQLState 55P03 (lock_not_available),
+      # which Spring's PostgreSQL vendor codes route to CannotAcquireLockException
+      # → GlobalExceptionHandler.handleCannotAcquireLock → 504. statement_timeout
+      # fires SQLState 57014 (query_canceled), which falls through to
+      # GlobalExceptionHandler.handleResourceFailure (SQLState walk) → 504.
+      connection-init-sql: "SET lock_timeout = '8s'; SET statement_timeout = '10s'"
+
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    com.wallet: INFO
+  pattern:
+    # %X{clientId:-anonymous} renders missing clientId (health checks, public
+    # paths) as "anonymous" rather than empty so the trailing "client=" token
+    # is always populated and easy to grep for.
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} [reqId=%X{requestId}, corrId=%X{correlationId}, client=%X{clientId:-anonymous}] : %msg%n"
+
+security:
+  signature:
+    # Off by default. Enable to require HMAC X-Signature, X-Client-Id, X-Timestamp headers.
+    enabled: ${SIGNATURE_ENABLED:false}
+    secret: ${SIGNATURE_SECRET:}
+    # Freshness window for the X-Timestamp header. 5 minutes is the standard
+    # for HMAC-signed APIs (AWS SigV4 etc). Override only with a documented
+    # reason — wider windows enlarge the replay-attack surface.
+    ttl-minutes: ${SIGNATURE_TTL_MINUTES:5}
+
+# Hard ceiling for the GET /wallets/{id}/transfers limit query parameter.
+# Surfaced as config so ops can tune when index plans or DB sizing change
+# without a redeploy. Default mirrors WalletService.DEFAULT_MAX_HISTORY_LIMIT
+# — change one place, change the other.
+wallet:
+  transfer-history:
+    max-limit: ${WALLET_TRANSFER_HISTORY_MAX_LIMIT:500}
+
+# Background sweep that evicts COMPLETED/FAILED idempotency rows past their
+# retention window. Surfaced so an oncall can accelerate, slow, or shrink
+# the per-tick footprint during a backlog or incident without a redeploy.
+# Defaults match the @Value fallbacks in IdempotencyCleanupService — change
+# one place, change the other.
+idempotency:
+  cleanup:
+    # How long to keep COMPLETED/FAILED records before they become eligible
+    # for eviction. Long enough that a slow client retry still hits the
+    # cached response; short enough that the table doesn't grow unbounded.
+    retention-hours: ${IDEMPOTENCY_CLEANUP_RETENTION_HOURS:72}
+    # Rows deleted per DELETE statement. Bounded so each statement stays
+    # well below statement_timeout (10s) configured above on the pool.
+    batch-size: ${IDEMPOTENCY_CLEANUP_BATCH_SIZE:1000}
+    # Cap on batches per scheduler tick. Limits worst-case work per
+    # interval; any remainder is picked up on subsequent ticks.
+    max-batches-per-tick: ${IDEMPOTENCY_CLEANUP_MAX_BATCHES_PER_TICK:50}
+    # Cron expression for the sweep. Default = top of every hour.
+    cron: ${IDEMPOTENCY_CLEANUP_CRON:0 0 * * * *}
+
+# Bounded retries for the conflict-then-rollback race in TransferService.
+# Surfaced as config so an oncall can dial them during a hot-shard incident
+# without a redeploy. Defaults match the documented behaviour and the
+# TransferService.DEFAULT_* constants — change one place, change the other.
+transfer:
+  # Per-attempt transaction budget for tryExecuteTransfer. Caps how long
+  # the executing transaction can hold its row locks; kept at-or-below
+  # statement_timeout (10s) so a stuck tx surfaces as a transaction
+  # rollback before the connection-level guard trips.
+  transaction:
+    timeout-seconds: ${TRANSFER_TRANSACTION_TIMEOUT_SECONDS:10}
+  retry:
+    # Cap on attempts before surfacing 503 + Retry-After. < 1 is rejected at
+    # construction (would short-circuit the loop and hide legitimate 409s).
+    max-attempts: ${TRANSFER_RETRY_MAX_ATTEMPTS:3}
+    # Base back-off between attempts. 0 disables sleep — useful only in tests
+    # that want bounded execution; in production use, leave non-zero so peer
+    # transactions get a chance to commit.
+    base-backoff-millis: ${TRANSFER_RETRY_BASE_BACKOFF_MILLIS:10}
+    # Uniform jitter added on top of the base back-off. 0 means deterministic
+    # backoff (no random call, no IllegalArgumentException from a zero bound).
+    jitter-millis: ${TRANSFER_RETRY_JITTER_MILLIS:10}
+    # Retry-After header value on the 503 emitted when retries exhaust. Keep
+    # small — the server has already burned its retry budget; the client just
+    # needs to step out of the hot window.
+    retry-after-seconds: ${TRANSFER_RETRY_AFTER_SECONDS:1}

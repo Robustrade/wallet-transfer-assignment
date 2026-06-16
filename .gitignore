@@ -1,7 +1,39 @@
-.DS_Store
-coverage/
-dist/
+# Java
+*.class
+*.jar
+*.war
+*.ear
+
+# Maven
+target/
+
+# Gradle
+.gradle/
 build/
-.tmp/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
 .env
 .env.*
+# .env.example is a checked-in template (no secrets); negate the .env.* rule
+# above so it stays tracked.
+!.env.example
+
+# Coverage
+coverage/
+dist/
+.tmp/
