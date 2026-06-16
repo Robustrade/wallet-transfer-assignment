@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: transfer-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/wallet_db
+    username: wallet_user
+    password: wallet_password
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+server:
+  port: 8080
