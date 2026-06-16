@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/synchone/wallet-transfer-assignment/internal/domain"
 	"github.com/synchone/wallet-transfer-assignment/internal/repository"
@@ -34,6 +34,9 @@ type TransferService struct {
 }
 
 func NewTransferService(repo TransferRepository, logger *slog.Logger) *TransferService {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &TransferService{repo: repo, logger: logger}
 }
 
@@ -43,7 +46,7 @@ func (s *TransferService) CreateTransfer(ctx context.Context, input domain.Creat
 	}
 
 	var lastErr error
-	for attempt := range 3 {
+	for attempt := 0; attempt < 3; attempt++ {
 		result, err := s.createTransferOnce(ctx, input)
 		if err == nil {
 			return result, nil
@@ -307,17 +310,18 @@ func validateInput(input domain.CreateTransferInput) error {
 	if input.Amount <= 0 {
 		return domain.ErrInvalidAmount
 	}
-	if input.FromWalletID == input.ToWalletID {
-		return domain.ErrSameWallet
-	}
 	if input.FromWalletID == "" || input.ToWalletID == "" {
 		return domain.ErrInvalidRequest
+	}
+	if input.FromWalletID == input.ToWalletID {
+		return domain.ErrSameWallet
 	}
 	return nil
 }
 
 func isRetryable(err error) bool {
-	return strings.Contains(err.Error(), "deadlock detected")
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "40P01"
 }
 
 var _ TransferRepository = (*repository.Repository)(nil)

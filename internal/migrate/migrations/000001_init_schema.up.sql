@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TYPE transfer_status AS ENUM ('PENDING', 'PROCESSED', 'FAILED');
 CREATE TYPE ledger_entry_type AS ENUM ('DEBIT', 'CREDIT');
 

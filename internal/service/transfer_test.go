@@ -64,12 +64,57 @@ func TestValidateInput(t *testing.T) {
 
 	_, err = svc.CreateTransfer(context.Background(), domain.CreateTransferInput{
 		IdempotencyKey: "k",
+		FromWalletID:   "",
+		ToWalletID:     "wallet_2",
+		Amount:         10,
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domain.ErrInvalidRequest))
+
+	_, err = svc.CreateTransfer(context.Background(), domain.CreateTransferInput{
+		IdempotencyKey: "k",
+		FromWalletID:   "wallet_1",
+		ToWalletID:     "",
+		Amount:         10,
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domain.ErrInvalidRequest))
+
+	_, err = svc.CreateTransfer(context.Background(), domain.CreateTransferInput{
+		IdempotencyKey: "k",
+		FromWalletID:   "",
+		ToWalletID:     "",
+		Amount:         10,
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domain.ErrInvalidRequest))
+
+	_, err = svc.CreateTransfer(context.Background(), domain.CreateTransferInput{
+		IdempotencyKey: "k",
 		FromWalletID:   "a",
 		ToWalletID:     "a",
 		Amount:         10,
 	})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, domain.ErrSameWallet))
+
+	_, err = svc.CreateTransfer(context.Background(), domain.CreateTransferInput{
+		IdempotencyKey: "k",
+		FromWalletID:   "wallet_1",
+		ToWalletID:     "wallet_2",
+		Amount:         0,
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domain.ErrInvalidAmount))
+
+	_, err = svc.CreateTransfer(context.Background(), domain.CreateTransferInput{
+		IdempotencyKey: "k",
+		FromWalletID:   "wallet_1",
+		ToWalletID:     "wallet_2",
+		Amount:         -5,
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domain.ErrInvalidAmount))
 }
 
 func TestTransferResultSnapshotRoundTrip(t *testing.T) {

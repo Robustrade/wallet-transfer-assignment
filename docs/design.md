@@ -25,7 +25,7 @@ Creates a transfer. Amounts are integer minor units (e.g. cents).
 
 ### GET /swagger/index.html
 
-Interactive Swagger UI (OpenAPI 3).
+Interactive Swagger UI (Swagger 2.0 / OpenAPI 2.0, generated via swaggo).
 
 ### GET /health
 

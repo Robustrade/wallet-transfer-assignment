@@ -19,13 +19,6 @@ func NewTransferHandler(svc *service.TransferService, logger *slog.Logger) *Tran
 	return &TransferHandler{svc: svc, logger: logger}
 }
 
-type createTransferRequest struct {
-	IdempotencyKey string `json:"idempotencyKey"`
-	FromWalletID   string `json:"fromWalletId"`
-	ToWalletID     string `json:"toWalletId"`
-	Amount         int64  `json:"amount"`
-}
-
 // CreateTransfer godoc
 // @Summary      Create a wallet transfer
 // @Description  Creates an idempotent wallet-to-wallet transfer. Replaying the same idempotencyKey returns the original result (HTTP 200).
@@ -41,7 +34,7 @@ type createTransferRequest struct {
 // @Failure      500 {object} ErrorResponse
 // @Router       /transfers [post]
 func (h *TransferHandler) CreateTransfer(c *gin.Context) {
-	var req createTransferRequest
+	var req CreateTransferRequest
 	if err := bindJSON(c, &req); err != nil {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
