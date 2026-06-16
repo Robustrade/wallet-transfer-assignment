@@ -15,7 +15,7 @@
 	<description>Wallet Transfer Service Assignment</description>
 
 	<properties>
-		<java.version>21</java.version>
+		<java.version>17</java.version>
 		<testcontainers.version>1.20.2</testcontainers.version>
 	</properties>
 

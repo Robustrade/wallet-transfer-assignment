@@ -81,6 +81,7 @@ public class TransferIntegrationTest {
         mockMvc.perform(post("/transfers")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
+                .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print())
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.state").value("PROCESSED"));
 
