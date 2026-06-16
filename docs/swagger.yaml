@@ -1,0 +1,170 @@
+basePath: /
+definitions:
+  internal_handler.CreateTransferRequest:
+    properties:
+      amount:
+        example: 100
+        type: integer
+      fromWalletId:
+        example: wallet_1
+        type: string
+      idempotencyKey:
+        example: abc123
+        type: string
+      toWalletId:
+        example: wallet_2
+        type: string
+    type: object
+  internal_handler.ErrorResponse:
+    properties:
+      error:
+        example: invalid request
+        type: string
+    type: object
+  internal_handler.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+  internal_handler.TransferResponse:
+    properties:
+      amount:
+        example: 100
+        type: integer
+      failureReason:
+        example: insufficient funds
+        type: string
+      fromWalletId:
+        example: wallet_1
+        type: string
+      ledgerEntryIds:
+        example:
+        - 1
+        - 2
+        items:
+          type: integer
+        type: array
+      status:
+        example: PROCESSED
+        type: string
+      toWalletId:
+        example: wallet_2
+        type: string
+      transferId:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+    type: object
+  internal_handler.WalletBalanceResponse:
+    properties:
+      balance:
+        example: 10000
+        type: integer
+      walletId:
+        example: wallet_1
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    name: API Support
+  description: Wallet-to-wallet transfer service with idempotency, double-entry ledger,
+    and PostgreSQL.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Wallet Transfer API
+  version: "1.0"
+paths:
+  /health:
+    get:
+      description: Returns service health; verifies database connectivity.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_handler.HealthResponse'
+      summary: Health check
+      tags:
+      - ops
+  /transfers:
+    post:
+      consumes:
+      - application/json
+      description: Creates an idempotent wallet-to-wallet transfer. Replaying the
+        same idempotencyKey returns the original result (HTTP 200).
+      parameters:
+      - description: Transfer request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.CreateTransferRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Idempotent replay
+          schema:
+            $ref: '#/definitions/internal_handler.TransferResponse'
+        "201":
+          description: Transfer created
+          schema:
+            $ref: '#/definitions/internal_handler.TransferResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "422":
+          description: Insufficient funds (FAILED status)
+          schema:
+            $ref: '#/definitions/internal_handler.TransferResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: Create a wallet transfer
+      tags:
+      - transfers
+  /wallets/{id}/balance:
+    get:
+      description: Returns the current stored balance for a wallet.
+      parameters:
+      - description: Wallet ID
+        example: wallet_1
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.WalletBalanceResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: Get wallet balance
+      tags:
+      - wallets
+schemes:
+- http
+swagger: "2.0"

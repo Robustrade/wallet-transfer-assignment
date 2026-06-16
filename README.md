@@ -1,35 +1,126 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+Production-grade Go service for wallet-to-wallet transfers with idempotency, double-entry ledger, and PostgreSQL. HTTP layer uses **Gin** with thin handlers over a service/repository stack.
 
-## Included
+## Features
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+- `POST /transfers` — atomic transfers with idempotency keys
+- `GET /wallets/{id}/balance` — wallet balance lookup
+- `GET /health` — database health check
+- `GET /swagger/index.html` — interactive OpenAPI (Swagger UI)
+- Embedded migrations, Docker Compose, structured logging
 
-## Intended use
+## Prerequisites
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+- Go 1.25+
+- Docker (for PostgreSQL and integration tests)
+- Optional: [golangci-lint](https://golangci-lint.run/)
 
-## Notes
+## Quick Start
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+```bash
+# Start PostgreSQL
+make up
 
-## How to Submit Assignment
+# Run migrations (also run automatically on server start)
+make migrate
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+# Start the API
+make run
+```
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+Or run everything in Docker:
+
+```bash
+docker compose up --build
+```
+
+## Example Request
+
+```bash
+curl -s -X POST http://localhost:8080/transfers \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "idempotencyKey": "abc123",
+    "fromWalletId": "wallet_1",
+    "toWalletId": "wallet_2",
+    "amount": 100
+  }'
+```
+
+Seed wallets (`wallet_1` = 10000, `wallet_2` = 5000) are created by migration.
+
+## Swagger / OpenAPI
+
+With the server running:
+
+```text
+http://localhost:8080/swagger/index.html
+```
+
+Regenerate docs after API changes:
+
+```bash
+make swagger
+# requires: go install github.com/swaggo/swag/cmd/swag@latest
+```
+
+Generated files live in `docs/` (`swagger.json`, `swagger.yaml`, `docs.go`).
+
+## Configuration
+
+Copy `.env.example` to `.env` or set:
+
+| Variable | Default |
+|----------|---------|
+| `DATABASE_URL` | `postgres://wallet:wallet@localhost:5432/wallet_transfer?sslmode=disable` |
+| `HTTP_PORT` | `8080` |
+| `LOG_LEVEL` | `info` |
+
+## Testing
+
+```bash
+# Unit tests
+go test ./... -race -count=1
+
+# Integration tests (requires Docker)
+go test -tags=integration ./tests/integration/... -race -count=1
+
+# All tests
+make test
+```
+
+## Linting
+
+```bash
+make lint
+make fmt-check
+```
+
+## CI Commands
+
+Set these GitHub repository variables (or use defaults from Makefile):
+
+```bash
+LINT_CMD=golangci-lint run ./...
+FORMAT_CHECK_CMD=test -z "$(gofmt -l .)"
+TEST_CMD=go test ./... -tags=integration -race -count=1 -cover
+```
+
+## Architecture
+
+```text
+cmd/server          HTTP entrypoint (Gin engine + graceful shutdown)
+internal/handler    Gin routes, JSON binding, response mapping
+internal/service    Transfer workflow and idempotency
+internal/repository PostgreSQL access
+internal/domain     Entities and errors
+internal/migrate    Embedded SQL migrations
+tests/integration   Behavioral tests with testcontainers
+```
+
+See [docs/design.md](docs/design.md) for idempotency, concurrency, and failure-mode details.
+
+## Assignment
+
+This repository implements the [Wallet Transfer Assignment](ASSIGNMENT.md). Submit via pull request to `main` on branch `solution/<your-name>`.
