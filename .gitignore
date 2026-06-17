@@ -2,6 +2,7 @@
 coverage/
 dist/
 build/
+target/
 .tmp/
 .env
 .env.*
