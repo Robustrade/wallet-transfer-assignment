@@ -18,9 +18,13 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -81,7 +85,6 @@ public class TransferIntegrationTest {
         mockMvc.perform(post("/transfers")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
-                .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print())
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.state").value("PROCESSED"));
 
@@ -98,14 +101,15 @@ public class TransferIntegrationTest {
     }
 
     @Test
-    void testConcurrencySafety() throws InterruptedException {
+    void testConcurrencySafety() throws Exception {
         int threadCount = 10;
         ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
         CountDownLatch latch = new CountDownLatch(threadCount);
+        List<Future<Void>> futures = new ArrayList<>();
 
         for (int i = 0; i < threadCount; i++) {
             final int index = i;
-            executorService.execute(() -> {
+            futures.add(executorService.submit(() -> {
                 try {
                     TransferRequest request = new TransferRequest();
                     request.setIdempotencyKey("concurrent-key-" + index);
@@ -117,15 +121,23 @@ public class TransferIntegrationTest {
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(objectMapper.writeValueAsString(request)))
                             .andExpect(status().isCreated());
-                } catch (Exception e) {
-                    e.printStackTrace();
                 } finally {
                     latch.countDown();
                 }
-            });
+                return null;
+            }));
         }
 
-        latch.await();
+        boolean completed = latch.await(10, TimeUnit.SECONDS);
+        assertEquals(true, completed, "Timeout waiting for threads to finish");
+        
+        executorService.shutdown();
+        executorService.awaitTermination(5, TimeUnit.SECONDS);
+
+        // Propagate any exceptions that happened in threads
+        for (Future<Void> future : futures) {
+            future.get();
+        }
 
         // 10 successful transfers of 100 from wallet 1 (1000 - 10*100 = 0)
         Wallet w1 = walletRepository.findById("wallet_1").orElseThrow();
@@ -133,5 +145,30 @@ public class TransferIntegrationTest {
 
         assertEquals(0, new BigDecimal("0.00").compareTo(w1.getBalance()));
         assertEquals(0, new BigDecimal("1500.00").compareTo(w2.getBalance()));
+    }
+
+    @Test
+    void testIdempotencyConflict() throws Exception {
+        org.springframework.beans.factory.BeanFactory beanFactory = org.springframework.web.context.support.WebApplicationContextUtils.getRequiredWebApplicationContext(mockMvc.getDispatcherServlet().getServletContext());
+        com.wallet.transfer.repository.IdempotencyRecordRepository repo = beanFactory.getBean(com.wallet.transfer.repository.IdempotencyRecordRepository.class);
+        
+        com.wallet.transfer.entity.IdempotencyRecord record = com.wallet.transfer.entity.IdempotencyRecord.builder()
+                .idempotencyKey("idem-conflict-123")
+                .requestPayload("{}")
+                .build();
+        repo.save(record);
+
+        TransferRequest request = new TransferRequest();
+        request.setIdempotencyKey("idem-conflict-123");
+        request.setFromWalletId("wallet_1");
+        request.setToWalletId("wallet_2");
+        request.setAmount(new BigDecimal("100.00"));
+
+        mockMvc.perform(post("/transfers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value("A request with this idempotency key is currently being processed."));
     }
 }

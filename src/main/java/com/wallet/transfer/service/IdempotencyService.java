@@ -39,6 +39,8 @@ public class IdempotencyService {
                     .requestPayload(objectMapper.writeValueAsString(request))
                     .build();
             return idempotencyRecordRepository.save(newRecord);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new ConflictException("A request with this idempotency key is currently being processed.");
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize request payload", e);
         }

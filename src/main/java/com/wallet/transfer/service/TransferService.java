@@ -5,19 +5,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wallet.transfer.dto.TransferRequest;
 import com.wallet.transfer.dto.TransferResponse;
 import com.wallet.transfer.entity.*;
-import com.wallet.transfer.exception.ConflictException;
 import com.wallet.transfer.repository.LedgerEntryRepository;
 import com.wallet.transfer.repository.TransferRepository;
 import com.wallet.transfer.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
 import org.springframework.transaction.support.TransactionTemplate;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TransferService {
@@ -36,7 +36,10 @@ public class TransferService {
         // If it was already processed, return the stored response
         if (idempotencyRecord.getResponseStatus() != null) {
             try {
-                return objectMapper.readValue(idempotencyRecord.getResponseBody(), TransferResponse.class);
+                TransferResponse response = objectMapper.readValue(idempotencyRecord.getResponseBody(),
+                        TransferResponse.class);
+                response.setHttpStatus(idempotencyRecord.getResponseStatus());
+                return response;
             } catch (JsonProcessingException e) {
                 throw new RuntimeException("Failed to deserialize response", e);
             }
@@ -49,23 +52,24 @@ public class TransferService {
             response = transactionTemplate.execute(txStatus -> processTransferInternal(request));
             status = response.getState() == TransferState.FAILED ? 400 : 201; // Example status codes
         } catch (Exception e) {
+            log.error("Internal error during transfer processing", e);
             response = TransferResponse.builder()
                     .fromWalletId(request.getFromWalletId())
                     .toWalletId(request.getToWalletId())
                     .amount(request.getAmount())
                     .state(TransferState.FAILED)
-                    .message("Internal error: " + e.getMessage())
+                    .message("Internal server error")
                     .build();
             status = 500;
         }
 
         // 3. Update Idempotency Record
         idempotencyService.updateIdempotencyRecord(request.getIdempotencyKey(), response, status);
+        response.setHttpStatus(status);
 
         return response;
     }
 
-    @Transactional
     protected TransferResponse processTransferInternal(TransferRequest request) {
         String fromId = request.getFromWalletId();
         String toId = request.getToWalletId();
@@ -129,7 +133,8 @@ public class TransferService {
         return transferRepository.save(transfer);
     }
 
-    private TransferResponse buildResponse(TransferRequest request, String transferId, TransferState state, String message) {
+    private TransferResponse buildResponse(TransferRequest request, String transferId, TransferState state,
+            String message) {
         return TransferResponse.builder()
                 .transferId(transferId)
                 .fromWalletId(request.getFromWalletId())

@@ -1,5 +1,6 @@
 package com.wallet.transfer.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.wallet.transfer.entity.TransferState;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -19,4 +20,7 @@ public class TransferResponse {
     private BigDecimal amount;
     private TransferState state;
     private String message;
+
+    @JsonIgnore
+    private Integer httpStatus;
 }

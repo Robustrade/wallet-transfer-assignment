@@ -6,8 +6,8 @@ CREATE TABLE wallets (
 
 CREATE TABLE transfers (
     id VARCHAR(255) PRIMARY KEY,
-    from_wallet_id VARCHAR(255) REFERENCES wallets(id),
-    to_wallet_id VARCHAR(255) REFERENCES wallets(id),
+    from_wallet_id VARCHAR(255) NOT NULL REFERENCES wallets(id),
+    to_wallet_id VARCHAR(255) NOT NULL REFERENCES wallets(id),
     amount DECIMAL(15, 2) NOT NULL,
     state VARCHAR(50) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -16,8 +16,8 @@ CREATE TABLE transfers (
 
 CREATE TABLE ledger_entries (
     id VARCHAR(255) PRIMARY KEY,
-    wallet_id VARCHAR(255) REFERENCES wallets(id),
-    transfer_id VARCHAR(255) REFERENCES transfers(id),
+    wallet_id VARCHAR(255) NOT NULL REFERENCES wallets(id),
+    transfer_id VARCHAR(255) NOT NULL REFERENCES transfers(id),
     entry_type VARCHAR(10) NOT NULL,
     amount DECIMAL(15, 2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -24,7 +24,9 @@ public class TransferController {
     public ResponseEntity<TransferResponse> createTransfer(@Valid @RequestBody TransferRequest request) {
         TransferResponse response = transferService.executeTransfer(request);
         
-        HttpStatus status = response.getState() == TransferState.FAILED ? HttpStatus.BAD_REQUEST : HttpStatus.CREATED;
+        HttpStatus status = response.getHttpStatus() != null ? 
+                HttpStatus.valueOf(response.getHttpStatus()) : 
+                (response.getState() == TransferState.FAILED ? HttpStatus.BAD_REQUEST : HttpStatus.CREATED);
         
         return ResponseEntity.status(status).body(response);
     }

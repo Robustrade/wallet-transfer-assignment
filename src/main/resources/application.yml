@@ -3,9 +3,9 @@ spring:
     name: transfer-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/wallet_db
-    username: wallet_user
-    password: wallet_password
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/wallet_db}
+    username: ${DB_USERNAME:wallet_user}
+    password: ${DB_PASSWORD:wallet_password}
     driver-class-name: org.postgresql.Driver
 
   jpa:
