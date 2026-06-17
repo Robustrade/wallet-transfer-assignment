@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:sqlite:wallet.db
+    driver-class-name: org.sqlite.JDBC
+
+  jpa:
+    defer-datasource-initialization: true
+    hibernate:
+      ddl-auto: update
+
+    properties:
+      hibernate:
+        dialect: org.hibernate.community.dialect.SQLiteDialect
+
+    show-sql: true
