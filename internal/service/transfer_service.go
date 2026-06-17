@@ -35,13 +35,15 @@ func NewTransferService(txm repository.TxManager) *TransferService {
 // CreateTransfer executes a transfer with exactly-once semantics.
 // The whole workflow runs in one transaction. Duplicate idempotency keys
 // return the original transfer without moving money again.
-func (s *TransferService) CreateTransfer(ctx context.Context, req TransferRequest) (*domain.Transfer, error) {
+// The bool return is true only when a new transfer was created.
+func (s *TransferService) CreateTransfer(ctx context.Context, req TransferRequest) (*domain.Transfer, bool, error) {
 	// Pure validation before touching the DB.
 	if err := domain.ValidateTransferRequest(req.FromWalletID, req.ToWalletID, req.Amount); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	var result *domain.Transfer
+	created := false
 
 	err := s.txm.WithTx(ctx, func(repo repository.Repository) error {
 		// Fast path: key already processed -> return original.
@@ -141,12 +143,13 @@ func (s *TransferService) CreateTransfer(ctx context.Context, req TransferReques
 		}
 
 		result = tr
+		created = true
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return result, nil
+	return result, created, nil
 }
 
 // lockWalletsInOrder locks both wallets sorted by ID to prevent deadlocks

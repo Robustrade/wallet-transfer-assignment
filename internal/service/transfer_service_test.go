@@ -14,7 +14,7 @@ func TestCreateTransfer_Success(t *testing.T) {
 	store.seedWallet("wallet_2", 0)
 	svc := NewTransferService(store)
 
-	tr, err := svc.CreateTransfer(context.Background(), TransferRequest{
+	tr, _, err := svc.CreateTransfer(context.Background(), TransferRequest{
 		IdempotencyKey: "key1",
 		FromWalletID:   "wallet_1",
 		ToWalletID:     "wallet_2",
@@ -44,7 +44,7 @@ func TestCreateTransfer_LedgerIsBalanced(t *testing.T) {
 	store.seedWallet("wallet_2", 0)
 	svc := NewTransferService(store)
 
-	_, err := svc.CreateTransfer(context.Background(), TransferRequest{
+	_, _, err := svc.CreateTransfer(context.Background(), TransferRequest{
 		IdempotencyKey: "key1",
 		FromWalletID:   "wallet_1",
 		ToWalletID:     "wallet_2",
@@ -87,11 +87,11 @@ func TestCreateTransfer_Idempotent(t *testing.T) {
 		Amount:         100,
 	}
 
-	first, err := svc.CreateTransfer(context.Background(), req)
+	first, _, err := svc.CreateTransfer(context.Background(), req)
 	if err != nil {
 		t.Fatalf("first call error: %v", err)
 	}
-	second, err := svc.CreateTransfer(context.Background(), req)
+	second, _, err := svc.CreateTransfer(context.Background(), req)
 	if err != nil {
 		t.Fatalf("second call error: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestCreateTransfer_InsufficientBalance(t *testing.T) {
 	store.seedWallet("wallet_2", 0)
 	svc := NewTransferService(store)
 
-	_, err := svc.CreateTransfer(context.Background(), TransferRequest{
+	_, _, err := svc.CreateTransfer(context.Background(), TransferRequest{
 		IdempotencyKey: "key1",
 		FromWalletID:   "wallet_1",
 		ToWalletID:     "wallet_2",
@@ -153,7 +153,7 @@ func TestCreateTransfer_ValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := svc.CreateTransfer(context.Background(), tt.req)
+			_, _, err := svc.CreateTransfer(context.Background(), tt.req)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("error = %v, want %v", err, tt.wantErr)
 			}
