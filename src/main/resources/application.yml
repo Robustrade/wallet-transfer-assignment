@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: wallet-transfer-service
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/wallet}
+    username: ${DATABASE_USERNAME:wallet}
+    password: ${DATABASE_PASSWORD:wallet}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: ${SERVER_PORT:8080}
+
+logging:
+  level:
+    com.wallet: INFO

@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:16:///wallet
+    username: wallet
+    password: wallet
+  flyway:
+    enabled: true
