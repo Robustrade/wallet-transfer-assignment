@@ -1,0 +1,113 @@
+<div class="chart-panel" [class.compact]="compact()">
+  <div class="chart-toolbar">
+    <div>
+      <h2>{{ title() }}</h2>
+      <p class="chart-sub">{{ dateRangeLabel() }}</p>
+    </div>
+    <div class="range-pills">
+      @for (option of rangeOptions; track option.id) {
+        <button
+          type="button"
+          class="range-pill"
+          [class.active]="chartRange() === option.id"
+          (click)="setRange(option.id)"
+        >
+          {{ option.label }}
+        </button>
+      }
+    </div>
+  </div>
+
+  <div class="chart-kpis">
+    <article class="kpi processed">
+      <span>Processed</span>
+      <strong>{{ summary().processed }}</strong>
+    </article>
+    <article class="kpi failed">
+      <span>Failed</span>
+      <strong>{{ summary().failed }}</strong>
+    </article>
+    <article class="kpi pending">
+      <span>Pending</span>
+      <strong>{{ summary().pending }}</strong>
+    </article>
+    <article class="kpi volume">
+      <span>Volume</span>
+      <strong>{{ summary().volume | number }}</strong>
+    </article>
+    <article class="kpi total">
+      <span>Total attempts</span>
+      <strong>{{ summary().total }}</strong>
+    </article>
+  </div>
+
+  <div class="legend">
+    <span><i class="dot processed"></i> Processed</span>
+    <span><i class="dot failed"></i> Failed</span>
+    <span class="legend-hint">Hover bars for details · Volume = processed amount only</span>
+  </div>
+
+  @if (filteredStats().length > 0) {
+    <div class="bar-chart-wrap">
+      <div class="y-axis">
+        <span>{{ maxBarValue() }}</span>
+        <span>{{ (maxBarValue() / 2) | number: '1.0-0' }}</span>
+        <span>0</span>
+      </div>
+
+      <div class="bar-chart-scroll">
+        <div class="bar-chart" [class.wide-bars]="filteredStats().length <= 3">
+          @for (stat of filteredStats(); track stat.date; let i = $index) {
+            <div
+              class="bar-group"
+              [class.hovered]="hoveredDate() === stat.date"
+              (mouseenter)="hoveredDate.set(stat.date)"
+              (mouseleave)="hoveredDate.set(null)"
+            >
+              <div class="bar-pair">
+                <div
+                  class="bar processed"
+                  [style.height.px]="barHeight(stat.processed)"
+                  [attr.title]="stat.date + ': ' + stat.processed + ' processed'"
+                >
+                  @if (stat.processed > 0 && (filteredStats().length <= 14 || hoveredDate() === stat.date)) {
+                    <span class="bar-num">{{ stat.processed }}</span>
+                  }
+                </div>
+                <div
+                  class="bar failed"
+                  [style.height.px]="barHeight(stat.failed)"
+                  [attr.title]="stat.date + ': ' + stat.failed + ' failed'"
+                >
+                  @if (stat.failed > 0 && (filteredStats().length <= 14 || hoveredDate() === stat.date)) {
+                    <span class="bar-num">{{ stat.failed }}</span>
+                  }
+                </div>
+              </div>
+              @if (showXLabel(i, filteredStats().length)) {
+                <span class="bar-label">{{ stat.date | date: chartRange() === '90d' ? 'MM/dd' : 'MMM d' }}</span>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+
+    @if (hoveredStat(); as stat) {
+      <div class="hover-card">
+        <strong>{{ stat.date | date: 'fullDate' }}</strong>
+        <div class="hover-grid">
+          <span>Processed</span><strong class="up">{{ stat.processed }}</strong>
+          <span>Failed</span><strong class="down">{{ stat.failed }}</strong>
+          <span>Pending</span><strong>{{ stat.pending }}</strong>
+          <span>Volume</span><strong>{{ stat.volume | number }}</strong>
+        </div>
+      </div>
+    }
+  } @else {
+    <div class="chart-empty">
+      <p>No data in this range.</p>
+      <small>Make transfers to see processed and failed payment bars.</small>
+    </div>
+  }
+</div>

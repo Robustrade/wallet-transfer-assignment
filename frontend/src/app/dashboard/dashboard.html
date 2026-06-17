@@ -1,0 +1,282 @@
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">W</div>
+      <div>
+        <p class="brand-title">Wallet Console</p>
+        <p class="brand-sub">Transfer & Ledger</p>
+      </div>
+    </div>
+
+    <section class="sidebar-block">
+      <label class="label" for="wallet-select">Active wallet</label>
+      <select
+        id="wallet-select"
+        class="input"
+        [value]="selectedWalletId() ?? ''"
+        (change)="selectWallet($any($event.target).value)"
+      >
+        @for (wallet of wallets(); track wallet.id) {
+          <option [value]="wallet.id">{{ wallet.id }}</option>
+        }
+      </select>
+
+      @if (selectedWallet(); as wallet) {
+        <div class="wallet-chip">
+          <span>Balance</span>
+          <strong>{{ wallet.balance | number }}</strong>
+        </div>
+      }
+
+      <button type="button" class="btn-ghost" (click)="toggleAddWallet()">
+        {{ showAddWallet() ? 'Cancel' : '+ New wallet' }}
+      </button>
+
+      @if (showAddWallet()) {
+        <form class="mini-form" [formGroup]="walletForm" (ngSubmit)="createWallet()">
+          <input formControlName="id" placeholder="wallet_id" class="input" />
+          <input type="number" formControlName="initialBalance" min="0" placeholder="Balance" class="input" />
+          <button type="submit" class="btn-primary" [disabled]="loading()">Create</button>
+        </form>
+      }
+    </section>
+
+    <nav class="nav">
+      <p class="label">Navigation</p>
+      @for (item of navItems; track item.id) {
+        <button
+          type="button"
+          class="nav-item"
+          [class.active]="activeView() === item.id"
+          (click)="setView(item.id)"
+        >
+          <span class="nav-icon">{{ item.icon }}</span>
+          <span class="nav-copy">
+            <strong>{{ item.label }}</strong>
+            <small>{{ item.description }}</small>
+          </span>
+        </button>
+      }
+    </nav>
+
+    <div class="sidebar-footer">
+      <button type="button" class="btn-ghost" (click)="refreshWallets(selectedWalletId() ?? undefined)" [disabled]="loading()">
+        Refresh data
+      </button>
+    </div>
+  </aside>
+
+  <div class="workspace">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">{{ activeNav().label }}</p>
+        <h1>{{ activeNav().description }}</h1>
+      </div>
+      @if (selectedWallet(); as wallet) {
+        <div class="topbar-wallet">
+          <span>{{ wallet.id }}</span>
+          <strong>{{ wallet.balance | number }}</strong>
+        </div>
+      }
+    </header>
+
+    @if (message()) {
+      <div class="alert success">{{ message() }}</div>
+    }
+    @if (error()) {
+      <div class="alert error">{{ error() }}</div>
+    }
+
+  @if (history(); as data) {
+    @switch (activeView()) {
+      @case ('overview') {
+        <section class="kpi-grid">
+          <article class="kpi-card">
+            <span>Stored balance</span>
+            <strong>{{ data.balance | number }}</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Ledger balance</span>
+            <strong>{{ data.ledgerBalance | number }}</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Total credits</span>
+            <strong class="up">+{{ data.totalCredits | number }}</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Total debits</span>
+            <strong class="down">-{{ data.totalDebits | number }}</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Processed</span>
+            <strong>{{ data.processedTransfers }}</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Failed</span>
+            <strong>{{ data.failedTransfers }}</strong>
+          </article>
+        </section>
+
+        <section class="panel split">
+          <div>
+            <h2>Recent transfers</h2>
+            @if (data.transfers.length > 0) {
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Route</th>
+                      <th>Amount</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (transfer of data.transfers.slice(0, 5); track transfer.id) {
+                      <tr>
+                        <td><span class="badge" [class]="transfer.status.toLowerCase()">{{ transfer.status }}</span></td>
+                        <td>{{ transfer.fromWalletId }} → {{ transfer.toWalletId }}</td>
+                        <td>{{ transfer.amount | number }}</td>
+                        <td>{{ transfer.createdAt | date: 'medium' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            } @else {
+              <p class="empty">No transfers yet for this wallet.</p>
+            }
+          </div>
+          <app-chart-panel title="Volume trend" [transfers]="data.transfers" [compact]="true" />
+        </section>
+      }
+
+      @case ('transfer') {
+        <section class="panel">
+          <form class="form-grid" [formGroup]="transferForm" (ngSubmit)="submitTransfer()">
+            <label class="full">
+              Idempotency key (UUID)
+              <div class="inline">
+                <input formControlName="idempotencyKey" class="input light mono" placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000" />
+                <button type="button" class="btn-secondary" (click)="newIdempotencyKey()">Generate UUID</button>
+              </div>
+            </label>
+            <label>
+              From wallet
+              <select formControlName="fromWalletId" class="input light">
+                @for (wallet of wallets(); track wallet.id) {
+                  <option [value]="wallet.id">{{ wallet.id }} ({{ wallet.balance | number }})</option>
+                }
+              </select>
+            </label>
+            <label>
+              To wallet
+              <select formControlName="toWalletId" class="input light">
+                @for (wallet of wallets(); track wallet.id) {
+                  <option [value]="wallet.id">{{ wallet.id }} ({{ wallet.balance | number }})</option>
+                }
+              </select>
+            </label>
+            <label>
+              Amount
+              <input type="number" formControlName="amount" min="1" class="input light" />
+            </label>
+            <div class="actions full">
+              <button type="submit" class="btn-primary" [disabled]="loading()">Send transfer</button>
+              <button type="button" class="btn-secondary" (click)="resendSameKey()" [disabled]="loading()">
+                Resend same key
+              </button>
+            </div>
+          </form>
+        </section>
+      }
+
+      @case ('ledger') {
+        <section class="kpi-grid compact">
+          <article class="kpi-card"><span>Ledger balance</span><strong>{{ data.ledgerBalance | number }}</strong></article>
+          <article class="kpi-card"><span>Credits</span><strong class="up">+{{ data.totalCredits | number }}</strong></article>
+          <article class="kpi-card"><span>Debits</span><strong class="down">-{{ data.totalDebits | number }}</strong></article>
+          <article class="kpi-card"><span>Entries</span><strong>{{ data.ledgerEntries.length }}</strong></article>
+        </section>
+
+        <section class="panel">
+          <h2>Ledger entries</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Amount</th>
+                  <th>Transfer ID</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (entry of data.ledgerEntries; track entry.id) {
+                  <tr>
+                    <td><span class="badge" [class]="entry.entryType.toLowerCase()">{{ entry.entryType }}</span></td>
+                    <td [class.up]="entry.entryType === 'CREDIT'" [class.down]="entry.entryType === 'DEBIT'">
+                      {{ ledgerSignedAmount(entry) | number }}
+                    </td>
+                    <td><code>{{ entry.transferId.slice(0, 8) }}</code></td>
+                    <td>{{ entry.createdAt | date: 'medium' }}</td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="4" class="empty">No ledger entries for this wallet.</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      }
+
+      @case ('history') {
+        <section class="panel">
+          <h2>Transfer history — {{ data.walletId }}</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Direction</th>
+                  <th>Route</th>
+                  <th>Amount</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (transfer of data.transfers; track transfer.id) {
+                  <tr>
+                    <td><span class="badge" [class]="transfer.status.toLowerCase()">{{ transfer.status }}</span></td>
+                    <td>
+                      <span class="direction" [class.out]="transferDirection(transfer, data.walletId) === 'OUT'">
+                        {{ transferDirection(transfer, data.walletId) }}
+                      </span>
+                    </td>
+                    <td>{{ transfer.fromWalletId }} → {{ transfer.toWalletId }}</td>
+                    <td>{{ transfer.amount | number }}</td>
+                    <td>{{ transfer.createdAt | date: 'medium' }}</td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="5" class="empty">No transfer history for this wallet.</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      }
+
+      @case ('analytics') {
+        <section class="panel">
+          <app-chart-panel title="Transaction analytics" [transfers]="data.transfers" />
+        </section>
+      }
+    }
+  } @else {
+    <section class="panel empty-state">
+      <h2>No wallet selected</h2>
+      <p>Create or select a wallet from the sidebar to get started.</p>
+    </section>
+  }
+  </div>
+</div>
