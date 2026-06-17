@@ -14,10 +14,9 @@ jobs:
     name: lint-format-test
     runs-on: [actions_runner_dev_new]
     env:
-      LINT_CMD: ${{ vars.LINT_CMD }}
-      FORMAT_CHECK_CMD: ${{ vars.FORMAT_CHECK_CMD }}
-      TEST_CMD: ${{ vars.TEST_CMD }}
-      CGO_ENABLED: ${{ vars.CGO_ENABLED }}
+      LINT_CMD: ${{ vars.LINT_CMD || 'mvn compile' }}
+      FORMAT_CHECK_CMD: ${{ vars.FORMAT_CHECK_CMD || 'echo "No format check configured"' }}
+      TEST_CMD: ${{ vars.TEST_CMD || 'mvn test' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,17 +24,12 @@ jobs:
       - name: Check OS
         run: cat /etc/os-release
 
-      - name: Install gcc
-        run: sudo apt-get update && sudo apt-get install -y gcc
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
-          go-version: '1.24'
-
-      - name: Install golangci-lint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $HOME/.local/bin v1.64.8 echo "$HOME/.local/bin" >> $GITHUB_PATH
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
 
       - name: Validate commands configured
         shell: bash
