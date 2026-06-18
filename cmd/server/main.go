@@ -27,7 +27,7 @@ func run() error {
 	_ = godotenv.Load()
 
 	dsn := getenv("DATABASE_URL", "postgres://wallet:wallet@localhost:5433/wallet_db?sslmode=disable")
-	addr := getenv("HTTP_ADDR", ":8080")
+	addr := getenv("HTTP_ADDR", ":8090")
 
 	ctx := context.Background()
 
