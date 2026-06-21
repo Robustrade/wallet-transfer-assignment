@@ -5,3 +5,16 @@ build/
 .tmp/
 .env
 .env.*
+
+# Gradle
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Local Postgres data (bind-mounted by docker-compose)
+/postgres-data/*
+!/postgres-data/.gitkeep
