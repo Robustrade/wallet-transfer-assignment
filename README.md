@@ -13,8 +13,7 @@ This implementation focuses on correctness around wallet balance updates, idempo
 * Spring Data JPA
 * PostgreSQL
 * Maven
-* JUnit 5
-
+* JUni
 ---
 
 ## Main Features

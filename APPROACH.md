@@ -60,13 +60,13 @@ I am considering PostgreSQL tables such as:
 ### A: wallets:
 
 1. wallet_id as primary key
-2. wallet.balance always non-negative, enforced with a CHECK constraint such as balance >= 0.
+2. balance always non-negative, enforced with a CHECK constraint such as balance >= 0.
 
 ### B: transfers
 
 1. transfer_id as primary key
 2. source_wallet_id and destination_wallet_id as foreign keys to wallets.
-3. transfers.status can only have PENDING, PROCESSED, FAILED.
+3. status can only have PENDING, PROCESSED, FAILED.
 4. Indexes on: source_wallet_id and destination_wallet_id
 
 ### C: ledger_entries
