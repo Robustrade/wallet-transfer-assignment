@@ -1,0 +1,13 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration,classpath:db/seed
+
+logging:
+  level:
+    com.wallet.transfer: DEBUG
+    org.springframework.transaction: INFO
