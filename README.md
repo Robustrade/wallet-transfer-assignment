@@ -1,35 +1,109 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+## Overview
 
-## Included
+A wallet-to-wallet transfer service built using Spring Boot and PostgreSQL.
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+The service guarantees:
 
-## Intended use
+* Idempotent request processing
+* Safe concurrent execution
+* Double-entry ledger consistency
+* Atomic transaction processing
+* Retry-safe behavior
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+---
 
-## Notes
+## Tech Stack
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+* Java 17
+* Spring Boot
+* Spring Data JPA
+* PostgreSQL
+* Flyway
+* MapStruct
+* Spring Retry
+* JUnit 5
+* Mockito
 
-## How to Submit Assignment
+---
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+## Prerequisites
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+* Java 17
+* Maven
+* PostgreSQL
+
+---
+
+## Database Setup
+
+Create a PostgreSQL database:
+
+```sql
+CREATE DATABASE wallet_transfer_db;
+```
+
+Update the datasource configuration:
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/wallet_transfer_db
+    username: postgres
+    password: your_password
+```
+
+---
+
+## Running the Application
+
+```bash
+mvn clean install
+mvn spring-boot:run
+```
+
+---
+
+## API
+
+### Create Transfer
+
+**POST** `/transfers`
+
+Request:
+
+```json
+{
+  "idempotencyKey": "transfer-123",
+  "fromWalletId": "wallet-id-1",
+  "toWalletId": "wallet-id-2",
+  "amount": 100
+}
+```
+
+Response:
+
+```json
+{
+  "transferId": "transfer-id",
+  "status": "PROCESSED",
+  "amount": 100
+}
+```
+
+---
+
+## Running Tests
+
+```bash
+mvn test
+```
+
+---
+
+## Documentation
+
+Detailed design and architecture decisions are available in:
+
+`DESIGN_DOC.md`
