@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: wallet-transfer-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/walletdb
+    driver-class-name: org.postgresql.Driver
+    username: postgres
+    password: 1234567
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
