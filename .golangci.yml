@@ -1,0 +1,71 @@
+# golangci-lint configuration, tuned for v1.64.8.
+#
+# A senior, signal-over-noise set: it catches real correctness, security and
+# resource-leak issues while staying quiet on idiomatic, well-tested code so it
+# realistically passes clean.
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # Start from a known set rather than the defaults so the config is explicit.
+  disable-all: true
+  enable:
+    - govet        # suspicious constructs (shadowing handled below is off by default)
+    - errcheck     # unchecked errors
+    - staticcheck  # broad correctness / simplification suite
+    - ineffassign  # ineffectual assignments
+    - unused       # unused code
+    - gosimple     # simplifications
+    - gofmt        # canonical formatting
+    - goimports    # import grouping / ordering
+    - misspell     # common spelling mistakes in comments and strings
+    - revive       # style / lint replacement for golint
+    - gocritic     # opinionated diagnostics
+    - gosec        # security issues
+    - bodyclose    # HTTP response bodies are closed
+    - noctx        # HTTP requests carry a context
+
+linters-settings:
+  goimports:
+    # Group our own imports separately from third-party ones.
+    local-prefixes: github.com/feroz-khatri/wallet-transfer-assignment
+  govet:
+    enable:
+      - shadow
+  revive:
+    rules:
+      - name: exported
+        disabled: true   # godoc style is already enforced by review, not lint
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+      - style
+    disabled-checks:
+      - ifElseChain      # the explicit error mapping switch/if chains are intentional
+      - hugeParam
+  gosec:
+    excludes:
+      - G404             # math/rand usage is not security-sensitive here
+  misspell:
+    locale: US
+
+issues:
+  # Show all findings rather than golangci-lint's default truncation.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    # Test files routinely ignore Close/cleanup errors and craft inputs that
+    # gosec flags; that noise is not actionable.
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec
+        - bodyclose
+        - noctx
+    # The build-deps probe exists only to pin test-only modules in the main graph.
+    - path: internal/builddeps/
+      linters:
+        - unused

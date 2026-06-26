@@ -1,0 +1,34 @@
+# VCS and tooling
+.git
+.gitignore
+.github
+
+# Local build / test artifacts
+/walletd
+/bin/
+build/
+dist/
+coverage/
+.tmp/
+*.out
+*.test
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets and local env
+.env
+.env.*
+
+# Docs and assignment scaffolding not needed in the image
+*.md
+docs/
+deployments/
+evaluation_guide.md
+branch-protection-checklist.md
+sonar-project.properties
+
+# Linter config (not needed at build time)
+.golangci.yml
