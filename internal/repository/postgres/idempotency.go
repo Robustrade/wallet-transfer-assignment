@@ -23,9 +23,16 @@ func NewIdempotencyRepository(db *DB) *IdempotencyRepository {
 
 var _ service.IdempotencyRepository = (*IdempotencyRepository)(nil)
 
-// Insert claims an idempotency key. A unique-constraint violation on the
-// primary key is mapped to domain.ErrDuplicateIdempotencyKey so the service can
-// switch to replay.
+// Insert claims an idempotency key, returning domain.ErrDuplicateIdempotencyKey
+// when the key already exists.
+//
+// We use INSERT ... ON CONFLICT DO NOTHING rather than catching a raised unique
+// violation deliberately: a raised error would abort the surrounding
+// transaction (SQLSTATE 25P02), making the service's subsequent replay read
+// impossible without a savepoint. ON CONFLICT keeps the transaction healthy
+// while preserving the blocking semantics we rely on — a concurrent claim of an
+// in-flight key still waits for the first transaction to commit or roll back,
+// then observes the conflict (zero rows affected) and replays.
 func (r *IdempotencyRepository) Insert(ctx context.Context, record *domain.IdempotencyRecord) error {
 	var transferID *string
 	if record.TransferID != "" {
@@ -36,10 +43,11 @@ func (r *IdempotencyRepository) Insert(ctx context.Context, record *domain.Idemp
 		responseBody = record.ResponseBody
 	}
 
-	_, err := r.db.conn(ctx).Exec(ctx,
+	tag, err := r.db.conn(ctx).Exec(ctx,
 		`INSERT INTO idempotency_records
 		   (key, request_hash, transfer_id, response_body, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, now(), now())`,
+		 VALUES ($1, $2, $3, $4, $5, now(), now())
+		 ON CONFLICT (key) DO NOTHING`,
 		record.Key,
 		record.RequestHash,
 		transferID,
@@ -47,15 +55,15 @@ func (r *IdempotencyRepository) Insert(ctx context.Context, record *domain.Idemp
 		string(record.Status),
 	)
 	if err != nil {
-		if isUniqueViolation(err) {
-			return domain.ErrDuplicateIdempotencyKey
-		}
 		return fmt.Errorf("postgres: insert idempotency record: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrDuplicateIdempotencyKey
 	}
 	return nil
 }
 
-// Get returns the record for a key. Absence is signalled with pgx.ErrNoRows;
+// Get returns the record for a key. Absence is signaled with pgx.ErrNoRows;
 // the service only calls Get after observing a duplicate, so a missing row is
 // an unexpected condition there.
 func (r *IdempotencyRepository) Get(ctx context.Context, key string) (*domain.IdempotencyRecord, error) {
@@ -92,7 +100,7 @@ func (r *IdempotencyRepository) Get(ctx context.Context, key string) (*domain.Id
 	return &rec, nil
 }
 
-// Complete finalises a record with the produced transfer id and the serialised
+// Complete finalizes a record with the produced transfer id and the serialized
 // response replayed for future duplicates.
 func (r *IdempotencyRepository) Complete(ctx context.Context, key, transferID string, response []byte) error {
 	var tid *string

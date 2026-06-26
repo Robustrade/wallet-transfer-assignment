@@ -32,7 +32,7 @@ type Service struct {
 
 var _ TransferService = (*Service)(nil)
 
-// Option customises a Service at construction time.
+// Option customizes a Service at construction time.
 type Option func(*Service)
 
 // WithIDGenerator overrides the identifier generator. The default is
@@ -143,24 +143,31 @@ func (s *Service) Transfer(ctx context.Context, in TransferInput) (*TransferResu
 			return insertErr
 		}
 
-		// d. We own the key: create the PENDING transfer.
+		// d. We own the key: build the PENDING transfer in memory (validation
+		// only; it is not persisted yet).
 		transferID := s.newID()
 		transfer, err := domain.NewTransfer(transferID, in.IdempotencyKey, in.FromWalletID, in.ToWalletID, in.Amount)
 		if err != nil {
 			return err
 		}
-		if err := s.transfers.Create(ctx, transfer); err != nil {
-			return err
-		}
 
-		// e. Lock both wallets in a deterministic (sorted) order to avoid
-		// deadlocks between opposing transfers.
+		// e. Acquire the wallet row locks FOR UPDATE in a deterministic (sorted)
+		// order. This must happen BEFORE inserting the transfer: the transfer's
+		// foreign keys take a FOR KEY SHARE lock on both wallet rows, so taking
+		// the stronger FOR UPDATE lock first (in a consistent order) prevents the
+		// lock-upgrade deadlock that otherwise occurs when many transfers touch
+		// the same wallet concurrently.
 		source, dest, err := s.lockWallets(ctx, in.FromWalletID, in.ToWalletID)
 		if err != nil {
 			return err
 		}
 
-		// f. Debit the source. Insufficient funds is a durable, idempotent
+		// f. Persist the PENDING transfer now that the wallets are locked.
+		if err := s.transfers.Create(ctx, transfer); err != nil {
+			return err
+		}
+
+		// g. Debit the source. Insufficient funds is a durable, idempotent
 		// business failure: record it and COMMIT, do not return the error.
 		if debitErr := source.Debit(in.Amount); debitErr != nil {
 			if errors.Is(debitErr, domain.ErrInsufficientFunds) {
@@ -179,8 +186,8 @@ func (s *Service) Transfer(ctx context.Context, in TransferInput) (*TransferResu
 			return debitErr
 		}
 
-		// g. Successful debit: credit dest, persist balances, write the ledger
-		// pair, mark processed, finalise idempotency.
+		// h. Successful debit: credit dest, persist balances, write the ledger
+		// pair, mark processed, finalize idempotency.
 		if err := dest.Credit(in.Amount); err != nil {
 			return err
 		}
@@ -242,7 +249,7 @@ func (s *Service) lockWallets(ctx context.Context, from, to string) (source, des
 	return source, dest, nil
 }
 
-// complete writes the auditable snapshot and finalises the idempotency record.
+// complete writes the auditable snapshot and finalizes the idempotency record.
 func (s *Service) complete(ctx context.Context, key string, transfer *domain.Transfer) error {
 	response, err := snapshotJSON(transfer)
 	if err != nil {
