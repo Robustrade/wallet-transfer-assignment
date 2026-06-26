@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/service"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/service"
 )
 
 // New builds the HTTP handler for the service: a chi router with standard

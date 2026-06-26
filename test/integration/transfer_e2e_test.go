@@ -30,10 +30,10 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/handler"
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/repository/postgres"
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/service"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/domain"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/handler"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/repository/postgres"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/service"
 )
 
 var (

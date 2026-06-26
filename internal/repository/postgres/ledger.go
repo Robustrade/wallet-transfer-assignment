@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/service"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/domain"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/service"
 )
 
 // LedgerRepository is the PostgreSQL adapter for double-entry ledger rows.

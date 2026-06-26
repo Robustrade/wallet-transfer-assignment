@@ -15,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/config"
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/handler"
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/repository/postgres"
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/service"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/config"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/handler"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/repository/postgres"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/service"
 )
 
 func main() {

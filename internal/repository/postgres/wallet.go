@@ -7,8 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/service"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/domain"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/service"
 )
 
 // WalletRepository is the PostgreSQL adapter for wallet persistence.

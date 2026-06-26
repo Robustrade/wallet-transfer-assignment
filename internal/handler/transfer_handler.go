@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/service"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/domain"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/service"
 )
 
 // maxBodyBytes bounds the size of a request body to protect the decoder from

@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/domain"
 )
 
 // errorBody is the JSON error envelope returned to clients:

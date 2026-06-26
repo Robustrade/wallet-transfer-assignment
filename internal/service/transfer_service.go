@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/domain"
 )
 
 // Service is the concrete orchestration of the TransferService contract. It

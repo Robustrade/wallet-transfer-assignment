@@ -3,8 +3,8 @@ package handler
 import (
 	"time"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/service"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/domain"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/service"
 )
 
 // transferRequest is the JSON body accepted by POST /transfers.

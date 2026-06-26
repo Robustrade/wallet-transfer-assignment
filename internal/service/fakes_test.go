@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/domain"
 )
 
 // fakeTxManager runs fn under a process-wide lock. There is no real database

@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/domain"
 )
 
 // The interfaces in this file are the ports the service depends on. Adapters

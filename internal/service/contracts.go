@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
+	"github.com/ferozyk/wallet-transfer-assignment/internal/domain"
 )
 
 // TransferInput is the validated, transport-agnostic command to execute a

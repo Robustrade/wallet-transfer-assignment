@@ -1,4 +1,4 @@
-module github.com/feroz-khatri/wallet-transfer-assignment
+module github.com/ferozyk/wallet-transfer-assignment
 
 go 1.24.0
 
