@@ -172,7 +172,7 @@ While database-level pessimistic locking (SELECT ... FOR UPDATE) guarantees abso
 -Sum of the request will fail with the LockTimeoutException and the retry mechanism has to catch this exception and try to retry the same request.
 
 ## Chaos Engineering (Infrastructure Failure Testing)
--Pulling down the database server in the middle of the transaction and to look for if the database clealy rolls back everything and there should be no partial entries in the database
+-Pulling down the database server in the middle of the transaction and to look for if the database clealy rolls back everything and there should be no partial entries in the database.
 
 ---
 
