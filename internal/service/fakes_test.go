@@ -10,10 +10,10 @@ import (
 )
 
 // fakeTxManager runs fn under a process-wide lock. There is no real database
-// transaction; serialising fn simulates the isolation a real SERIALIZABLE/
+// transaction; serializing fn simulates the isolation a real SERIALIZABLE/
 // row-locked transaction provides, so concurrent callers cannot interleave
 // reads and writes (no lost updates). The fakes still simulate the durable
-// unique-constraint behaviour on their own.
+// unique-constraint behavior on their own.
 type fakeTxManager struct {
 	mu *sync.Mutex
 }

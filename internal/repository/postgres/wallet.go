@@ -42,7 +42,7 @@ func (r *WalletRepository) Get(ctx context.Context, id string) (*domain.Wallet, 
 }
 
 // GetForUpdate returns a wallet while acquiring a row-level write lock
-// (SELECT ... FOR UPDATE), serialising concurrent debits/credits on it.
+// (SELECT ... FOR UPDATE), serializing concurrent debits/credits on it.
 func (r *WalletRepository) GetForUpdate(ctx context.Context, id string) (*domain.Wallet, error) {
 	return r.get(ctx, id, true)
 }

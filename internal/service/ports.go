@@ -23,7 +23,7 @@ type WalletRepository interface {
 	// Get returns a wallet without locking, or domain.ErrWalletNotFound.
 	Get(ctx context.Context, id string) (*domain.Wallet, error)
 	// GetForUpdate returns a wallet while acquiring a row-level write lock
-	// (SELECT ... FOR UPDATE), serialising concurrent debits/credits on that
+	// (SELECT ... FOR UPDATE), serializing concurrent debits/credits on that
 	// wallet. Returns domain.ErrWalletNotFound when the wallet is absent.
 	GetForUpdate(ctx context.Context, id string) (*domain.Wallet, error)
 	// UpdateBalance persists a new balance for an existing wallet.
@@ -57,11 +57,11 @@ type IdempotencyRepository interface {
 	// resolves.
 	Insert(ctx context.Context, record *domain.IdempotencyRecord) error
 	// Get returns the record for a key, or domain.ErrTransferNotFound-style
-	// absence is signalled by a nil record with no error only when the caller
+	// absence is signaled by a nil record with no error only when the caller
 	// expects possible absence; otherwise it returns a not-found error.
 	Get(ctx context.Context, key string) (*domain.IdempotencyRecord, error)
-	// Complete finalises a record with the produced transfer id and the
-	// serialised response to replay for future duplicates.
+	// Complete finalizes a record with the produced transfer id and the
+	// serialized response to replay for future duplicates.
 	Complete(ctx context.Context, key, transferID string, response []byte) error
 }
 

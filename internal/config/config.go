@@ -25,7 +25,7 @@ type Config struct {
 
 // Load reads configuration from the environment.
 //
-// Recognised variables:
+// Recognized variables:
 //
 //	HTTP_ADDR         (default ":8080")
 //	DATABASE_URL      (required; e.g. postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable)

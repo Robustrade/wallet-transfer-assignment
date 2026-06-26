@@ -174,7 +174,7 @@ func TestWalletNegativeBalanceRejected(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestGetForUpdateLocks verifies SELECT ... FOR UPDATE actually serialises
+// TestGetForUpdateLocks verifies SELECT ... FOR UPDATE actually serializes
 // concurrent transactions on the same wallet row.
 func TestGetForUpdateLocks(t *testing.T) {
 	db := requireDB(t)

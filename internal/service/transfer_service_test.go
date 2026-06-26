@@ -211,7 +211,8 @@ func TestTransfer_OpposingTransfersBothSucceed(t *testing.T) {
 
 	aliceBal, _ := h.svc.GetWalletBalance(context.Background(), "alice")
 	bobBal, _ := h.svc.GetWalletBalance(context.Background(), "bob")
-	// alice: 1000 - 100 + 200 = 1100; bob: 1000 + 100 - 200 = 900.
+	// Net effect of the two opposing transfers leaves alice up by 100 and bob
+	// down by 100, with no lost updates.
 	assert.Equal(t, domain.Money(1100), aliceBal.Balance)
 	assert.Equal(t, domain.Money(900), bobBal.Balance)
 }

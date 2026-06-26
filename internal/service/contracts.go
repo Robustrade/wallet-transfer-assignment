@@ -17,7 +17,7 @@ type TransferInput struct {
 
 // TransferResult is the outcome of a transfer command. Replayed is true when
 // the result was served from the idempotency store rather than freshly
-// executed, which lets the transport layer surface exactly-once behaviour.
+// executed, which lets the transport layer surface exactly-once behavior.
 type TransferResult struct {
 	Transfer *domain.Transfer
 	Replayed bool

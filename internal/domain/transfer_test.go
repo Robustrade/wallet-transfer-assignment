@@ -3,9 +3,10 @@ package domain_test
 import (
 	"testing"
 
-	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/feroz-khatri/wallet-transfer-assignment/internal/domain"
 )
 
 func TestNewTransfer(t *testing.T) {
