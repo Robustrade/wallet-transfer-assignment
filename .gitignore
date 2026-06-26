@@ -5,3 +5,10 @@ build/
 .tmp/
 .env
 .env.*
+
+# Go
+/walletd
+/bin/
+*.out
+*.test
+vendor/
