@@ -84,8 +84,14 @@ func snapshotJSON(t *domain.Transfer) ([]byte, error) {
 }
 
 // requestHash is the hex sha256 of the semantically significant request fields.
+//
+// Each string field is length-prefixed (netstring-style "<len>:<value>") so the
+// encoding is uniquely decodable. A plain delimiter such as "|" would be
+// ambiguous if a wallet id contained that delimiter, letting two different
+// payloads hash equal and defeating the same-key/different-payload (409) check.
 func requestHash(from, to string, amount domain.Money) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", from, to, amount)))
+	canonical := fmt.Sprintf("%d:%s%d:%s%d", len(from), from, len(to), to, amount)
+	sum := sha256.Sum256([]byte(canonical))
 	return hex.EncodeToString(sum[:])
 }
 

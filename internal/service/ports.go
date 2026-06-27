@@ -56,9 +56,10 @@ type IdempotencyRepository interface {
 	// callers block on the UNIQUE constraint until the first transaction
 	// resolves.
 	Insert(ctx context.Context, record *domain.IdempotencyRecord) error
-	// Get returns the record for a key, or domain.ErrTransferNotFound-style
-	// absence is signaled by a nil record with no error only when the caller
-	// expects possible absence; otherwise it returns a not-found error.
+	// Get returns the record for a key, or a non-nil error if the key is
+	// absent. The service only calls Get after Insert has reported a duplicate,
+	// so a missing record is an unexpected condition rather than a normal
+	// "not found" result; callers treat any error here as fatal to the request.
 	Get(ctx context.Context, key string) (*domain.IdempotencyRecord, error)
 	// Complete finalizes a record with the produced transfer id and the
 	// serialized response to replay for future duplicates.

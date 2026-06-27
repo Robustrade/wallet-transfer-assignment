@@ -262,3 +262,14 @@ func TestSentinelWrapping(t *testing.T) {
 	wrapped := errors.Join(domain.ErrInsufficientFunds, errors.New("ctx"))
 	assert.ErrorIs(t, wrapped, domain.ErrInsufficientFunds)
 }
+
+// TestRequestHash_NoDelimiterCollision pins the length-prefixed encoding: two
+// distinct payloads that would collide under a naive "from|to|amount" scheme
+// (("a|b","c") and ("a","b|c")) must hash differently, so the
+// same-key/different-payload check cannot be bypassed by crafted wallet ids.
+func TestRequestHash_NoDelimiterCollision(t *testing.T) {
+	assert.NotEqual(t,
+		requestHash("a|b", "c", 100),
+		requestHash("a", "b|c", 100),
+	)
+}

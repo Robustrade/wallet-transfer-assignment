@@ -19,9 +19,9 @@ import (
 // testDB is the shared package-level handle started once by TestMain. It is nil
 // when Docker is unavailable, in which case every test skips.
 var (
-	testDB       *DB
-	dockerErr    error
-	testCtleanup func()
+	testDB      *DB
+	dockerErr   error
+	testCleanup func()
 )
 
 // TestMain starts a single postgres container for the whole package, runs
@@ -57,10 +57,10 @@ func TestMain(m *testing.M) {
 			dockerErr = fmt.Errorf("start postgres container: %w", err)
 			return m.Run()
 		}
-		testCtleanup = func() {
+		testCleanup = func() {
 			_ = container.Terminate(context.Background())
 		}
-		defer testCtleanup()
+		defer testCleanup()
 
 		dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 		if err != nil {
