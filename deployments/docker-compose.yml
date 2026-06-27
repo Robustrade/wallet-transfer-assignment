@@ -1,0 +1,45 @@
+# docker-compose for the wallet-transfer service.
+#
+# Brings up PostgreSQL and the walletd app. The app applies its embedded
+# migrations on startup, so no separate migration step is required.
+#
+# Usage (from the repo root):
+#   docker compose -f deployments/docker-compose.yml up --build
+#   docker compose -f deployments/docker-compose.yml down -v
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Wait until Postgres is actually accepting connections before starting app.
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  app:
+    build:
+      # Build context is the repo root so the Dockerfile can see the whole module.
+      context: ..
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://wallet:wallet@db:5432/wallet?sslmode=disable
+      HTTP_ADDR: ":8080"
+    ports:
+      - "8080:8080"
+    restart: on-failure
+
+volumes:
+  pgdata:
