@@ -23,11 +23,11 @@ The API should provide **exactly-once semantics at the API level** when an `idem
 -3.Transfer api history
 
 ## Non-Functional Requirements
--1.Consistency over availability
--2.Auditabilty(ledger entry)
--3.Performace(consistency > availabilty : cannot lock the things for long time, define the acceptable latency bound)
--4.Idempotency: same request cannot be processed multiple times
--5.retry mechanism
+1. Consistency over availability
+2. Auditability (ledger entries)
+3. Performance (consistency > availability; avoid holding locks for long; define acceptable latency bounds)
+4. Idempotency: the same request cannot be processed multiple times
+5. Retry mechanism
 
 ---
 
