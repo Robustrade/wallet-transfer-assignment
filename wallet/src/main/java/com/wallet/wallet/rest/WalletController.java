@@ -21,6 +21,7 @@ public class WalletController {
         return new ResponseEntity<>(walletResponseDTO, HttpStatus.CREATED);
     }
 
+    //Get api to get the balance of wallet id
     @GetMapping("/wallet/{walletId}")
     public ResponseEntity<Double> getAvailableBalance(@PathVariable int walletId){
         return new ResponseEntity<>(null);
