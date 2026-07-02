@@ -1,7 +1,59 @@
+# OS / Editor
 .DS_Store
-coverage/
-dist/
-build/
-.tmp/
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.iml
+
+# Environment & secrets
 .env
 .env.*
+!.env.example
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/bin/
+/dist/
+/build/
+/tmp/
+.tmp/
+
+# Go module / vendor
+/vendor/
+
+# Test & coverage
+coverage/
+coverage.out
+coverage.html
+*.coverprofile
+profile.cov
+
+# Database (local dev)
+*.db
+*.sqlite
+*.sqlite3
+postgres-data/
+pgdata/
+docker-data/
+
+# Migrations / tooling cache
+.migrate/
+*.log
+
+# Docker
+docker-compose.override.yml
+
+
