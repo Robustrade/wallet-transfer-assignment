@@ -5,3 +5,12 @@ build/
 .tmp/
 .env
 .env.*
+
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+*.iml
+.idea/
+
