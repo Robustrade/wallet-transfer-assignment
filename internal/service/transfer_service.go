@@ -106,7 +106,12 @@ func (s *TransferService) processTransfer(ctx context.Context, req domain.Transf
 			return nil
 		}
 
-		//create new transfer
+		// Lock wallets first so missing wallets fail before we insert a transfer row.
+		source, _, err := s.lockWalletsInOrder(ctx, tx, req.FromWalletID, req.ToWalletID)
+		if err != nil {
+			return err
+		}
+
 		transfer := newPendingTransfer(req)
 		if err := s.repo.CreateTransfer(ctx, tx, transfer); err != nil {
 			if errors.Is(err, repository.ErrDuplicateIdempotency) {
@@ -118,12 +123,6 @@ func (s *TransferService) processTransfer(ctx context.Context, req domain.Transf
 				}
 				return loadErr
 			}
-			return err
-		}
-
-		//Lock wallet
-		source, _, err := s.lockWalletsInOrder(ctx, tx, transfer.FromWalletID, transfer.ToWalletID)
-		if err != nil {
 			return err
 		}
 
@@ -141,6 +140,9 @@ func (s *TransferService) processTransfer(ctx context.Context, req domain.Transf
 	})
 
 	if err != nil {
+		if errors.Is(err, domain.ErrWalletNotFound) {
+			return resp, http.StatusNotFound, err
+		}
 		return resp, http.StatusInternalServerError, err
 	}
 	if bizErr != nil {
