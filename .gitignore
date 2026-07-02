@@ -56,6 +56,4 @@ docker-data/
 # Docker
 docker-compose.override.yml
 
-# AI session transcripts (keep local unless submitting separately)
-ai-transcripts/
-*.transcript.md
+
