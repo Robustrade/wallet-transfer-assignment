@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-wallet}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-wallet}
+      POSTGRES_DB: ${DB_NAME:-wallet_transfer}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-wallet} -d ${DB_NAME:-wallet_transfer}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: migrate/migrate:v4.17.1
+    profiles: ["tools"]
+    volumes:
+      - ./migrations:/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint:
+      - migrate
+      - -path
+      - /migrations
+      - -database
+      - postgres://${DB_USER:-wallet}:${DB_PASSWORD:-wallet}@postgres:5432/${DB_NAME:-wallet_transfer}?sslmode=disable
+    command: ["up"]
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-8080}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-wallet}
+      DB_PASSWORD: ${DB_PASSWORD:-wallet}
+      DB_NAME: ${DB_NAME:-wallet_transfer}
+      DB_SSLMODE: disable
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

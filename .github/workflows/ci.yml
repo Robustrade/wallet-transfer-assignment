@@ -31,7 +31,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26.3'
 
       - name: Install golangci-lint
         run: |
@@ -62,3 +62,18 @@ jobs:
         run: |
           set -euo pipefail
           eval "$TEST_CMD"
+
+      - name: Start Postgres for integration tests
+        run: |
+          docker compose up -d postgres
+          timeout 60 bash -c 'until docker compose exec -T postgres pg_isready -U wallet -d wallet_transfer; do sleep 1; done'
+
+      - name: Apply migrations
+        run: make migrate-up
+
+      - name: Run integration tests
+        run: make test-integration
+
+      - name: Tear down Postgres
+        if: always()
+        run: docker compose down -v
