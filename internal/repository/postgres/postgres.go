@@ -168,21 +168,42 @@ func (t *tx) CompleteIdempotencyKey(ctx context.Context, key string, status repo
 	return err
 }
 
-func (t *tx) Commit() error   { return t.sqlTx.Commit() }
-func (t *tx) Rollback() error { return t.sqlTx.Rollback() }
+func (t *tx) Commit() error { return t.sqlTx.Commit() }
+
+// Rollback swallows sql.ErrTxDone, which (*sql.Tx).Rollback() returns once
+// the transaction has already been committed. repository.Tx documents that
+// Rollback must be a no-op after a successful Commit — every caller relies
+// on being able to `defer tx.Rollback()` unconditionally, so this needs to
+// actually satisfy that contract rather than happen to work only because
+// today's callers ignore the returned error.
+func (t *tx) Rollback() error {
+	if err := t.sqlTx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		return err
+	}
+	return nil
+}
 
 func nullableString(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: s != ""}
 }
 
 // isUniqueViolation detects Postgres' unique_violation (SQLSTATE 23505).
-// Matched via error text rather than errors.As(*pgconn.PgError) so this file
-// has zero direct pgx import — swap in the typed check if you commit to pgx
-// as the permanent driver.
+// pgx's error type exposes SQLState() string, so we match on that via
+// errors.As against a small local interface — this gets a precise,
+// structured check without importing pgx's concrete error type directly.
+// The string match is kept only as a fallback for a driver that doesn't
+// implement SQLState() at all.
 func isUniqueViolation(err error) bool {
 	if err == nil {
 		return false
 	}
+
+	type sqlStateErr interface{ SQLState() string }
+	var se sqlStateErr
+	if errors.As(err, &se) {
+		return se.SQLState() == "23505"
+	}
+
 	msg := err.Error()
 	return strings.Contains(msg, "23505") || strings.Contains(msg, "duplicate key")
 }

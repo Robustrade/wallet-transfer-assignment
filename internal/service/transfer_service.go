@@ -155,6 +155,18 @@ func (s *TransferService) finalize(ctx context.Context, tx repository.Tx, key st
 func (s *TransferService) executeTransfer(ctx context.Context, tx repository.Tx, req CreateTransferRequest) (TransferResult, error) {
 	transferID := idgen.New("txn")
 
+	// Lock (and thereby confirm the existence of) both wallets *before*
+	// inserting the transfer row. transfers.from_wallet_id/to_wallet_id
+	// carry FK constraints against wallets(id) in Postgres — inserting the
+	// transfer first and locking second meant an unknown wallet surfaced as
+	// a raw FK-violation error from InsertTransfer, which never gets
+	// translated to domain.ErrWalletNotFound and would show up as a 500
+	// instead of the 400 an unknown-wallet request should return.
+	from, to, err := lockBothWallets(ctx, tx, req.FromWalletID, req.ToWalletID)
+	if err != nil {
+		return TransferResult{}, err
+	}
+
 	if err := tx.InsertTransfer(ctx, domain.Transfer{
 		ID:             transferID,
 		IdempotencyKey: req.IdempotencyKey,
@@ -163,11 +175,6 @@ func (s *TransferService) executeTransfer(ctx context.Context, tx repository.Tx,
 		Amount:         req.Amount,
 		State:          domain.TransferPending,
 	}); err != nil {
-		return TransferResult{}, err
-	}
-
-	from, to, err := lockBothWallets(ctx, tx, req.FromWalletID, req.ToWalletID)
-	if err != nil {
 		return TransferResult{}, err
 	}
 

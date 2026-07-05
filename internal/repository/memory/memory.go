@@ -10,12 +10,13 @@
 // just achieved with a coarser lock since there's no real row-level locking
 // to model in memory.
 //
-// Known limitation: unlike a real SQL transaction, writes made by an
-// in-flight tx are NOT rolled back on error (there's no undo log). This is
-// safe for this codebase today because InsertTransfer is the only write
-// before the wallet locks are acquired, and every other write in
-// service.executeTransfer happens only after all prior steps succeeded — but
-// it's a corner a real database gets for free and this fake does not.
+// Rollback semantics: BeginTx snapshots the store's maps before handing out
+// the Tx. Rollback restores those snapshots; Commit just discards them. This
+// matters because service.CreateTransfer relies on real rollback behavior
+// for unexpected failures — in particular, releasing an in-progress
+// idempotency claim so a retry isn't stuck forever. Snapshot/restore is only
+// correct because the mutex guarantees exactly one transaction is ever
+// in-flight at a time; it would not be safe under real concurrent writers.
 package memory
 
 import (
@@ -69,12 +70,51 @@ func (s *Store) Ledger() []domain.LedgerEntry {
 
 func (s *Store) BeginTx(ctx context.Context) (repository.Tx, error) {
 	s.mu.Lock() // released in tx.finish(), called from Commit or Rollback
-	return &tx{store: s}, nil
+	return &tx{
+		store:               s,
+		walletsSnapshot:     cloneWallets(s.wallets),
+		transfersSnapshot:   cloneTransfers(s.transfers),
+		idempotencySnapshot: cloneIdempotency(s.idempotency),
+		ledgerLen:           len(s.ledger),
+	}, nil
 }
 
 type tx struct {
 	store *Store
 	done  bool
+
+	// Snapshots taken at BeginTx, restored on Rollback so an in-flight
+	// transaction's writes (including a claimed-but-not-yet-completed
+	// idempotency record) are fully undone on an unexpected failure —
+	// mirroring what a real SQL ROLLBACK gives you for free.
+	walletsSnapshot     map[string]domain.Wallet
+	transfersSnapshot   map[string]domain.Transfer
+	idempotencySnapshot map[string]repository.IdempotencyRecord
+	ledgerLen           int
+}
+
+func cloneWallets(m map[string]domain.Wallet) map[string]domain.Wallet {
+	out := make(map[string]domain.Wallet, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneTransfers(m map[string]domain.Transfer) map[string]domain.Transfer {
+	out := make(map[string]domain.Transfer, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneIdempotency(m map[string]repository.IdempotencyRecord) map[string]repository.IdempotencyRecord {
+	out := make(map[string]repository.IdempotencyRecord, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 func (t *tx) finish() {
@@ -167,6 +207,16 @@ func (t *tx) Commit() error {
 }
 
 func (t *tx) Rollback() error {
+	if !t.done {
+		// Restore pre-transaction state, including releasing any
+		// idempotency claim this transaction made — this is what lets a
+		// retry after an unexpected failure get a fresh attempt instead of
+		// returning ErrDuplicateInFlight forever.
+		t.store.wallets = t.walletsSnapshot
+		t.store.transfers = t.transfersSnapshot
+		t.store.idempotency = t.idempotencySnapshot
+		t.store.ledger = t.store.ledger[:t.ledgerLen]
+	}
 	t.finish()
 	return nil
 }
