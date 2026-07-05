@@ -33,3 +33,21 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+## AI Usage
+
+### Tool Used
+Claude
+
+### How I Used It
+I used Claude for:
+- system design guidance
+- debugging Go backend logic
+- writing and improving tests
+- reviewing architecture and API design
+
+All final code was reviewed and manually verified.
+
+### AI Transcript
+Full Claude conversation used for this project is included in:
+- ai-transcript.md (in this repository)
