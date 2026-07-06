@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: wallet_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      # This is the magic line! It tells Postgres to run your schema.sql file automatically on startup
+      - ./schema.sql:/docker-entrypoint-initdb.d/1_schema.sql
+      # This keeps your data safe even if you stop the container
+      - pgdata:/var/lib/postgresql/data 
+
+volumes:
+  pgdata:
