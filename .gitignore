@@ -5,3 +5,8 @@ build/
 .tmp/
 .env
 .env.*
+coverage.out
+wallet-api
+*.exe
+.idea/
+.vscode/
