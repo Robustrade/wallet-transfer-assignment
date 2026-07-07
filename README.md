@@ -1,35 +1,162 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+A PostgreSQL-backed wallet transfer API written in Go. The implementation uses
+Clean Architecture boundaries, stored wallet balances, an immutable
+double-entry ledger, transactional idempotency, and row-level locking.
 
-## Included
+## Architecture
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+```text
+HTTP handler -> transfer service -> repository contracts -> PostgreSQL adapter
+                       |
+                    domain
+```
 
-## Intended use
+- `cmd/api`: dependency wiring and HTTP server lifecycle
+- `internal/domain`: wallet, transfer, ledger, and state-transition models
+- `internal/service`: transfer orchestration and business rules
+- `internal/repository`: persistence and transaction contracts
+- `internal/repository/postgres`: PostgreSQL implementation
+- `internal/handler/http`: request validation and HTTP mapping
+- `migrations`: database schema
+- `tests/integration`: PostgreSQL behavior and concurrency tests
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+Amounts are signed 64-bit integers in the currency's smallest unit. Floating
+point values are intentionally not accepted.
 
-## Notes
+## Transaction and concurrency model
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+Each new request runs in one PostgreSQL transaction:
 
-## How to Submit Assignment
+1. Insert the idempotency key and canonical request hash.
+2. Create a `PENDING` transfer and link it to the idempotency record.
+3. Lock both wallets with `SELECT ... FOR UPDATE`, ordered by wallet ID.
+4. Validate funds, update both stored balances, and insert one `DEBIT` plus one
+   `CREDIT` ledger entry.
+5. Move the transfer to `PROCESSED`, or commit a deterministic business failure
+   as `FAILED`.
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+The primary key on `idempotency_records.idempotency_key` serializes concurrent
+duplicates. A duplicate with the same request hash reads the original terminal
+transfer. Reusing the key for a different payload returns `409 Conflict`.
+Infrastructure failures roll back the entire transaction and are safe to retry.
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+## Run with Docker Compose
+
+Requirements: Docker with Compose support.
+
+```bash
+docker compose up --build
+```
+
+The migration is applied automatically when PostgreSQL initializes. Seed two
+wallets:
+
+```bash
+docker compose exec postgres psql -U wallet -d wallet -c \
+  "INSERT INTO wallets (id, balance) VALUES ('wallet_1', 1000), ('wallet_2', 250);"
+```
+
+Create a transfer:
+
+```bash
+curl -i http://localhost:8080/transfers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "idempotencyKey": "abc123",
+    "fromWalletId": "wallet_1",
+    "toWalletId": "wallet_2",
+    "amount": 100
+  }'
+```
+
+Re-send the same request to receive the original result without another debit.
+Change the amount while retaining `abc123` to receive `409 Conflict`.
+
+To delete local data and rerun the initialization migration:
+
+```bash
+docker compose down -v
+```
+
+## Run locally
+
+Start PostgreSQL and apply the migration:
+
+```bash
+psql "$DATABASE_URL" -f migrations/001_init.sql
+```
+
+Set the database URL and run the API:
+
+```bash
+export DATABASE_URL='postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable'
+go run ./cmd/api
+```
+
+On PowerShell:
+
+```powershell
+$env:DATABASE_URL = 'postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable'
+go run ./cmd/api
+```
+
+The API listens on `:8080` by default. Override it with `HTTP_ADDRESS`.
+
+## API
+
+### `POST /transfers`
+
+Request:
+
+```json
+{
+  "idempotencyKey": "abc123",
+  "fromWalletId": "wallet_1",
+  "toWalletId": "wallet_2",
+  "amount": 100
+}
+```
+
+Responses:
+
+- `201 Created`: transfer is `PROCESSED`
+- `400 Bad Request`: invalid input or JSON
+- `404 Not Found`: one or both wallets do not exist; transfer is `FAILED`
+- `409 Conflict`: idempotency key was used with a different payload
+- `422 Unprocessable Entity`: insufficient balance; transfer is `FAILED`
+- `500 Internal Server Error`: transaction was rolled back and may be retried
+
+`GET /healthz` provides a process health endpoint.
+
+## Tests
+
+Run unit tests:
+
+```bash
+go test ./internal/...
+```
+
+Run every test. Integration tests skip when no database URL is configured:
+
+```bash
+go test ./...
+```
+
+Run PostgreSQL integration and concurrency tests against a dedicated test
+database:
+
+```bash
+export INTEGRATION_DATABASE_URL='postgres://wallet:wallet@localhost:5432/wallet_test?sslmode=disable'
+go test ./tests/integration -count=1
+```
+
+PowerShell:
+
+```powershell
+$env:INTEGRATION_DATABASE_URL = 'postgres://wallet:wallet@localhost:5432/wallet_test?sslmode=disable'
+go test ./tests/integration -count=1
+```
+
+The integration suite truncates the wallet service tables between tests. Do not
+point it at a database containing data you need.
