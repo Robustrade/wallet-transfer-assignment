@@ -1,6 +1,68 @@
 # Wallet Transfer Assignment Repository
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+This branch contains a Go implementation of the wallet transfer assignment. It provides a small HTTP service with GORM-backed SQLite persistence, idempotent transfer creation, stored wallet balances, safe transfer state transitions, and double-entry ledger entries.
+
+## Running locally
+
+Requirements:
+
+- Go 1.24
+- CGO-enabled SQLite build support. On Linux, install `gcc`; on macOS, Xcode command line tools are enough.
+
+Run tests:
+
+```sh
+go test ./...
+```
+
+Run the service:
+
+```sh
+go run ./cmd/server
+```
+
+By default the service listens on `:8080` and uses `wallets.db`. Override with:
+
+```sh
+HTTP_ADDR=:9090 DB_PATH=/tmp/wallets.db go run ./cmd/server
+```
+
+Seed wallets are created if absent:
+
+- `wallet_1` with balance `1000`
+- `wallet_2` with balance `1000`
+- `wallet_3` with balance `1000`
+
+Create a transfer:
+
+```sh
+curl -X POST http://localhost:8080/transfers \
+  -H 'Content-Type: application/json' \
+  -d '{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100}'
+```
+
+Read data:
+
+```sh
+curl http://localhost:8080/wallets/wallet_1
+curl http://localhost:8080/transfers/<transfer_id>
+```
+
+## Implementation notes
+
+- Architecture is split into handler, service, repository, domain, and port packages.
+- GORM repository models are used with SQLite persistence to keep the assignment self-contained.
+- Transfers are executed inside a database transaction.
+- Idempotency records store the key, canonical request hash, and original transfer id.
+- Duplicate requests with the same key and payload return the original result without side effects.
+- Duplicate requests with the same key and different payload return a conflict.
+- Wallet debits use a conditional update to prevent overspending.
+- Processed transfers write exactly two ledger entries: one `DEBIT` and one `CREDIT`.
+- Failed business transfers are durable and do not change balances or write ledger entries.
+
+See [docs/DESIGN.md](./docs/DESIGN.md) for the detailed design, failure modes, and testing strategy.
+
+## Original template content
 
 ## Included
 
