@@ -36,7 +36,9 @@ func (transferModel) TableName() string {
 type ledgerEntryModel struct {
 	ID         int64  `gorm:"primaryKey;autoIncrement"`
 	WalletID   string `gorm:"not null;type:text;index"`
+	Wallet     walletModel `gorm:"foreignKey:WalletID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 	TransferID string `gorm:"not null;type:text;index;uniqueIndex:idx_ledger_transfer_type"`
+	Transfer   transferModel `gorm:"foreignKey:TransferID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 	Type       string `gorm:"not null;type:text;check:type IN ('DEBIT','CREDIT');uniqueIndex:idx_ledger_transfer_type"`
 	Amount     int64  `gorm:"not null;check:amount > 0"`
 	CreatedAt  time.Time
