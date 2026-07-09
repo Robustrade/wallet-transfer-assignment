@@ -1,6 +1,6 @@
 # Wallet Transfer Assignment Repository
 
-This branch contains a Go implementation of the wallet transfer assignment. It provides a small HTTP service with SQLite persistence, idempotent transfer creation, stored wallet balances, safe transfer state transitions, and double-entry ledger entries.
+This branch contains a Go implementation of the wallet transfer assignment. It provides a small HTTP service with GORM-backed SQLite persistence, idempotent transfer creation, stored wallet balances, safe transfer state transitions, and double-entry ledger entries.
 
 ## Running locally
 
@@ -51,7 +51,7 @@ curl http://localhost:8080/transfers/<transfer_id>
 ## Implementation notes
 
 - Architecture is split into handler, service, repository, domain, and port packages.
-- SQLite is used for persistence to keep the assignment self-contained.
+- GORM repository models are used with SQLite persistence to keep the assignment self-contained.
 - Transfers are executed inside a database transaction.
 - Idempotency records store the key, canonical request hash, and original transfer id.
 - Duplicate requests with the same key and payload return the original result without side effects.

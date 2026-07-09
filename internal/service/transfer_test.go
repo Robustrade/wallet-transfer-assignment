@@ -2,17 +2,17 @@ package service_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/vardaanmittal09/wallet-transfer-assignment/internal/domain"
 	"github.com/vardaanmittal09/wallet-transfer-assignment/internal/repository/sqlite"
 	"github.com/vardaanmittal09/wallet-transfer-assignment/internal/service"
+	gormsqlite "gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestCreateTransferProcessesLedgerAndBalances(t *testing.T) {
@@ -177,15 +177,20 @@ func TestConcurrentTransfersDoNotOverspend(t *testing.T) {
 	assertTableCount(t, db, "ledger_entries", processed*2)
 }
 
-func newTestService(t *testing.T, wallets map[string]int64) (*sql.DB, *service.TransferService) {
+func newTestService(t *testing.T, wallets map[string]int64) (*gorm.DB, *service.TransferService) {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "wallets.db")
-	db, err := sql.Open("sqlite3", sqlite.DSN(dbPath))
+	db, err := gorm.Open(gormsqlite.Open(sqlite.DSN(dbPath)), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+	})
 
 	store := sqlite.NewStore(db)
 	if err := store.Migrate(context.Background()); err != nil {
@@ -197,11 +202,11 @@ func newTestService(t *testing.T, wallets map[string]int64) (*sql.DB, *service.T
 	return db, service.NewTransferService(store)
 }
 
-func assertWalletBalance(t *testing.T, db *sql.DB, walletID string, want int64) {
+func assertWalletBalance(t *testing.T, db *gorm.DB, walletID string, want int64) {
 	t.Helper()
 
 	var got int64
-	if err := db.QueryRow(`SELECT balance FROM wallets WHERE id = ?`, walletID).Scan(&got); err != nil {
+	if err := db.Table("wallets").Select("balance").Where("id = ?", walletID).Scan(&got).Error; err != nil {
 		t.Fatalf("get wallet balance: %v", err)
 	}
 	if got != want {
@@ -209,14 +214,14 @@ func assertWalletBalance(t *testing.T, db *sql.DB, walletID string, want int64) 
 	}
 }
 
-func assertTableCount(t *testing.T, db *sql.DB, table string, want int) {
+func assertTableCount(t *testing.T, db *gorm.DB, table string, want int) {
 	t.Helper()
 
-	var got int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&got); err != nil {
+	var got int64
+	if err := db.Table(table).Count(&got).Error; err != nil {
 		t.Fatalf("count %s: %v", table, err)
 	}
-	if got != want {
+	if got != int64(want) {
 		t.Fatalf("%s count = %d, want %d", table, got, want)
 	}
 }

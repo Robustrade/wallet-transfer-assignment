@@ -37,7 +37,7 @@ The response includes transfer state, ledger entries for processed transfers, an
 
 ## Persistence
 
-SQLite is used for local portability. The schema has:
+SQLite is used for local portability, with GORM repository models and `AutoMigrate` owning table creation. The schema has:
 
 - `wallets`: stored balance with `CHECK (balance >= 0)`.
 - `transfers`: immutable transfer request data, state, and failure reason.
@@ -56,7 +56,7 @@ The idempotency key is inserted in the same database transaction as the transfer
 
 ## Transaction and concurrency strategy
 
-Each transfer runs in a serializable database transaction. The SQLite store uses a single open database connection and a busy timeout, so writes are serialized and duplicate/concurrent requests wait for the active writer instead of observing partial state.
+Each transfer runs in a serializable GORM transaction. The SQLite store uses a single open database connection and a busy timeout, so writes are serialized and duplicate/concurrent requests wait for the active writer instead of observing partial state.
 
 The debit operation uses a guarded update:
 
