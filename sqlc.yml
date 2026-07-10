@@ -1,0 +1,30 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "repository/postgres/queries"
+    schema: "migrations"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "repository/postgres/sqlcgen"
+        sql_package: "database/sql"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        emit_exact_table_names: false
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type: "string"
+          - db_type: "jsonb"
+            nullable: true
+            go_type:
+              type: "[]byte"
+          - db_type: "transfer_status"
+            go_type: "string"
+          - db_type: "ledger_entry_type"
+            go_type: "string"
+          - db_type: "double precision"
+            go_type: "float64"
