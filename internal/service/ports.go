@@ -36,7 +36,7 @@ type Cache interface {
 
 // IDGenerator mints new transfer IDs. Implemented by *idgen.Generator.
 type IDGenerator interface {
-	NextID() int64
+	NextID() (int64, error)
 }
 
 // TransferRequest is the already-shape-validated input to

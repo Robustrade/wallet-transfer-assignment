@@ -18,13 +18,14 @@ import (
 
 type mockTransferService struct {
 	initResult     int64
+	initErr        error
 	transferResult *domain.Transfer
 	transferErr    error
 	getResult      *domain.Transfer
 	getErr         error
 }
 
-func (m *mockTransferService) InitTransfer() int64 { return m.initResult }
+func (m *mockTransferService) InitTransfer() (int64, error) { return m.initResult, m.initErr }
 
 func (m *mockTransferService) Transfer(_ context.Context, _ service.TransferRequest) (*domain.Transfer, error) {
 	return m.transferResult, m.transferErr
@@ -74,6 +75,15 @@ func TestInitTransferHandler(t *testing.T) {
 	}
 	if resp.TransactionID != "123456789" {
 		t.Fatalf("expected transactionId as string \"123456789\", got %q", resp.TransactionID)
+	}
+}
+
+func TestInitTransferHandler_IDGenError(t *testing.T) {
+	r := testRouter(&mockTransferService{initErr: io.ErrUnexpectedEOF})
+
+	rec := doRequest(r, http.MethodPost, "/transfers/init", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
 	}
 }
 

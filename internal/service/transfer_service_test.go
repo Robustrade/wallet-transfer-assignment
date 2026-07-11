@@ -139,9 +139,17 @@ func (m *mockCache) Set(_ context.Context, _ int64, transfer *domain.Transfer) e
 	return m.setErr
 }
 
-type mockIDGen struct{ id int64 }
+type mockIDGen struct {
+	id  int64
+	err error
+}
 
-func (m *mockIDGen) NextID() int64 { return m.id }
+func (m *mockIDGen) NextID() (int64, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	return m.id, nil
+}
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -461,7 +469,22 @@ func TestInitTransfer(t *testing.T) {
 	db := &fakeTransactor{}
 	svc := NewTransferService(db, &mockWalletRepo{}, &mockTransferRepo{}, &mockCache{}, &mockIDGen{id: 999}, 5*time.Second, testLogger())
 
-	if got := svc.InitTransfer(); got != 999 {
+	got, err := svc.InitTransfer()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != 999 {
 		t.Fatalf("expected minted ID 999, got %d", got)
+	}
+}
+
+func TestInitTransfer_IDGenError(t *testing.T) {
+	db := &fakeTransactor{}
+	wantErr := errors.New("clock moved backward")
+	svc := NewTransferService(db, &mockWalletRepo{}, &mockTransferRepo{}, &mockCache{}, &mockIDGen{err: wantErr}, 5*time.Second, testLogger())
+
+	_, err := svc.InitTransfer()
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected idgen error to propagate, got %v", err)
 	}
 }

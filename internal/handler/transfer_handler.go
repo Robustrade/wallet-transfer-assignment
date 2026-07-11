@@ -17,7 +17,7 @@ import (
 // transferService is the subset of *service.TransferService this handler
 // needs, so tests can supply a mock without touching Postgres/Redis.
 type transferService interface {
-	InitTransfer() int64
+	InitTransfer() (int64, error)
 	Transfer(ctx context.Context, req service.TransferRequest) (*domain.Transfer, error)
 	GetTransfer(ctx context.Context, id int64) (*domain.Transfer, error)
 }
@@ -36,7 +36,12 @@ func NewTransferHandler(svc transferService, logger *slog.Logger) *TransferHandl
 
 // InitTransfer handles POST /transfers/init.
 func (h *TransferHandler) InitTransfer(c *gin.Context) {
-	id := h.service.InitTransfer()
+	id, err := h.service.InitTransfer()
+	if err != nil {
+		logger.FromContext(c.Request.Context(), h.logger).Error("mint transfer id failed", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
 	c.JSON(http.StatusOK, InitTransferResponse{TransactionID: strconv.FormatInt(id, 10)})
 }
 

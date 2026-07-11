@@ -51,7 +51,7 @@ func NewTransferService(
 }
 
 // InitTransfer mints a fresh transfer ID. Nothing is persisted.
-func (s *TransferService) InitTransfer() int64 {
+func (s *TransferService) InitTransfer() (int64, error) {
 	return s.idGen.NextID()
 }
 

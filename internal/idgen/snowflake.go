@@ -66,11 +66,20 @@ var nowMillis = func() int64 {
 // Up to 4096 IDs can be minted per worker per millisecond; if that budget
 // is exhausted, NextID blocks until the next millisecond rather than
 // reusing a sequence value.
-func (g *Generator) NextID() int64 {
+//
+// If the system clock has moved backward since the last call, NextID
+// returns an error instead of spinning — a regression can be seconds or
+// minutes long (NTP step, VM migration), and blocking the caller for
+// that long would be worse than failing fast.
+func (g *Generator) NextID() (int64, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	now := nowMillis()
+
+	if now < g.lastTimestamp {
+		return 0, fmt.Errorf("idgen: clock moved backward by %dms, refusing to generate id", g.lastTimestamp-now)
+	}
 
 	if now == g.lastTimestamp {
 		g.sequence = (g.sequence + 1) & maxSequence
@@ -88,5 +97,5 @@ func (g *Generator) NextID() int64 {
 
 	g.lastTimestamp = now
 
-	return (now-epoch)<<timestampShift | g.workerID<<workerShift | g.sequence
+	return (now-epoch)<<timestampShift | g.workerID<<workerShift | g.sequence, nil
 }

@@ -28,7 +28,10 @@ func TestNextID_MonotonicallyIncreasing(t *testing.T) {
 
 	var prev int64
 	for i := 0; i < 10_000; i++ {
-		id := g.NextID()
+		id, err := g.NextID()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if id <= prev {
 			t.Fatalf("expected strictly increasing IDs, got %d after %d", id, prev)
 		}
@@ -53,7 +56,12 @@ func TestNextID_UniqueUnderConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < perGoroutine; j++ {
-				ids <- g.NextID()
+				id, err := g.NextID()
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+					return
+				}
+				ids <- id
 			}
 		}()
 	}
@@ -88,8 +96,14 @@ func TestNextID_DifferentWorkersNeverCollide(t *testing.T) {
 	nowMillis = func() int64 { return frozen }
 	defer func() { nowMillis = restore }()
 
-	id1 := g1.NextID()
-	id2 := g2.NextID()
+	id1, err := g1.NextID()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	id2, err := g2.NextID()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if id1 == id2 {
 		t.Fatalf("expected different workers to produce different IDs at the same instant, got %d for both", id1)
@@ -118,10 +132,35 @@ func TestNextID_SequenceRolloverAdvancesTimestamp(t *testing.T) {
 
 	var last int64
 	for i := int64(0); i <= tickAfter; i++ {
-		last = g.NextID()
+		id, err := g.NextID()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		last = id
 	}
 
 	if last <= 0 {
 		t.Fatalf("expected a valid ID after rollover, got %d", last)
+	}
+}
+
+func TestNextID_ClockRegressionReturnsError(t *testing.T) {
+	g, err := NewGenerator(6)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	restore := nowMillis
+	defer func() { nowMillis = restore }()
+
+	frozen := epoch + 10_000
+	nowMillis = func() int64 { return frozen }
+	if _, err := g.NextID(); err != nil {
+		t.Fatalf("unexpected error priming the generator: %v", err)
+	}
+
+	nowMillis = func() int64 { return frozen - 1_000 }
+	if _, err := g.NextID(); err == nil {
+		t.Fatal("expected an error when the clock moves backward, got nil")
 	}
 }
