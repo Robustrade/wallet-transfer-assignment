@@ -296,10 +296,7 @@ func (s *TransferService) executeTransfer(ctx context.Context, tx repository.Tx,
 		return domain.StatusFailed, &reason, nil
 	}
 
-	if err := s.walletRepo.UpdateBalance(ctx, tx, from.ID, from.Balance.Sub(req.Amount)); err != nil {
-		return "", nil, err
-	}
-	if err := s.walletRepo.UpdateBalance(ctx, tx, to.ID, to.Balance.Add(req.Amount)); err != nil {
+	if err := s.walletRepo.UpdateBalances(ctx, tx, from.ID, from.Balance.Sub(req.Amount), to.ID, to.Balance.Add(req.Amount)); err != nil {
 		return "", nil, err
 	}
 	return domain.StatusProcessed, nil, nil

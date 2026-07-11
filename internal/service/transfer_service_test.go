@@ -55,12 +55,14 @@ func (f *fakeTransactor) Begin(_ context.Context) (repository.Tx, error) {
 }
 
 type mockWalletRepo struct {
-	wallets          []domain.Wallet
-	getForUpdateErr  error
-	updateBalanceErr error
-	updateCalls      []struct {
-		walletID   string
-		newBalance decimal.Decimal
+	wallets           []domain.Wallet
+	getForUpdateErr   error
+	updateBalancesErr error
+	updateCalls       []struct {
+		fromWalletID string
+		fromBalance  decimal.Decimal
+		toWalletID   string
+		toBalance    decimal.Decimal
 	}
 }
 
@@ -71,12 +73,14 @@ func (m *mockWalletRepo) GetForUpdate(_ context.Context, _ repository.Tx, _ ...s
 	return m.wallets, nil
 }
 
-func (m *mockWalletRepo) UpdateBalance(_ context.Context, _ repository.Tx, walletID string, newBalance decimal.Decimal) error {
+func (m *mockWalletRepo) UpdateBalances(_ context.Context, _ repository.Tx, fromWalletID string, fromBalance decimal.Decimal, toWalletID string, toBalance decimal.Decimal) error {
 	m.updateCalls = append(m.updateCalls, struct {
-		walletID   string
-		newBalance decimal.Decimal
-	}{walletID, newBalance})
-	return m.updateBalanceErr
+		fromWalletID string
+		fromBalance  decimal.Decimal
+		toWalletID   string
+		toBalance    decimal.Decimal
+	}{fromWalletID, fromBalance, toWalletID, toBalance})
+	return m.updateBalancesErr
 }
 
 type mockTransferRepo struct {
@@ -443,14 +447,15 @@ func TestTransfer_Success(t *testing.T) {
 	if got.Status != domain.StatusProcessed {
 		t.Fatalf("expected PROCESSED, got %s", got.Status)
 	}
-	if len(wallets.updateCalls) != 2 {
-		t.Fatalf("expected debit + credit UpdateBalance calls, got %d", len(wallets.updateCalls))
+	if len(wallets.updateCalls) != 1 {
+		t.Fatalf("expected a single combined UpdateBalances call, got %d", len(wallets.updateCalls))
 	}
-	if !wallets.updateCalls[0].newBalance.Equal(decimal.RequireFromString("90.00")) {
-		t.Fatalf("expected debited balance 90.00, got %s", wallets.updateCalls[0].newBalance)
+	call := wallets.updateCalls[0]
+	if !call.fromBalance.Equal(decimal.RequireFromString("90.00")) {
+		t.Fatalf("expected debited balance 90.00, got %s", call.fromBalance)
 	}
-	if !wallets.updateCalls[1].newBalance.Equal(decimal.RequireFromString("15.00")) {
-		t.Fatalf("expected credited balance 15.00, got %s", wallets.updateCalls[1].newBalance)
+	if !call.toBalance.Equal(decimal.RequireFromString("15.00")) {
+		t.Fatalf("expected credited balance 15.00, got %s", call.toBalance)
 	}
 	if transfers.insertLedgerCalls != 1 {
 		t.Fatalf("expected exactly one InsertLedgerEntries call, got %d", transfers.insertLedgerCalls)

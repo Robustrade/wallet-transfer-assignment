@@ -60,17 +60,22 @@ func (r *WalletRepo) GetForUpdate(ctx context.Context, tx repository.Tx, walletI
 	return wallets, nil
 }
 
-// UpdateBalance sets walletID's balance to newBalance. It makes no
-// decision about whether newBalance is valid — that's domain/service's
-// call, not this repository's.
-func (r *WalletRepo) UpdateBalance(ctx context.Context, tx repository.Tx, walletID string, newBalance decimal.Decimal) error {
+// UpdateBalances sets both wallets' balances in a single statement — the
+// debit and credit side of one transfer — rather than two sequential
+// round trips. It makes no decision about whether either balance is
+// valid — that's domain/service's call, not this repository's.
+func (r *WalletRepo) UpdateBalances(ctx context.Context, tx repository.Tx, fromWalletID string, fromBalance decimal.Decimal, toWalletID string, toBalance decimal.Decimal) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE wallets
-		SET balance = $2, updated_at = now()
-		WHERE id = $1
-	`, walletID, newBalance)
+		SET balance = CASE id
+				WHEN $1 THEN $2
+				WHEN $3 THEN $4
+			END,
+			updated_at = now()
+		WHERE id IN ($1, $3)
+	`, fromWalletID, fromBalance, toWalletID, toBalance)
 	if err != nil {
-		return fmt.Errorf("update wallet balance: %w", err)
+		return fmt.Errorf("update wallet balances: %w", err)
 	}
 	return nil
 }

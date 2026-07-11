@@ -13,7 +13,7 @@ import (
 // wallets. Implemented by internal/repository/postgres.WalletRepo.
 type WalletRepository interface {
 	GetForUpdate(ctx context.Context, tx repository.Tx, walletIDs ...string) ([]domain.Wallet, error)
-	UpdateBalance(ctx context.Context, tx repository.Tx, walletID string, newBalance decimal.Decimal) error
+	UpdateBalances(ctx context.Context, tx repository.Tx, fromWalletID string, fromBalance decimal.Decimal, toWalletID string, toBalance decimal.Decimal) error
 }
 
 // TransferRepository is the persistence contract TransferService needs

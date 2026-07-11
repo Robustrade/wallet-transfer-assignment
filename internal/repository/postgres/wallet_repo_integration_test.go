@@ -91,9 +91,10 @@ func TestWalletRepo_GetForUpdate_MissingWalletReturnsFewer(t *testing.T) {
 	}
 }
 
-func TestWalletRepo_UpdateBalance_Persists(t *testing.T) {
+func TestWalletRepo_UpdateBalances_PersistsBoth(t *testing.T) {
 	ctx := context.Background()
 	a := newTestWallet(t, "10.00")
+	b := newTestWallet(t, "5.00")
 
 	tx, err := testPool.Begin(ctx)
 	if err != nil {
@@ -101,20 +102,27 @@ func TestWalletRepo_UpdateBalance_Persists(t *testing.T) {
 	}
 
 	repo := NewWalletRepo()
-	newBalance := decimal.RequireFromString("42.50")
-	if err := repo.UpdateBalance(ctx, tx, a.ID, newBalance); err != nil {
-		t.Fatalf("UpdateBalance: %v", err)
+	aBalance := decimal.RequireFromString("9.00")
+	bBalance := decimal.RequireFromString("6.00")
+	if err := repo.UpdateBalances(ctx, tx, a.ID, aBalance, b.ID, bBalance); err != nil {
+		t.Fatalf("UpdateBalances: %v", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
 
-	var got decimal.Decimal
-	if err := testPool.QueryRow(ctx, `SELECT balance FROM wallets WHERE id = $1`, a.ID).Scan(&got); err != nil {
-		t.Fatalf("read back balance: %v", err)
+	var gotA, gotB decimal.Decimal
+	if err := testPool.QueryRow(ctx, `SELECT balance FROM wallets WHERE id = $1`, a.ID).Scan(&gotA); err != nil {
+		t.Fatalf("read back balance a: %v", err)
 	}
-	if !got.Equal(newBalance) {
-		t.Fatalf("expected balance %s, got %s", newBalance, got)
+	if err := testPool.QueryRow(ctx, `SELECT balance FROM wallets WHERE id = $1`, b.ID).Scan(&gotB); err != nil {
+		t.Fatalf("read back balance b: %v", err)
+	}
+	if !gotA.Equal(aBalance) {
+		t.Fatalf("expected balance a %s, got %s", aBalance, gotA)
+	}
+	if !gotB.Equal(bBalance) {
+		t.Fatalf("expected balance b %s, got %s", bBalance, gotB)
 	}
 }
 
