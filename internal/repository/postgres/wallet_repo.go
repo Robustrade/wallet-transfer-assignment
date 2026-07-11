@@ -65,11 +65,16 @@ func (r *WalletRepo) GetForUpdate(ctx context.Context, tx repository.Tx, walletI
 // round trips. It makes no decision about whether either balance is
 // valid — that's domain/service's call, not this repository's.
 func (r *WalletRepo) UpdateBalances(ctx context.Context, tx repository.Tx, fromWalletID string, fromBalance decimal.Decimal, toWalletID string, toBalance decimal.Decimal) error {
+	// $2/$4 are explicitly cast to numeric: shopspring/decimal.Decimal
+	// binds through pgx's text format with no type OID of its own, so
+	// without the cast Postgres infers the CASE expression's type as
+	// text (from the untyped parameters) rather than numeric (from the
+	// balance column) and rejects the assignment outright.
 	_, err := tx.Exec(ctx, `
 		UPDATE wallets
 		SET balance = CASE id
-				WHEN $1 THEN $2
-				WHEN $3 THEN $4
+				WHEN $1 THEN $2::numeric
+				WHEN $3 THEN $4::numeric
 			END,
 			updated_at = now()
 		WHERE id IN ($1, $3)
