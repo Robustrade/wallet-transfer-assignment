@@ -1,5 +1,6 @@
 // Package handler is the thin HTTP layer: decode request, call service,
-// encode response. It contains no business logic — see docs/DESIGN.md §8.
+// encode response. No business logic here — every domain rule lives in
+// service/domain so it's testable independent of HTTP.
 package handler
 
 import (

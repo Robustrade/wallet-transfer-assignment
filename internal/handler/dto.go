@@ -8,7 +8,9 @@ type InitTransferResponse struct {
 }
 
 // CreateTransferRequest is the request body of POST /transfers. Amount
-// decodes as json.Number, never float64 — see docs/DESIGN.md §11.
+// decodes as json.Number, never float64 — float64 can't represent most
+// decimal fractions exactly, and that precision loss happens at decode
+// time, before any validation runs.
 type CreateTransferRequest struct {
 	IdempotencyKey string      `json:"idempotencyKey"`
 	FromWalletID   string      `json:"fromWalletId"`
@@ -17,7 +19,9 @@ type CreateTransferRequest struct {
 }
 
 // TransferView is the shared response representation for both
-// POST /transfers and GET /transfers/{id} — see docs/DESIGN.md §1.
+// POST /transfers and GET /transfers/{id} — a transfers row is immutable
+// after creation, so there's no lifecycle point where the two could
+// diverge.
 type TransferView struct {
 	ID            string  `json:"id"`
 	FromWalletID  string  `json:"fromWalletId"`
