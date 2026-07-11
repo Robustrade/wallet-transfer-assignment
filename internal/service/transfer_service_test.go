@@ -28,9 +28,6 @@ func (t *fakeTx) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag,
 	t.execCalls++
 	return pgconn.CommandTag{}, nil
 }
-func (t *fakeTx) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
-	return nil, nil
-}
 func (t *fakeTx) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row { return nil }
 func (t *fakeTx) Commit(_ context.Context) error {
 	t.committed = true
