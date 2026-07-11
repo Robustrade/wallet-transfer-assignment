@@ -44,8 +44,8 @@ func (c *Config) Validate() error {
 	if c.Port == "" {
 		return fmt.Errorf("PORT is required")
 	}
-	if c.LockTimeout <= 0 {
-		return fmt.Errorf("LOCK_TIMEOUT must be a positive duration")
+	if c.LockTimeout < time.Millisecond {
+		return fmt.Errorf("LOCK_TIMEOUT must be at least 1ms, got %s", c.LockTimeout)
 	}
 	if _, err := idgen.NewGenerator(c.WorkerID); err != nil {
 		return fmt.Errorf("WORKER_ID invalid: %w", err)

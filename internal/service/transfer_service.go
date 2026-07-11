@@ -285,7 +285,17 @@ func (s *TransferService) writeCache(ctx context.Context, transfer *domain.Trans
 	}
 }
 
+// setLockTimeout requires timeout to already be at least 1ms —
+// config.Validate() enforces that at startup. This clamp is a second,
+// defensive layer only, for any path that builds a TransferService
+// without going through config validation (e.g. a test): under 1ms,
+// timeout.Milliseconds() truncates to 0, and "SET LOCAL lock_timeout =
+// '0ms'" means "no timeout" in Postgres — the opposite of what a
+// lock_timeout is for.
 func setLockTimeout(ctx context.Context, tx repository.Tx, timeout time.Duration) error {
+	if timeout < time.Millisecond {
+		timeout = time.Millisecond
+	}
 	_, err := tx.Exec(ctx, fmt.Sprintf("SET LOCAL lock_timeout = '%dms'", timeout.Milliseconds()))
 	if err != nil {
 		return fmt.Errorf("set lock_timeout: %w", err)
