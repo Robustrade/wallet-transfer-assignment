@@ -465,10 +465,41 @@ func TestTransfer_Success(t *testing.T) {
 
 // --- GetTransfer / InitTransfer ------------------------------------------
 
-func TestGetTransfer_Found(t *testing.T) {
+func TestGetTransfer_CacheHit_SkipsPostgres(t *testing.T) {
+	want := &domain.Transfer{ID: 7, Status: domain.StatusProcessed}
+	transfers := &mockTransferRepo{}
+	c := &mockCache{getResult: want}
+	svc := newTestService(&fakeTransactor{}, &mockWalletRepo{}, transfers, c)
+
+	got, err := svc.GetTransfer(context.Background(), 7)
+	if err != nil || got != want {
+		t.Fatalf("expected (%v, nil), got (%v, %v)", want, got, err)
+	}
+	if transfers.findByIDCalls != 0 {
+		t.Fatalf("a cache hit must never touch Postgres, got %d FindByID calls", transfers.findByIDCalls)
+	}
+}
+
+func TestGetTransfer_CacheMiss_FallsThroughAndSelfHeals(t *testing.T) {
 	want := &domain.Transfer{ID: 7, Status: domain.StatusProcessed}
 	transfers := &mockTransferRepo{findByIDResults: []*domain.Transfer{want}}
-	svc := newTestService(&fakeTransactor{}, &mockWalletRepo{}, transfers, &mockCache{})
+	c := &mockCache{}
+	svc := newTestService(&fakeTransactor{}, &mockWalletRepo{}, transfers, c)
+
+	got, err := svc.GetTransfer(context.Background(), 7)
+	if err != nil || got != want {
+		t.Fatalf("expected (%v, nil), got (%v, %v)", want, got, err)
+	}
+	if len(c.setCalls) != 1 || c.setCalls[0] != want {
+		t.Fatalf("expected a cache miss to self-heal by writing back the Postgres result, got %d Set calls", len(c.setCalls))
+	}
+}
+
+func TestGetTransfer_CacheGetError_FallsBackToPostgres(t *testing.T) {
+	want := &domain.Transfer{ID: 7, Status: domain.StatusProcessed}
+	transfers := &mockTransferRepo{findByIDResults: []*domain.Transfer{want}}
+	c := &mockCache{getErr: errors.New("redis unavailable")}
+	svc := newTestService(&fakeTransactor{}, &mockWalletRepo{}, transfers, c)
 
 	got, err := svc.GetTransfer(context.Background(), 7)
 	if err != nil || got != want {

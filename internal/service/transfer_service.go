@@ -87,10 +87,29 @@ func (s *TransferService) Transfer(ctx context.Context, req TransferRequest) (*d
 	return s.lockAndExecuteTransfer(ctx, req, hash)
 }
 
-// GetTransfer reads a transfer by ID with no lock. It returns (nil, nil)
-// if no such transfer exists.
+// GetTransfer reads a transfer by ID with no lock, checking the cache
+// first — the same transfer:{id} key POST replay uses (docs/DESIGN.md
+// §6) — before falling through to Postgres and self-healing the cache
+// on a miss. It returns (nil, nil) if no such transfer exists.
 func (s *TransferService) GetTransfer(ctx context.Context, id int64) (*domain.Transfer, error) {
-	return s.transferRepo.FindByID(ctx, id)
+	cached, err := s.cache.Get(ctx, id)
+	if err != nil {
+		logger.FromContext(ctx, s.logger).Warn("get transfer cache failed; falling back to postgres", slog.Any("error", err))
+	}
+	if cached != nil {
+		return cached, nil
+	}
+
+	transfer, err := s.transferRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if transfer == nil {
+		return nil, nil
+	}
+
+	s.writeCache(ctx, transfer)
+	return transfer, nil
 }
 
 // validateTransferRules checks same-wallet and invalid-amount. It
