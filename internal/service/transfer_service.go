@@ -16,6 +16,10 @@ import (
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/repository"
 )
 
+// cacheWriteTimeout bounds the background cache write writeCache starts
+// after the request's own context is gone (see writeCache).
+const cacheWriteTimeout = 3 * time.Second
+
 // TransferService orchestrates the full idempotency/concurrency/ledger
 // flow for wallet-to-wallet transfers.
 type TransferService struct {
@@ -108,7 +112,7 @@ func (s *TransferService) GetTransfer(ctx context.Context, id int64) (*domain.Tr
 		return nil, nil
 	}
 
-	s.writeCache(ctx, transfer)
+	s.writeCache(transfer)
 	return transfer, nil
 }
 
@@ -173,7 +177,7 @@ func (s *TransferService) checkExistingTransfer(ctx context.Context, id int64, h
 		return nil, nil
 	}
 
-	s.writeCache(ctx, existing)
+	s.writeCache(existing)
 
 	if existing.RequestHash != hash {
 		return nil, idempotencyMismatchError()
@@ -236,7 +240,7 @@ func (s *TransferService) lockAndExecuteTransfer(ctx context.Context, req Transf
 		return nil, fmt.Errorf("commit transfer transaction: %w", err)
 	}
 
-	s.writeCache(ctx, claimed)
+	s.writeCache(claimed)
 	return claimed, nil
 }
 
@@ -302,13 +306,22 @@ func (s *TransferService) executeTransfer(ctx context.Context, tx repository.Tx,
 	return domain.StatusProcessed, nil, nil
 }
 
-// writeCache best-effort caches transfer. Cache is a latency optimization
-// a failure here must never fail a request that already
-// committed successfully in Postgres.
-func (s *TransferService) writeCache(ctx context.Context, transfer *domain.Transfer) {
-	if err := s.cache.Set(ctx, transfer.ID, transfer); err != nil {
-		logger.FromContext(ctx, s.logger).Warn("cache transfer failed", slog.Any("error", err))
-	}
+// writeCache best-effort caches transfer, off the request's hot path.
+// Cache is a latency optimization (docs/DESIGN.md §6) — a failure here
+// must never fail a request that already committed successfully in
+// Postgres, and the write itself must never add to the request's
+// latency. It runs in its own goroutine with its own bounded-lifetime
+// context, deliberately not the request's ctx: that context is
+// canceled the moment the handler returns a response, which would
+// cancel the write before it had a chance to run.
+func (s *TransferService) writeCache(transfer *domain.Transfer) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
+		defer cancel()
+		if err := s.cache.Set(ctx, transfer.ID, transfer); err != nil {
+			logger.FromContext(ctx, s.logger).Warn("cache transfer failed", slog.Any("error", err))
+		}
+	}()
 }
 
 // setLockTimeout requires timeout to already be at least 1ms —

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -124,7 +125,12 @@ func (m *mockTransferRepo) InsertLedgerEntries(_ context.Context, _ repository.T
 	return m.insertLedgerErr
 }
 
+// mockCache guards setCalls with a mutex because writeCache (the only
+// caller of Set) now runs it in its own goroutine, off the request's
+// hot path -- Set can race with a test's own goroutine reading back
+// what was recorded.
 type mockCache struct {
+	mu        sync.Mutex
 	getResult *domain.Transfer
 	getErr    error
 	setErr    error
@@ -136,8 +142,35 @@ func (m *mockCache) Get(_ context.Context, _ int64) (*domain.Transfer, error) {
 }
 
 func (m *mockCache) Set(_ context.Context, _ int64, transfer *domain.Transfer) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.setCalls = append(m.setCalls, transfer)
 	return m.setErr
+}
+
+func (m *mockCache) SetCalls() []*domain.Transfer {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]*domain.Transfer(nil), m.setCalls...)
+}
+
+// waitForCacheSet polls until at least one cache Set call has been
+// recorded, or fails the test after a short timeout -- writeCache is
+// asynchronous, so its effect isn't visible the instant the call that
+// triggered it returns.
+func waitForCacheSet(t *testing.T, c *mockCache) []*domain.Transfer {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		calls := c.SetCalls()
+		if len(calls) >= 1 {
+			return calls
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for a cache Set call, got %d", len(calls))
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 type mockIDGen struct {
@@ -196,7 +229,7 @@ func TestTransfer_SameWallet(t *testing.T) {
 	_, err := svc.Transfer(context.Background(), req)
 	requireDomainErrCode(t, err, domain.ErrCodeSameWallet)
 
-	if len(c.setCalls) != 0 || db.tx != nil {
+	if len(c.SetCalls()) != 0 || db.tx != nil {
 		t.Fatalf("same-wallet check must short-circuit before any cache/DB call")
 	}
 }
@@ -291,9 +324,7 @@ func TestTransfer_ExistingTransfer_Replay(t *testing.T) {
 	if got != existing {
 		t.Fatalf("expected existing transfer to be replayed")
 	}
-	if len(c.setCalls) != 1 {
-		t.Fatalf("expected the pre-check to self-heal the cache, got %d Set calls", len(c.setCalls))
-	}
+	waitForCacheSet(t, c)
 	if db.tx != nil {
 		t.Fatalf("an already-committed id must never open a DB transaction or touch wallet locks")
 	}
@@ -420,9 +451,7 @@ func TestTransfer_InsufficientBalance(t *testing.T) {
 	if transfers.insertLedgerCalls != 0 {
 		t.Fatalf("insufficient-balance must never write ledger entries")
 	}
-	if len(c.setCalls) != 1 {
-		t.Fatalf("expected the persisted FAILED transfer to be cached")
-	}
+	waitForCacheSet(t, c)
 }
 
 func TestTransfer_Success(t *testing.T) {
@@ -460,9 +489,7 @@ func TestTransfer_Success(t *testing.T) {
 	if !db.tx.committed {
 		t.Fatalf("success must commit")
 	}
-	if len(c.setCalls) != 1 {
-		t.Fatalf("expected the processed transfer to be cached")
-	}
+	waitForCacheSet(t, c)
 }
 
 // --- GetTransfer / InitTransfer ------------------------------------------
@@ -492,8 +519,9 @@ func TestGetTransfer_CacheMiss_FallsThroughAndSelfHeals(t *testing.T) {
 	if err != nil || got != want {
 		t.Fatalf("expected (%v, nil), got (%v, %v)", want, got, err)
 	}
-	if len(c.setCalls) != 1 || c.setCalls[0] != want {
-		t.Fatalf("expected a cache miss to self-heal by writing back the Postgres result, got %d Set calls", len(c.setCalls))
+	calls := waitForCacheSet(t, c)
+	if calls[0] != want {
+		t.Fatalf("expected the cache to be self-healed with the Postgres result, got %+v", calls[0])
 	}
 }
 
