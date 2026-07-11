@@ -8,11 +8,12 @@ type ErrorCode string
 // The full set of typed domain errors. Each maps to one HTTP status and,
 // where persisted, one transfers.failure_reason value.
 const (
-	ErrCodeInvalidAmount        ErrorCode = "INVALID_AMOUNT"
-	ErrCodeSameWallet           ErrorCode = "SAME_WALLET"
-	ErrCodeWalletNotFound       ErrorCode = "WALLET_NOT_FOUND"
-	ErrCodeInsufficientBalance  ErrorCode = "INSUFFICIENT_BALANCE"
-	ErrCodeIdempotencyKeyReused ErrorCode = "IDEMPOTENCY_KEY_REUSED"
+	ErrCodeInvalidAmount         ErrorCode = "INVALID_AMOUNT"
+	ErrCodeSameWallet            ErrorCode = "SAME_WALLET"
+	ErrCodeWalletNotFound        ErrorCode = "WALLET_NOT_FOUND"
+	ErrCodeInsufficientBalance   ErrorCode = "INSUFFICIENT_BALANCE"
+	ErrCodeIdempotencyKeyReused  ErrorCode = "IDEMPOTENCY_KEY_REUSED"
+	ErrCodeAmountUnrepresentable ErrorCode = "AMOUNT_UNREPRESENTABLE"
 )
 
 // Error is a typed domain failure, distinguishable from unexpected
@@ -23,3 +24,13 @@ type Error struct {
 }
 
 func (e *Error) Error() string { return e.Message }
+
+// ErrAmountUnrepresentable is a tier-1 structural failure: the client's
+// amount, once shifted into minor units, doesn't fit in an int64. Kept
+// distinct from ErrCodeInvalidAmount (a tier-2 business check for
+// amount <= 0) so the two can carry different HTTP statuses — this one
+// maps to 400, INVALID_AMOUNT maps to 422.
+var ErrAmountUnrepresentable = &Error{
+	Code:    ErrCodeAmountUnrepresentable,
+	Message: "amount is too large or too precise to represent",
+}

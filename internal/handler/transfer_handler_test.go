@@ -118,6 +118,28 @@ func TestCreateTransfer_InvalidAmountShape(t *testing.T) {
 	}
 }
 
+func TestCreateTransfer_AmountUnrepresentable(t *testing.T) {
+	// Far more digits than an int64 can hold once shifted into minor
+	// units -- distinct from a merely negative or too-many-decimals
+	// amount (TestCreateTransfer_InvalidAmountShape), which are shape
+	// violations caught by the regex, not overflow. This amount passes
+	// the regex (all digits, 2 decimal places) but can't be converted.
+	body := `{"idempotencyKey":"123","fromWalletId":"` + validWalletA + `","toWalletId":"` + validWalletB + `","amount":999999999999999999999.00}`
+	r := testRouter(&mockTransferService{})
+	rec := doRequest(r, http.MethodPost, "/transfers", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["error"] != string(domain.ErrCodeAmountUnrepresentable) {
+		t.Fatalf("expected error code %s, got %+v", domain.ErrCodeAmountUnrepresentable, resp)
+	}
+}
+
 func TestCreateTransfer_DomainErrorMapping(t *testing.T) {
 	cases := []struct {
 		code domain.ErrorCode
@@ -128,6 +150,11 @@ func TestCreateTransfer_DomainErrorMapping(t *testing.T) {
 		{domain.ErrCodeWalletNotFound, http.StatusUnprocessableEntity},
 		{domain.ErrCodeInsufficientBalance, http.StatusUnprocessableEntity},
 		{domain.ErrCodeIdempotencyKeyReused, http.StatusConflict},
+		// The service itself never returns this code (it's caught in the
+		// handler before the service is ever called) -- included here to
+		// pin domainErrorHTTPStatus's mapping directly, independent of
+		// which path reaches it.
+		{domain.ErrCodeAmountUnrepresentable, http.StatusBadRequest},
 	}
 	for _, tc := range cases {
 		svc := &mockTransferService{transferErr: &domain.Error{Code: tc.code, Message: "boom"}}

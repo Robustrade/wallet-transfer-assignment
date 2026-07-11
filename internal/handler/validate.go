@@ -41,10 +41,7 @@ func validateAmount(amount json.Number) (decimal.Decimal, int64, error) {
 	shifted := parsed.Shift(2)
 	minorUnits := shifted.IntPart()
 	if !shifted.Equal(decimal.NewFromInt(minorUnits)) {
-		return decimal.Decimal{}, 0, &domain.Error{
-			Code:    domain.ErrCodeInvalidAmount,
-			Message: "amount is too large to represent",
-		}
+		return decimal.Decimal{}, 0, domain.ErrAmountUnrepresentable
 	}
 	return parsed, minorUnits, nil
 }

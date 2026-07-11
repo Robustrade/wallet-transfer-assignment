@@ -45,8 +45,15 @@ func statusForTransfer(t *domain.Transfer) int {
 // shared by both live-rejection errors and persisted FailureReason
 // values so the two paths can never disagree on what a code means.
 func domainErrorHTTPStatus(code domain.ErrorCode) int {
-	if code == domain.ErrCodeIdempotencyKeyReused {
+	switch code {
+	case domain.ErrCodeIdempotencyKeyReused:
 		return http.StatusConflict
+	case domain.ErrCodeAmountUnrepresentable:
+		// Tier-1 structural failure (the client's amount doesn't fit in
+		// an int64 at all), never a persisted FailureReason — this case
+		// only fires via the live-rejection path.
+		return http.StatusBadRequest
+	default:
+		return http.StatusUnprocessableEntity
 	}
-	return http.StatusUnprocessableEntity
 }
