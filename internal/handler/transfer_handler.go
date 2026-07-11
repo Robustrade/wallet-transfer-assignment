@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/domain"
-	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/middleware"
+	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/platform/logger"
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/service"
 )
 
@@ -119,6 +119,6 @@ func (h *TransferHandler) respondError(c *gin.Context, err error) {
 		return
 	}
 
-	middleware.LoggerWithCorrelationID(c.Request.Context(), h.logger).Error("unexpected transfer error", slog.Any("error", err))
+	logger.FromContext(c.Request.Context(), h.logger).Error("unexpected transfer error", slog.Any("error", err))
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 }

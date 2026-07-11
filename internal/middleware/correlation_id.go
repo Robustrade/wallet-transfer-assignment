@@ -5,14 +5,11 @@
 package middleware
 
 import (
-	"context"
-	"log/slog"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-)
 
-type correlationIDKey struct{}
+	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/platform/logger"
+)
 
 const correlationIDHeader = "X-Correlation-ID"
 
@@ -21,6 +18,10 @@ const correlationIDHeader = "X-Correlation-ID"
 // echoing it back on the response. This is the one sanctioned use of
 // context.Value here: request-scoped data only, never app-scoped
 // dependencies like a DB pool, which are constructor-injected instead.
+//
+// The context key itself lives in internal/platform/logger, not here —
+// that's the only way a service or handler can read the correlation ID
+// back out for logging without depending on Gin.
 func CorrelationID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		correlationID := c.GetHeader(correlationIDHeader)
@@ -28,28 +29,10 @@ func CorrelationID() gin.HandlerFunc {
 			correlationID = uuid.NewString()
 		}
 
-		ctx := context.WithValue(c.Request.Context(), correlationIDKey{}, correlationID)
+		ctx := logger.WithCorrelationID(c.Request.Context(), correlationID)
 		c.Request = c.Request.WithContext(ctx)
 
 		c.Header(correlationIDHeader, correlationID)
 		c.Next()
 	}
-}
-
-// CorrelationIDFromContext returns the correlation ID set by CorrelationID,
-// or "" if none is present.
-func CorrelationIDFromContext(ctx context.Context) string {
-	if id, ok := ctx.Value(correlationIDKey{}).(string); ok {
-		return id
-	}
-	return ""
-}
-
-// LoggerWithCorrelationID returns logger with the request's correlation ID
-// attached as a field, or logger unchanged if none is present.
-func LoggerWithCorrelationID(ctx context.Context, logger *slog.Logger) *slog.Logger {
-	if id := CorrelationIDFromContext(ctx); id != "" {
-		return logger.With(slog.String("correlation_id", id))
-	}
-	return logger
 }

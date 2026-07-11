@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/domain"
-	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/middleware"
+	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/platform/logger"
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/repository"
 )
 
@@ -280,7 +280,7 @@ func (s *TransferService) executeTransfer(ctx context.Context, tx repository.Tx,
 // committed successfully in Postgres.
 func (s *TransferService) writeCache(ctx context.Context, transfer *domain.Transfer) {
 	if err := s.cache.Set(ctx, transfer.ID, transfer); err != nil {
-		middleware.LoggerWithCorrelationID(ctx, s.logger).Warn("cache transfer failed", slog.Any("error", err))
+		logger.FromContext(ctx, s.logger).Warn("cache transfer failed", slog.Any("error", err))
 	}
 }
 
