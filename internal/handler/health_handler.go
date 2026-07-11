@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,10 +26,22 @@ func NewHealthHandler(db *pgxpool.Pool, redis *redis.Client) *HealthHandler {
 }
 
 // Health returns 200 when both Postgres and Redis are reachable, 503
-// otherwise, reporting per-dependency status in the body.
+// otherwise, reporting per-dependency status in the body. The two
+// checks run concurrently so the worst-case latency is bounded by the
+// slower of the two, not their sum.
 func (h *HealthHandler) Health(c *gin.Context) {
-	postgresOK := h.checkPostgres(c.Request.Context())
-	redisOK := h.checkRedis(c.Request.Context())
+	var postgresOK, redisOK bool
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		postgresOK = h.checkPostgres(c.Request.Context())
+	}()
+	go func() {
+		defer wg.Done()
+		redisOK = h.checkRedis(c.Request.Context())
+	}()
+	wg.Wait()
 
 	postgresStatus, redisStatus := "ok", "ok"
 	if !postgresOK {
