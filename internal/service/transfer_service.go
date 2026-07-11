@@ -191,6 +191,7 @@ func (s *TransferService) lockAndExecuteTransfer(ctx context.Context, req Transf
 		return nil, err
 	}
 	if claimed == nil {
+		_ = tx.Rollback(ctx)
 		return s.checkConflictAfterRace(ctx, req.ID, hash)
 	}
 
