@@ -1,5 +1,5 @@
 CREATE TABLE ledger_entries (
-    id          BIGINT PRIMARY KEY,
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     transfer_id BIGINT NOT NULL REFERENCES transfers (id),
     wallet_id   VARCHAR(36) NOT NULL REFERENCES wallets (id),
     entry_type  VARCHAR(6) NOT NULL CHECK (entry_type IN ('DEBIT', 'CREDIT')),
