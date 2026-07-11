@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
@@ -21,10 +22,10 @@ func NewWalletRepo() *WalletRepo {
 }
 
 // GetForUpdate locks and returns the wallets identified by walletIDs, one
-// row at a time, in the order walletIDs is given — callers must pass
-// walletIDs already sorted (ascending), so that concurrent transfers
-// touching the same wallet pair always request locks in the same order
-// and can never deadlock.
+// row at a time, in ascending ID order — sorted internally, unconditionally,
+// so that concurrent transfers touching the same wallet pair always
+// request locks in the same order and can never deadlock, regardless of
+// what order the caller happened to pass walletIDs in.
 //
 // This deliberately issues one `SELECT ... WHERE id = $1 FOR UPDATE` per
 // wallet rather than a single `WHERE id = ANY($1) ORDER BY id FOR
@@ -35,6 +36,8 @@ func NewWalletRepo() *WalletRepo {
 // single-row locks make the acquisition order explicit and impossible
 // for the planner to reorder.
 func (r *WalletRepo) GetForUpdate(ctx context.Context, tx repository.Tx, walletIDs ...string) ([]domain.Wallet, error) {
+	sort.Strings(walletIDs)
+
 	wallets := make([]domain.Wallet, 0, len(walletIDs))
 	for _, id := range walletIDs {
 		row := tx.QueryRow(ctx, `

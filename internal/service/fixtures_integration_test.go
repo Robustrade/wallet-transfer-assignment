@@ -23,6 +23,15 @@ func mustTestIDGenerator() *idgen.Generator {
 	return gen
 }
 
+func nextTestTransferID(t *testing.T) int64 {
+	t.Helper()
+	id, err := testTransferIDGen.NextID()
+	if err != nil {
+		t.Fatalf("mint test transfer id: %v", err)
+	}
+	return id
+}
+
 // newTestWallet inserts a fresh wallet with a unique ID and the given
 // balance directly via SQL. Every integration test creates its own
 // wallets — never reuses another test's — so concurrent test runs can

@@ -24,6 +24,14 @@ func TestTransfer_ConcurrencyStress(t *testing.T) {
 
 	svc := newIntegrationTransferService(t)
 
+	// Minted up front, in the test goroutine: t.Fatalf inside a spawned
+	// goroutine only halts that goroutine (via runtime.Goexit), not the
+	// test, so any minting error must surface here instead.
+	ids := make([]int64, n)
+	for i := range ids {
+		ids[i] = nextTestTransferID(t)
+	}
+
 	var wg sync.WaitGroup
 	errs := make([]error, n)
 	for i := 0; i < n; i++ {
@@ -31,7 +39,7 @@ func TestTransfer_ConcurrencyStress(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			req := TransferRequest{
-				ID:               testTransferIDGen.NextID(),
+				ID:               ids[i],
 				FromWalletID:     from,
 				ToWalletID:       to,
 				Amount:           decimal.RequireFromString(amount),
@@ -75,7 +83,7 @@ func TestTransfer_DoubleClickRace(t *testing.T) {
 	svc := newIntegrationTransferService(t)
 
 	req := TransferRequest{
-		ID:               testTransferIDGen.NextID(),
+		ID:               nextTestTransferID(t),
 		FromWalletID:     from,
 		ToWalletID:       to,
 		Amount:           decimal.RequireFromString("5.00"),

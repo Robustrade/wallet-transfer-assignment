@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
-	"sort"
 	"time"
 
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/domain"
@@ -226,15 +225,13 @@ func (s *TransferService) checkConflictAfterRace(ctx context.Context, id int64, 
 	return existing, nil
 }
 
-// lockAndValidateWallets locks both wallets in ascending ID order —
-// every caller sorting the same way means concurrent transfers on the
-// same pair always request locks in the same order, which can't
-// deadlock — and reports WALLET_NOT_FOUND if either is missing.
+// lockAndValidateWallets locks both wallets — GetForUpdate sorts
+// walletIDs internally before acquiring locks, so every caller ends up
+// requesting the same pair in the same order regardless of the order
+// passed here, which can't deadlock — and reports WALLET_NOT_FOUND if
+// either is missing.
 func (s *TransferService) lockAndValidateWallets(ctx context.Context, tx repository.Tx, fromID, toID string) (map[string]domain.Wallet, error) {
-	ids := []string{fromID, toID}
-	sort.Strings(ids)
-
-	wallets, err := s.walletRepo.GetForUpdate(ctx, tx, ids...)
+	wallets, err := s.walletRepo.GetForUpdate(ctx, tx, fromID, toID)
 	if err != nil {
 		return nil, fmt.Errorf("lock wallets: %w", err)
 	}

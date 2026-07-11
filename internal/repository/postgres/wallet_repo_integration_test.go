@@ -36,6 +36,41 @@ func TestWalletRepo_GetForUpdate_ReturnsLockedWallets(t *testing.T) {
 	}
 }
 
+// TestWalletRepo_GetForUpdate_SortsRegardlessOfInputOrder proves
+// GetForUpdate itself enforces ascending lock order — passing walletIDs
+// in descending order must still lock (and return) them ascending, so
+// callers can never defeat the deadlock-free ordering guarantee by
+// passing IDs unsorted.
+func TestWalletRepo_GetForUpdate_SortsRegardlessOfInputOrder(t *testing.T) {
+	ctx := context.Background()
+	a := newTestWallet(t, "100.00")
+	b := newTestWallet(t, "50.00")
+
+	ids := []string{a.ID, b.ID}
+	if ids[0] < ids[1] {
+		ids[0], ids[1] = ids[1], ids[0]
+	}
+	// ids is now strictly descending.
+
+	tx, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	repo := NewWalletRepo()
+	wallets, err := repo.GetForUpdate(ctx, tx, ids...)
+	if err != nil {
+		t.Fatalf("GetForUpdate: %v", err)
+	}
+	if len(wallets) != 2 {
+		t.Fatalf("expected 2 wallets, got %d", len(wallets))
+	}
+	if wallets[0].ID > wallets[1].ID {
+		t.Fatalf("expected wallets locked/returned in ascending ID order despite descending input, got %s then %s", wallets[0].ID, wallets[1].ID)
+	}
+}
+
 func TestWalletRepo_GetForUpdate_MissingWalletReturnsFewer(t *testing.T) {
 	ctx := context.Background()
 	a := newTestWallet(t, "10.00")

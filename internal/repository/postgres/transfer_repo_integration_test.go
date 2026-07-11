@@ -24,7 +24,11 @@ func mustIDGenerator() *idgen.Generator {
 
 func nextTestTransferID(t *testing.T) int64 {
 	t.Helper()
-	return testIDGen.NextID()
+	id, err := testIDGen.NextID()
+	if err != nil {
+		t.Fatalf("mint test transfer id: %v", err)
+	}
+	return id
 }
 
 func TestTransferRepo_InsertTransfer_Success(t *testing.T) {
