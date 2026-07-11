@@ -1,5 +1,5 @@
 // Package logger builds the application's structured logger. It has no
-// domain knowledge — see docs/DESIGN.md §8.
+// domain knowledge — doesn't know what a "wallet" is.
 package logger
 
 import (

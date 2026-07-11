@@ -1,6 +1,6 @@
 // Package migrate runs pending golang-migrate migrations at startup,
-// before the server binds. It has no domain knowledge — see
-// docs/DESIGN.md §8.
+// before the server binds. It has no domain knowledge — doesn't know
+// what a "wallet" is.
 package migrate
 
 import (

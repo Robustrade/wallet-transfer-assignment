@@ -1,6 +1,6 @@
 // Package idgen generates Snowflake-style, time-ordered 64-bit IDs used as
 // transfer identifiers. A transfer's ID doubles as its idempotency key and
-// as the foreign-key target for ledger_entries (see docs/DESIGN.md §5) —
+// as the foreign-key target for ledger_entries —
 // nothing outside this package should ever need to decode or depend on the
 // internal bit layout below.
 package idgen
@@ -44,9 +44,7 @@ type Generator struct {
 // workerID must be unique across every concurrently running instance of
 // this service — two instances sharing a workerID can produce colliding
 // IDs. For this project, workerID comes from config (WORKER_ID env var,
-// default 0 for a single instance). See docs/DESIGN.md §5 for how a
-// multi-replica deployment would derive this instead (e.g. a StatefulSet
-// pod ordinal).
+// default 0 for a single instance).
 func NewGenerator(workerID int64) (*Generator, error) {
 	if workerID < 0 || workerID > maxWorker {
 		return nil, fmt.Errorf("idgen: workerID must be between 0 and %d, got %d", maxWorker, workerID)

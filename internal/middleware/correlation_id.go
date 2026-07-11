@@ -1,5 +1,7 @@
-// Package middleware holds cross-cutting HTTP concerns, attached per
-// route-group rather than globally — see docs/DESIGN.md §8.
+// Package middleware holds cross-cutting HTTP concerns. Attached per
+// route-group, not globally — there's currently no concern that applies
+// to literally every route (e.g. /health deliberately stays
+// dependency-free).
 package middleware
 
 import (
@@ -17,7 +19,8 @@ const correlationIDHeader = "X-Correlation-ID"
 // CorrelationID attaches a per-request correlation ID to the request
 // context, reusing an inbound X-Correlation-ID header if present and
 // echoing it back on the response. This is the one sanctioned use of
-// context.Value for request-scoped data — see CLAUDE.md.
+// context.Value here: request-scoped data only, never app-scoped
+// dependencies like a DB pool, which are constructor-injected instead.
 func CorrelationID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		correlationID := c.GetHeader(correlationIDHeader)
