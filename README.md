@@ -62,7 +62,7 @@ which routinely exceeds what JavaScript's `Number` can represent exactly.
   "idempotencyKey": "<transactionId from init>",
   "fromWalletId": "<uuid>",
   "toWalletId": "<uuid>",
-  "amount": "10.00"
+  "amount": 10.00
 }
 ```
 
@@ -157,7 +157,7 @@ curl -s -X POST localhost:8080/transfers \
     "idempotencyKey": "<transactionId from step 1>",
     "fromWalletId": "018f0000-0000-7000-8000-000000000001",
     "toWalletId": "018f0000-0000-7000-8000-000000000002",
-    "amount": "10.00"
+    "amount": 10.00
   }'
 # → 200 {"id":"...","status":"PROCESSED",...}
 

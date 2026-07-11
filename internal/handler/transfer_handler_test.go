@@ -49,7 +49,7 @@ const validWalletA = "018f0000-0000-7000-8000-000000000001"
 const validWalletB = "018f0000-0000-7000-8000-000000000002"
 
 func validCreateBody() string {
-	return `{"idempotencyKey":"123","fromWalletId":"` + validWalletA + `","toWalletId":"` + validWalletB + `","amount":"10.00"}`
+	return `{"idempotencyKey":"123","fromWalletId":"` + validWalletA + `","toWalletId":"` + validWalletB + `","amount":10.00}`
 }
 
 func doRequest(r *gin.Engine, method, path, body string) *httptest.ResponseRecorder {
@@ -87,7 +87,7 @@ func TestCreateTransfer_MalformedJSON(t *testing.T) {
 
 func TestCreateTransfer_InvalidIdempotencyKey(t *testing.T) {
 	r := testRouter(&mockTransferService{})
-	body := `{"idempotencyKey":"not-a-number","fromWalletId":"` + validWalletA + `","toWalletId":"` + validWalletB + `","amount":"10.00"}`
+	body := `{"idempotencyKey":"not-a-number","fromWalletId":"` + validWalletA + `","toWalletId":"` + validWalletB + `","amount":10.00}`
 	rec := doRequest(r, http.MethodPost, "/transfers", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -96,7 +96,7 @@ func TestCreateTransfer_InvalidIdempotencyKey(t *testing.T) {
 
 func TestCreateTransfer_InvalidWalletID(t *testing.T) {
 	r := testRouter(&mockTransferService{})
-	body := `{"idempotencyKey":"123","fromWalletId":"not-a-uuid","toWalletId":"` + validWalletB + `","amount":"10.00"}`
+	body := `{"idempotencyKey":"123","fromWalletId":"not-a-uuid","toWalletId":"` + validWalletB + `","amount":10.00}`
 	rec := doRequest(r, http.MethodPost, "/transfers", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -104,9 +104,12 @@ func TestCreateTransfer_InvalidWalletID(t *testing.T) {
 }
 
 func TestCreateTransfer_InvalidAmountShape(t *testing.T) {
+	// amount is sent as a bare JSON number, same as a valid request. "abc"
+	// isn't valid JSON syntax as a bare token, so it 400s at the bind step
+	// rather than the amount-shape regex — still the right status either way.
 	cases := []string{"abc", "-5", "1.234", "0.001"}
 	for _, amount := range cases {
-		body := `{"idempotencyKey":"123","fromWalletId":"` + validWalletA + `","toWalletId":"` + validWalletB + `","amount":"` + amount + `"}`
+		body := `{"idempotencyKey":"123","fromWalletId":"` + validWalletA + `","toWalletId":"` + validWalletB + `","amount":` + amount + `}`
 		r := testRouter(&mockTransferService{})
 		rec := doRequest(r, http.MethodPost, "/transfers", body)
 		if rec.Code != http.StatusBadRequest {
