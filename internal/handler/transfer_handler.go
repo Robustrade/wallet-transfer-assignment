@@ -63,6 +63,11 @@ func (h *TransferHandler) CreateTransfer(c *gin.Context) {
 	}
 	amount, minorUnits, err := validateAmount(req.Amount)
 	if err != nil {
+		var domainErr *domain.Error
+		if errors.As(err, &domainErr) {
+			h.respondError(c, err)
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
