@@ -123,7 +123,7 @@ func validateTransferRules(req TransferRequest) error {
 		return &domain.Error{Code: domain.ErrCodeSameWallet, Message: "fromWalletId and toWalletId must differ"}
 	}
 	if req.AmountMinorUnits <= 0 {
-		return &domain.Error{Code: domain.ErrCodeInvalidAmount, Message: "amount must be greater than zero"}
+		return &domain.Error{Code: domain.ErrCodeInvalidAmount, Message: "Invalid transfer amount"}
 	}
 	return nil
 }

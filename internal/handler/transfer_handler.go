@@ -57,25 +57,20 @@ func (h *TransferHandler) CreateTransfer(c *gin.Context) {
 
 	id, err := validateIdempotencyKey(req.IdempotencyKey)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.respondError(c, err)
 		return
 	}
 	if err := validateWalletID(req.FromWalletID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.respondError(c, err)
 		return
 	}
 	if err := validateWalletID(req.ToWalletID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.respondError(c, err)
 		return
 	}
 	amount, minorUnits, err := validateAmount(req.Amount)
 	if err != nil {
-		var domainErr *domain.Error
-		if errors.As(err, &domainErr) {
-			h.respondError(c, err)
-			return
-		}
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.respondError(c, err)
 		return
 	}
 

@@ -24,12 +24,12 @@ var amountPattern = regexp.MustCompile(`^\d+(\.\d{1,2})?$`)
 func validateAmount(amount json.Number) (decimal.Decimal, int64, error) {
 	raw := amount.String()
 	if !amountPattern.MatchString(raw) {
-		return decimal.Decimal{}, 0, fmt.Errorf("amount must be a positive number with at most 2 decimal places")
+		return decimal.Decimal{}, 0, domain.ErrInvalidAmountFormat
 	}
 
 	parsed, err := decimal.NewFromString(raw)
 	if err != nil {
-		return decimal.Decimal{}, 0, fmt.Errorf("amount is not a valid decimal: %w", err)
+		return decimal.Decimal{}, 0, domain.ErrInvalidAmountFormat
 	}
 
 	// IntPart silently truncates (wraps) if the value doesn't fit in an
@@ -41,7 +41,7 @@ func validateAmount(amount json.Number) (decimal.Decimal, int64, error) {
 	shifted := parsed.Shift(2)
 	minorUnits := shifted.IntPart()
 	if !shifted.Equal(decimal.NewFromInt(minorUnits)) {
-		return decimal.Decimal{}, 0, domain.ErrAmountUnrepresentable
+		return decimal.Decimal{}, 0, domain.ErrInvalidAmountFormat
 	}
 	return parsed, minorUnits, nil
 }
@@ -53,7 +53,10 @@ func validateAmount(amount json.Number) (decimal.Decimal, int64, error) {
 // change a breaking API change for no correctness benefit.
 func validateWalletID(raw string) error {
 	if _, err := uuid.Parse(raw); err != nil {
-		return fmt.Errorf("invalid wallet id: %w", err)
+		return &domain.Error{
+			Code:    domain.ErrCodeInvalidWalletID,
+			Message: fmt.Sprintf("invalid wallet id: %v", err),
+		}
 	}
 	return nil
 }
@@ -66,7 +69,10 @@ func validateWalletID(raw string) error {
 func validateIdempotencyKey(raw string) (int64, error) {
 	id, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("idempotencyKey must be a valid int64 string: %w", err)
+		return 0, &domain.Error{
+			Code:    domain.ErrCodeInvalidIdempotencyKey,
+			Message: fmt.Sprintf("idempotencyKey must be a valid int64 string: %v", err),
+		}
 	}
 	return id, nil
 }

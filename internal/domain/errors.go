@@ -13,8 +13,10 @@ const (
 	ErrCodeWalletNotFound        ErrorCode = "WALLET_NOT_FOUND"
 	ErrCodeInsufficientBalance   ErrorCode = "INSUFFICIENT_BALANCE"
 	ErrCodeIdempotencyKeyReused  ErrorCode = "IDEMPOTENCY_KEY_REUSED"
-	ErrCodeAmountUnrepresentable ErrorCode = "AMOUNT_UNREPRESENTABLE"
 	ErrCodeTransferInitFailed    ErrorCode = "TRANSFER_INIT_FAILED"
+	ErrCodeInvalidAmountFormat   ErrorCode = "INVALID_AMOUNT_FORMAT"
+	ErrCodeInvalidWalletID       ErrorCode = "INVALID_WALLET_ID"
+	ErrCodeInvalidIdempotencyKey ErrorCode = "INVALID_IDEMPOTENCY_KEY"
 )
 
 // Error is a typed domain failure, distinguishable from unexpected
@@ -26,14 +28,16 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Message }
 
-// ErrAmountUnrepresentable is a tier-1 structural failure: the client's
-// amount, once shifted into minor units, doesn't fit in an int64. Kept
-// distinct from ErrCodeInvalidAmount (a tier-2 business check for
-// amount <= 0) so the two can carry different HTTP statuses — this one
-// maps to 400, INVALID_AMOUNT maps to 422.
-var ErrAmountUnrepresentable = &Error{
-	Code:    ErrCodeAmountUnrepresentable,
-	Message: "amount is too large or too precise to represent",
+// ErrInvalidAmountFormat is a tier-1 structural failure: the amount
+// either doesn't parse as a decimal at all, or parses but overflows
+// int64 once shifted into minor units. Kept distinct from
+// ErrCodeInvalidAmount (a tier-2 business check for amount <= 0) so the
+// two can carry different HTTP statuses — this one maps to 400,
+// INVALID_AMOUNT maps to 422. Both share identical message text,
+// distinguished only by Code and HTTP status.
+var ErrInvalidAmountFormat = &Error{
+	Code:    ErrCodeInvalidAmountFormat,
+	Message: "Invalid transfer amount",
 }
 
 // ErrTransferInitFailed is returned when minting a new transfer ID

@@ -48,10 +48,10 @@ func domainErrorHTTPStatus(code domain.ErrorCode) int {
 	switch code {
 	case domain.ErrCodeIdempotencyKeyReused:
 		return http.StatusConflict
-	case domain.ErrCodeAmountUnrepresentable:
-		// Tier-1 structural failure (the client's amount doesn't fit in
-		// an int64 at all), never a persisted FailureReason — this case
-		// only fires via the live-rejection path.
+	case domain.ErrCodeInvalidAmountFormat, domain.ErrCodeInvalidWalletID, domain.ErrCodeInvalidIdempotencyKey:
+		// Tier-1 structural failures (malformed request shape), never a
+		// persisted FailureReason — these only fire via the live-rejection
+		// path, before the service is ever called.
 		return http.StatusBadRequest
 	case domain.ErrCodeTransferInitFailed:
 		// Infrastructure failure (e.g. ID-generation clock regression),

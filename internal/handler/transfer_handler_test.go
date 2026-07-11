@@ -124,6 +124,14 @@ func TestCreateTransfer_InvalidIdempotencyKey(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["error"] != string(domain.ErrCodeInvalidIdempotencyKey) {
+		t.Fatalf("expected error code %s, got %+v", domain.ErrCodeInvalidIdempotencyKey, resp)
+	}
 }
 
 func TestCreateTransfer_InvalidWalletID(t *testing.T) {
@@ -133,13 +141,31 @@ func TestCreateTransfer_InvalidWalletID(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["error"] != string(domain.ErrCodeInvalidWalletID) {
+		t.Fatalf("expected error code %s, got %+v", domain.ErrCodeInvalidWalletID, resp)
+	}
+}
+
+func TestCreateTransfer_MalformedAmountJSON(t *testing.T) {
+	// "abc" isn't valid JSON syntax as a bare token, so it 400s at the
+	// bind step, before validateAmount (and its typed error) ever runs.
+	body := `{"idempotencyKey":"123","fromWalletId":"` + validWalletA + `","toWalletId":"` + validWalletB + `","amount":abc}`
+	r := testRouter(&mockTransferService{})
+	rec := doRequest(r, http.MethodPost, "/transfers", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
 }
 
 func TestCreateTransfer_InvalidAmountShape(t *testing.T) {
-	// amount is sent as a bare JSON number, same as a valid request. "abc"
-	// isn't valid JSON syntax as a bare token, so it 400s at the bind step
-	// rather than the amount-shape regex — still the right status either way.
-	cases := []string{"abc", "-5", "1.234", "0.001"}
+	// Each of these is syntactically a valid bare JSON number, so they
+	// reach validateAmount's shape regex and fail there, not at bind time.
+	cases := []string{"-5", "1.234", "0.001"}
 	for _, amount := range cases {
 		body := `{"idempotencyKey":"123","fromWalletId":"` + validWalletA + `","toWalletId":"` + validWalletB + `","amount":` + amount + `}`
 		r := testRouter(&mockTransferService{})
@@ -147,15 +173,24 @@ func TestCreateTransfer_InvalidAmountShape(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("amount %q: expected 400, got %d", amount, rec.Code)
 		}
+
+		var resp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("amount %q: decode response: %v", amount, err)
+		}
+		if resp["error"] != string(domain.ErrCodeInvalidAmountFormat) {
+			t.Fatalf("amount %q: expected error code %s, got %+v", amount, domain.ErrCodeInvalidAmountFormat, resp)
+		}
 	}
 }
 
-func TestCreateTransfer_AmountUnrepresentable(t *testing.T) {
+func TestCreateTransfer_AmountOverflow(t *testing.T) {
 	// Far more digits than an int64 can hold once shifted into minor
 	// units -- distinct from a merely negative or too-many-decimals
 	// amount (TestCreateTransfer_InvalidAmountShape), which are shape
-	// violations caught by the regex, not overflow. This amount passes
-	// the regex (all digits, 2 decimal places) but can't be converted.
+	// violations caught by the regex before this ever parses. This
+	// amount passes the regex (all digits, 2 decimal places) but
+	// overflows on conversion -- both cases share the same typed error.
 	body := `{"idempotencyKey":"123","fromWalletId":"` + validWalletA + `","toWalletId":"` + validWalletB + `","amount":999999999999999999999.00}`
 	r := testRouter(&mockTransferService{})
 	rec := doRequest(r, http.MethodPost, "/transfers", body)
@@ -167,8 +202,8 @@ func TestCreateTransfer_AmountUnrepresentable(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp["error"] != string(domain.ErrCodeAmountUnrepresentable) {
-		t.Fatalf("expected error code %s, got %+v", domain.ErrCodeAmountUnrepresentable, resp)
+	if resp["error"] != string(domain.ErrCodeInvalidAmountFormat) {
+		t.Fatalf("expected error code %s, got %+v", domain.ErrCodeInvalidAmountFormat, resp)
 	}
 }
 
@@ -182,11 +217,13 @@ func TestCreateTransfer_DomainErrorMapping(t *testing.T) {
 		{domain.ErrCodeWalletNotFound, http.StatusUnprocessableEntity},
 		{domain.ErrCodeInsufficientBalance, http.StatusUnprocessableEntity},
 		{domain.ErrCodeIdempotencyKeyReused, http.StatusConflict},
-		// The service itself never returns this code (it's caught in the
-		// handler before the service is ever called) -- included here to
-		// pin domainErrorHTTPStatus's mapping directly, independent of
+		// The service itself never returns these codes (they're caught in
+		// the handler before the service is ever called) -- included here
+		// to pin domainErrorHTTPStatus's mapping directly, independent of
 		// which path reaches it.
-		{domain.ErrCodeAmountUnrepresentable, http.StatusBadRequest},
+		{domain.ErrCodeInvalidAmountFormat, http.StatusBadRequest},
+		{domain.ErrCodeInvalidWalletID, http.StatusBadRequest},
+		{domain.ErrCodeInvalidIdempotencyKey, http.StatusBadRequest},
 	}
 	for _, tc := range cases {
 		svc := &mockTransferService{transferErr: &domain.Error{Code: tc.code, Message: "boom"}}
