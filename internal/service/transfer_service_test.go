@@ -248,6 +248,27 @@ func TestTransfer_CacheHit_HashMismatch(t *testing.T) {
 	requireDomainErrCode(t, err, domain.ErrCodeIdempotencyKeyReused)
 }
 
+func TestTransfer_CacheGetError_FallsBackToPostgres(t *testing.T) {
+	// Cache is a latency optimization only (docs/DESIGN.md §6) -- a Redis
+	// failure must never fail a request that Postgres can still answer.
+	req := validRequest()
+	hash := computeHash(req.FromWalletID, req.ToWalletID, req.AmountMinorUnits)
+	existing := &domain.Transfer{ID: req.ID, RequestHash: hash, Status: domain.StatusProcessed}
+
+	db := &fakeTransactor{}
+	transfers := &mockTransferRepo{findByIDResults: []*domain.Transfer{existing}}
+	c := &mockCache{getErr: errors.New("redis unavailable")}
+	svc := newTestService(db, &mockWalletRepo{}, transfers, c)
+
+	got, err := svc.Transfer(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != existing {
+		t.Fatalf("expected fallback to Postgres to replay the existing transfer")
+	}
+}
+
 // --- pre-transaction existing-transfer check (cache miss, id already
 // committed) -- must resolve without ever touching wallets ---------------
 

@@ -119,10 +119,13 @@ func computeHash(fromWalletID, toWalletID string, amountMinorUnits int64) string
 
 // checkCache is the Redis half of the flow. A nil, nil result means a
 // cache miss — the caller should fall through to the Postgres checks.
+// Cache is a latency optimization only (docs/DESIGN.md §6): a Get
+// failure falls back to Postgres rather than failing the request.
 func (s *TransferService) checkCache(ctx context.Context, id int64, hash string) (*domain.Transfer, error) {
 	cached, err := s.cache.Get(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("check transfer cache: %w", err)
+		logger.FromContext(ctx, s.logger).Warn("check transfer cache failed; falling back to postgres", slog.Any("error", err))
+		return nil, nil
 	}
 	if cached == nil {
 		return nil, nil
