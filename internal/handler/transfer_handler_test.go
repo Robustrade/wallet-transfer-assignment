@@ -79,6 +79,28 @@ func TestInitTransferHandler(t *testing.T) {
 }
 
 func TestInitTransferHandler_IDGenError(t *testing.T) {
+	r := testRouter(&mockTransferService{initErr: domain.ErrTransferInitFailed})
+
+	rec := doRequest(r, http.MethodPost, "/transfers/init", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["error"] != string(domain.ErrCodeTransferInitFailed) {
+		t.Fatalf("expected error code %s, got %+v", domain.ErrCodeTransferInitFailed, resp)
+	}
+	if resp["message"] != domain.ErrTransferInitFailed.Message {
+		t.Fatalf("expected client-facing message %q, got %+v", domain.ErrTransferInitFailed.Message, resp)
+	}
+}
+
+func TestInitTransferHandler_UnexpectedIDGenError(t *testing.T) {
+	// A non-domain error (e.g. an infra failure the service forgot to
+	// wrap) must still 500 with a generic message, never leak internals.
 	r := testRouter(&mockTransferService{initErr: io.ErrUnexpectedEOF})
 
 	rec := doRequest(r, http.MethodPost, "/transfers/init", "")

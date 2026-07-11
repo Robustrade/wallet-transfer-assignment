@@ -53,6 +53,10 @@ func domainErrorHTTPStatus(code domain.ErrorCode) int {
 		// an int64 at all), never a persisted FailureReason — this case
 		// only fires via the live-rejection path.
 		return http.StatusBadRequest
+	case domain.ErrCodeTransferInitFailed:
+		// Infrastructure failure (e.g. ID-generation clock regression),
+		// not a client mistake or a persisted FailureReason.
+		return http.StatusInternalServerError
 	default:
 		return http.StatusUnprocessableEntity
 	}

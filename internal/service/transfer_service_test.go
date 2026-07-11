@@ -484,7 +484,5 @@ func TestInitTransfer_IDGenError(t *testing.T) {
 	svc := NewTransferService(db, &mockWalletRepo{}, &mockTransferRepo{}, &mockCache{}, &mockIDGen{err: wantErr}, 5*time.Second, testLogger())
 
 	_, err := svc.InitTransfer()
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected idgen error to propagate, got %v", err)
-	}
+	requireDomainErrCode(t, err, domain.ErrCodeTransferInitFailed)
 }

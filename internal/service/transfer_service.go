@@ -50,8 +50,18 @@ func NewTransferService(
 }
 
 // InitTransfer mints a fresh transfer ID. Nothing is persisted.
+//
+// A NextID failure (e.g. a Snowflake clock regression) is an
+// infrastructure problem, not a client mistake — the real cause is
+// logged here, server-side, and the caller gets back a generic typed
+// error rather than the underlying detail.
 func (s *TransferService) InitTransfer() (int64, error) {
-	return s.idGen.NextID()
+	id, err := s.idGen.NextID()
+	if err != nil {
+		s.logger.Error("mint transfer id failed", slog.Any("error", err))
+		return 0, domain.ErrTransferInitFailed
+	}
+	return id, nil
 }
 
 // Transfer runs, in order: same-wallet/invalid-amount checks, the cache

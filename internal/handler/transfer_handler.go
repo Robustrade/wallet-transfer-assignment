@@ -34,12 +34,14 @@ func NewTransferHandler(svc transferService, logger *slog.Logger) *TransferHandl
 	return &TransferHandler{service: svc, logger: logger}
 }
 
-// InitTransfer handles POST /transfers/init.
+// InitTransfer handles POST /transfers/init. A NextID failure is logged
+// server-side by the service itself (it has the real cause); this
+// handler only ever sees the generic typed error, dispatched through
+// respondError like every other error in this file.
 func (h *TransferHandler) InitTransfer(c *gin.Context) {
 	id, err := h.service.InitTransfer()
 	if err != nil {
-		logger.FromContext(c.Request.Context(), h.logger).Error("mint transfer id failed", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		h.respondError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, InitTransferResponse{TransactionID: strconv.FormatInt(id, 10)})
