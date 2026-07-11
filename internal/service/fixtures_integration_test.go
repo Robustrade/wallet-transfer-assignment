@@ -3,14 +3,10 @@
 package service
 
 import (
-	"context"
 	"testing"
-	"time"
-
-	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/idgen"
+	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/testutil"
 )
 
 var testTransferIDGen = mustTestIDGenerator()
@@ -38,17 +34,5 @@ func nextTestTransferID(t *testing.T) int64 {
 // never corrupt each other's expected balances.
 func newTestWallet(t *testing.T, balance string) string {
 	t.Helper()
-	id := uuid.NewString()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	_, err := testPool.Exec(ctx, `
-		INSERT INTO wallets (id, balance, created_at, updated_at)
-		VALUES ($1, $2, now(), now())
-	`, id, decimal.RequireFromString(balance))
-	if err != nil {
-		t.Fatalf("insert test wallet: %v", err)
-	}
-	return id
+	return testutil.NewTestWallet(t, testPool, balance).ID
 }

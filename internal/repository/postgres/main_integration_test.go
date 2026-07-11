@@ -11,22 +11,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/platform/migrate"
+	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/testutil"
 )
 
 var testPool *pgxpool.Pool
 
-// testPostgresDSN points at the postgres brought up by `docker-compose up
-// -d postgres redis` (see `make test-integration`), overridable for CI.
-func testPostgresDSN() string {
-	if dsn := os.Getenv("TEST_POSTGRES_DSN"); dsn != "" {
-		return dsn
-	}
-	return "postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable"
-}
-
 func TestMain(m *testing.M) {
 	ctx := context.Background()
-	dsn := testPostgresDSN()
+	dsn := testutil.PostgresDSN()
 
 	if err := migrate.Run(dsn, "../../../migrations"); err != nil {
 		fmt.Fprintln(os.Stderr, "run migrations:", err)

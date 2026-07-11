@@ -16,19 +16,11 @@ import (
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/platform/migrate"
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/repository/cache"
 	pgrepo "github.com/Nandukrishna-S/wallet-transfer-assignment/internal/repository/postgres"
+	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/testutil"
 )
 
 var testPool *pgxpool.Pool
 var testRedis *redis.Client
-
-// The postgres+redis brought up by `docker-compose up -d postgres
-// redis` (see `make test-integration`), overridable for CI.
-func testPostgresDSN() string {
-	if dsn := os.Getenv("TEST_POSTGRES_DSN"); dsn != "" {
-		return dsn
-	}
-	return "postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable"
-}
 
 func testRedisAddr() string {
 	if addr := os.Getenv("TEST_REDIS_ADDR"); addr != "" {
@@ -39,7 +31,7 @@ func testRedisAddr() string {
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
-	dsn := testPostgresDSN()
+	dsn := testutil.PostgresDSN()
 
 	if err := migrate.Run(dsn, "../../migrations"); err != nil {
 		fmt.Fprintln(os.Stderr, "run migrations:", err)
