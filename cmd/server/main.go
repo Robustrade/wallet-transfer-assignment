@@ -20,6 +20,9 @@ import (
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/platform/migrate"
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/platform/postgres"
 	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/platform/redisclient"
+	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/repository/cache"
+	pgrepo "github.com/Nandukrishna-S/wallet-transfer-assignment/internal/repository/postgres"
+	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/service"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -81,10 +84,19 @@ func main() {
 		log.Error("create id generator", slog.Any("error", err))
 		os.Exit(1)
 	}
-	_ = generator // wired for Phase 2's service layer; unused until then
+
+	transferService := service.NewTransferService(
+		pgrepo.NewTransactor(pool),
+		pgrepo.NewWalletRepo(),
+		pgrepo.NewTransferRepo(pool),
+		cache.NewTransferCache(redisClient),
+		generator,
+		cfg.LockTimeout,
+		log,
+	)
 
 	healthHandler := handler.NewHealthHandler(pool, redisClient)
-	transferHandler := handler.NewTransferHandler()
+	transferHandler := handler.NewTransferHandler(transferService, log)
 	router := handler.NewRouter(healthHandler, transferHandler)
 
 	srv := &http.Server{
