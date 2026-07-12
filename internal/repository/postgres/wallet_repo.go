@@ -1,0 +1,86 @@
+package postgres
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
+
+	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/domain"
+	"github.com/Nandukrishna-S/wallet-transfer-assignment/internal/repository"
+)
+
+// WalletRepo persists wallets.
+type WalletRepo struct{}
+
+// NewWalletRepo constructs a WalletRepo.
+func NewWalletRepo() *WalletRepo {
+	return &WalletRepo{}
+}
+
+// GetForUpdate locks and returns the wallets identified by walletIDs, one
+// row at a time, in ascending ID order — sorted internally, unconditionally,
+// so that concurrent transfers touching the same wallet pair always
+// request locks in the same order and can never deadlock, regardless of
+// what order the caller happened to pass walletIDs in.
+//
+// This deliberately issues one `SELECT ... WHERE id = $1 FOR UPDATE` per
+// wallet rather than a single `WHERE id = ANY($1) ORDER BY id FOR
+// UPDATE`: Postgres's row locking happens during the scan, and when a
+// Sort node is needed to satisfy ORDER BY, that scan can visit rows in
+// an order that doesn't match the final sorted output — so the ORDER BY
+// there does not reliably control lock acquisition order. Sequential
+// single-row locks make the acquisition order explicit and impossible
+// for the planner to reorder.
+func (r *WalletRepo) GetForUpdate(ctx context.Context, tx repository.Tx, walletIDs ...string) ([]domain.Wallet, error) {
+	sort.Strings(walletIDs)
+
+	wallets := make([]domain.Wallet, 0, len(walletIDs))
+	for _, id := range walletIDs {
+		row := tx.QueryRow(ctx, `
+			SELECT id, balance, created_at, updated_at
+			FROM wallets
+			WHERE id = $1
+			FOR UPDATE
+		`, id)
+
+		var w domain.Wallet
+		err := row.Scan(&w.ID, &w.Balance, &w.CreatedAt, &w.UpdatedAt)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("lock wallet %s: %w", id, err)
+		}
+		wallets = append(wallets, w)
+	}
+	return wallets, nil
+}
+
+// UpdateBalances sets both wallets' balances in a single statement — the
+// debit and credit side of one transfer — rather than two sequential
+// round trips. It makes no decision about whether either balance is
+// valid — that's domain/service's call, not this repository's.
+func (r *WalletRepo) UpdateBalances(ctx context.Context, tx repository.Tx, fromWalletID string, fromBalance decimal.Decimal, toWalletID string, toBalance decimal.Decimal) error {
+	// $2/$4 are explicitly cast to numeric: shopspring/decimal.Decimal
+	// binds through pgx's text format with no type OID of its own, so
+	// without the cast Postgres infers the CASE expression's type as
+	// text (from the untyped parameters) rather than numeric (from the
+	// balance column) and rejects the assignment outright.
+	_, err := tx.Exec(ctx, `
+		UPDATE wallets
+		SET balance = CASE id
+				WHEN $1 THEN $2::numeric
+				WHEN $3 THEN $4::numeric
+			END,
+			updated_at = now()
+		WHERE id IN ($1, $3)
+	`, fromWalletID, fromBalance, toWalletID, toBalance)
+	if err != nil {
+		return fmt.Errorf("update wallet balances: %w", err)
+	}
+	return nil
+}
