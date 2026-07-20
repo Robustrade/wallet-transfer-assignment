@@ -23,7 +23,10 @@ CREATE TABLE IF NOT EXISTS idempotency_records (
         CHECK (status IN ('IN_PROGRESS', 'COMPLETED')),
     response_snapshot JSONB NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        CONSTRAINT chk_idempotency_completed_fields 
+        CHECK (status <> 'COMPLETED' OR (transfer_id IS NOT NULL AND response_snapshot IS NOT NULL)
+     )
 );
 
 CREATE TABLE IF NOT EXISTS transfers (
