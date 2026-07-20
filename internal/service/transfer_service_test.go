@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -422,14 +421,4 @@ func cloneIdempotencyRecord(record domain.IdempotencyRecord) domain.IdempotencyR
 	}
 	clone.ResponseSnapshot = append([]byte(nil), record.ResponseSnapshot...)
 	return clone
-}
-
-func mustSnapshot(t *testing.T, result TransferResult) []byte {
-	t.Helper()
-
-	snapshot, err := json.Marshal(result)
-	if err != nil {
-		t.Fatalf("json.Marshal returned error: %v", err)
-	}
-	return snapshot
 }
