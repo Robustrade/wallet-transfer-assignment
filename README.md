@@ -7,7 +7,7 @@ idempotent wallet-to-wallet transfers, stored balances, and a double-entry ledge
 
 - Go 1.24
 - Docker and Docker Compose
-- `psql`
+- `psql` (optional)
 - `golangci-lint` for local linting
 
 ## Local Setup
