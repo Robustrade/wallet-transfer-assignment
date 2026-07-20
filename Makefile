@@ -30,7 +30,7 @@ fmt:
 
 fmt-check:
 	@echo "Checking formatting..."
-	@gofmt -l ./ | grep src; if [ $$? -eq 0 ]; then echo "Formatting errors found. Run 'make fmt'"; exit 1; fi
+	@test -z "$$(gofmt -l .)" || (echo "Formatting errors found. Run 'make fmt'"; exit 1)
 
 lint:
 	golangci-lint run ./...
