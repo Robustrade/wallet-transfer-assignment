@@ -5,3 +5,16 @@ build/
 .tmp/
 .env
 .env.*
+
+# IDEs 
+.vscode/ 
+.idea/ 
+*.swp 
+*.swo 
+*~
+
+
+bin/
+.coverprofile
+.env
+*.log
