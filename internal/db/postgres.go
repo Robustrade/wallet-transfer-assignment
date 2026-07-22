@@ -9,7 +9,7 @@ import (
 )
 
 // New creates a PostgreSQL connection pool and verifies connectivity.
-func New(databaseURL string) (*pgxpool.Pool, error) {
+func NewPostgresPool(databaseURL string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse database config: %w", err)

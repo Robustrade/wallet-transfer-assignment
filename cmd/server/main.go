@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/mritunjaysingh22/wallet-transfer-assignment/internal/config"
-	"github.com/mritunjaysingh22/wallet-transfer-assignment/internal/database"
 	db "github.com/mritunjaysingh22/wallet-transfer-assignment/internal/db"
 	"github.com/mritunjaysingh22/wallet-transfer-assignment/internal/handler"
 	"github.com/mritunjaysingh22/wallet-transfer-assignment/internal/routes"
@@ -30,7 +29,7 @@ func main() {
 	// PostgreSQL
 	//----------------------------------------------------
 
-	pool, err := database.New(cfg.DatabaseURL)
+	pool, err := db.NewPostgresPool(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("unable to connect database: %v", err)
 	}

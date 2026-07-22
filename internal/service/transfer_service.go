@@ -112,7 +112,7 @@ func (s *TransferService) createTransferTx(
 	ctx context.Context,
 	req TransferRequest,
 ) (*TransferResponse, error) {
-
+	var err error
 	// 1. Validate request
 	if req.Amount <= 0 {
 		return nil, ErrInvalidAmount
@@ -132,7 +132,6 @@ func (s *TransferService) createTransferTx(
 		return nil, err
 	}
 
-	var err error
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, err
