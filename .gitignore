@@ -5,3 +5,8 @@ build/
 .tmp/
 .env
 .env.*
+
+# local config override and build artifacts
+config.yaml
+/wallet
+/wallet.exe

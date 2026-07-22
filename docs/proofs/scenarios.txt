@@ -1,0 +1,156 @@
+################################################################
+# LIVE END-TO-END PROOFS  (Wed, Jul 22, 2026  4:20:42 PM)
+# Wallet Transfer Service (local binary) vs Postgres 16 (docker)
+################################################################
+
+=== SCENARIO 1: Create Transfer + Double-Entry Ledger ===
+source=54377833-969d-48e1-a291-f3b8e0eb6022 (1000)  dest=d51586b6-1c7e-472f-a9b9-a6dd443f1bc5 (0)  amount=100
+HTTP/1.1 202 Accepted
+Location: /api/v1/transfers/dd1effec-56a7-4795-a069-3e41ec128593
+{"id":"dd1effec-56a7-4795-a069-3e41ec128593","idempotencyKey":"S1-key","fromWalletId":"54377833-969d-48e1-a291-f3b8e0eb6022","toWalletId":"d51586b6-1c7e-472f-a9b9-a6dd443f1bc5","amount":"100","state":"PENDING","createdAt":"2026-07-22T16:20:43.439433+05:30","updatedAt":"2026-07-22T16:20:43.439433+05:30"}
+poll -> PROCESSED
+[transfer row]
+   state   |  amount  | attempts 
+-----------+----------+----------
+ PROCESSED | 100.0000 |        1
+(1 row)
+
+[ledger: exactly 2 legs, DEBIT+CREDIT]
+  type  |  amount  
+--------+----------
+ CREDIT | 100.0000
+ DEBIT  | 100.0000
+(2 rows)
+
+[balances: expect 900 / 100]
+ balance  
+----------
+ 900.0000
+ 100.0000
+(2 rows)
+
+
+=== SCENARIO 2: Idempotency (same key = original result, no dup) ===
+first  POST -> HTTP 202  id=480312df-deba-44e7-b777-91117bd5c645
+second POST -> HTTP 200  id=480312df-deba-44e7-b777-91117bd5c645  (202 then 200, same id: YES)
+[transfer rows for key S2-key: expect 1]
+1
+[source debited ONCE: expect 750]
+750.0000
+[ledger legs: expect 2 not 4]
+2
+
+=== SCENARIO 3: Insufficient funds -> FAILED (committed) ===
+amount=80 from balance=50 -> poll -> FAILED
+[state + reason]
+ state  |   failure_reason   
+--------+--------------------
+ FAILED | insufficient funds
+(1 row)
+
+[ledger entries: expect 0]
+0
+[balances unchanged: 50 / 0]
+ balance 
+---------
+ 50.0000
+  0.0000
+(2 rows)
+
+
+=== SCENARIO 4: Inactive destination -> FAILED ===
+poll -> FAILED
+ state  |   failure_reason   
+--------+--------------------
+ FAILED | wallet is inactive
+(1 row)
+
+
+=== SCENARIO 5: Concurrency / No Double-Spend ===
+source=fb65dbd2-46b9-46fa-a1b1-898070989f72 (100). Two CONCURRENT transfers of 80 (only one can succeed).
+poll A=PROCESSED  poll B=FAILED
+[outcome counts: expect 1 PROCESSED, 1 FAILED]
+PROCESSED|1
+FAILED|1
+[source debited exactly once: expect 20]
+20.0000
+[destinations sum: expect 80]
+80.0000
+
+=== SCENARIO 6: Request Validation ===
+same wallet     -> HTTP 400
+bad uuid        -> HTTP 400
+unknown wallet  -> HTTP 422
+negative amount -> HTTP 400
+GET unknown id  -> HTTP 404
+
+=== SCENARIO 7: Ledger always balances (global invariant) ===
+  type  | legs |  total   
+--------+------+----------
+ DEBIT  |   15 | 785.0000
+ CREDIT |   15 | 785.0000
+(2 rows)
+
+ debits_equal_credits 
+----------------------
+ t
+(1 row)
+
+[every PROCESSED transfer has exactly 2 legs]
+ n_legs 
+--------
+      2
+(1 row)
+
+DONE
+(captured Wed, Jul 22, 2026  4:21:02 PM)
+
+=== SCENARIO 8: Observability endpoints (metrics + readiness) ===
+[/readyz]
+{"status":"ready"}
+ [HTTP 200]
+[/metrics selected series]
+db_pool_acquired_conns 0
+db_pool_idle_conns 4
+db_pool_max_conns 20
+http_requests_total{method="POST",route="/api/v1/transfers",status="200"} 1
+http_requests_total{method="POST",route="/api/v1/transfers",status="202"} 6
+http_requests_total{method="POST",route="/api/v1/transfers",status="400"} 8
+http_requests_total{method="POST",route="/api/v1/transfers",status="422"} 1
+transfers_enqueued_total 6
+transfers_processed_total{result="failed"} 3
+transfers_processed_total{result="processed"} 3
+
+=== SCENARIO 9: Distributed tracing exported to Jaeger ===
+[Jaeger services]
+
+[trace count for service=wallet-transfer]
+traces found: 0
+
+=== SCENARIO 10: In-flight recovery (reaper requeues abandoned PROCESSING) ===
+Injected transfer fcef1fe7-3312-4982-86ae-61410edd8e64 as PROCESSING, claimed 2h ago by 'crashed-worker' (simulates a crash).
+initial state: PROCESSING
+waiting for reaper (interval 30s, stuck_after 60s) to requeue, then worker to finish...
+final state after 6s: PROCESSED
+[balances: expect 75 / 25 -> recovery completed the transfer exactly once]
+ balance 
+---------
+ 75.0000
+ 25.0000
+(2 rows)
+
+[ledger legs for recovered transfer: expect 2]
+2
+
+ALL SCENARIOS DONE (Wed, Jul 22, 2026  4:22:05 PM)
+
+=== SCENARIO 9 (re-run, Jaeger running): Distributed tracing ===
+[Jaeger registered services]
+{"data":["jaeger-all-in-one","wallet-transfer"],"total":2,"limit":0,"offset":0,"errors":null}
+[traces found for service=wallet-transfer]
+count: 22
+[span operations captured]
+"operationName":"GET"
+"operationName":"POST"
+"operationName":"transfer.process"
+(note: Jaeger must be up before the app starts so the OTLP exporter connects)

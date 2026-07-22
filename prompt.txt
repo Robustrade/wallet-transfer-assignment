@@ -1,0 +1,212 @@
+Act as a Principal Software Engineer with deep expertise in distributed systems, high-throughput microservices, low-latency APIs, PostgreSQL internals, transaction processing, concurrency control, and production-grade backend architecture.
+
+Your objective is not just to write code, but to perform a complete architecture review, identify weaknesses, optimize the design, justify every engineering decision, and then implement the solution incrementally.
+
+Repository Context:
+- Read and understand `ASSIGNMENT.md` for the functional and non-functional requirements.
+- Read `evaluation_guide.md` carefully and optimize the implementation specifically to maximize the evaluation score.
+- Review the existing database schema inside the `migrations/` directory.
+- Review the current project structure under the `internal/` directory before making architectural decisions.
+- Reuse existing code whenever appropriate instead of rewriting everything.
+
+## My Current Design
+
+This is my initial thought process.
+
+### Request Flow
+
+1. Validate the source wallet exists.
+2. Verify the source wallet has sufficient balance.
+3. Validate the destination wallet exists.
+4. Check whether the supplied idempotency key has already been processed.
+5. If validation succeeds, continue with transfer execution.
+
+### Transaction Flow
+
+Inside a single database transaction:
+
+1. Create a Transfer record with status `PENDING`.
+2. Create debit and credit ledger entries.
+3. Update both wallet balances.
+4. Mark the transfer as `COMPLETED`.
+5. Commit the transaction.
+
+### Failure Handling
+
+If any operation fails:
+
+- Rollback the transaction.
+- If the failure is caused by row-level lock contention or serialization conflicts, retry using exponential backoff.
+- Limit retries to avoid infinite retry loops.
+- If retries are exhausted:
+  - Either rollback everything completely (preferred if possible), or
+  - If partial persistence is intentionally required, clearly justify why and describe the recovery mechanism.
+- Explain the tradeoffs between these approaches.
+
+### Idempotency
+
+Current idea:
+
+- Store the idempotency key in the `transfers` table with a unique constraint.
+- Add Redis as a fast middleware cache with a TTL of 24 hours to reject obvious duplicate requests before they reach the business layer.
+- Explain whether Redis is actually beneficial here or whether PostgreSQL alone is sufficient.
+- Consider race conditions between Redis and PostgreSQL.
+
+### Infrastructure
+
+I already created:
+
+- Dockerfile
+- docker-compose
+- PostgreSQL
+- Redis
+
+Initially we can perform manual integration testing.
+
+Later we can introduce:
+
+- Integration tests
+- Container-based tests
+- End-to-end tests
+
+### Production Considerations
+
+I also want the service to include:
+
+- Graceful shutdown
+- Proper context cancellation
+- Recovery of in-flight requests
+- Structured logging using Zap
+- Prometheus metrics
+- Grafana dashboards
+- Health endpoints
+- Readiness/Liveness probes
+- Makefile for local development
+- Configuration management
+- Database migrations
+- Proper dependency injection
+- Clean Architecture
+- Repository pattern (only if justified)
+- Service layer
+- HTTP middleware
+- Request validation
+- Centralized error handling
+
+### Additional Scenarios
+
+Please also think through scenarios I may have missed:
+
+- Concurrent transfers from the same wallet
+- Deadlocks
+- Lost updates
+- Double spending
+- Race conditions
+- Retry storms
+- Database connection pool exhaustion
+- Redis failures
+- PostgreSQL failover
+- Duplicate client retries
+- Network partitions
+- Partial failures
+- Slow queries
+- High QPS workloads
+- Horizontal scaling
+- Eventual consistency considerations
+- Monitoring and alerting
+- Disaster recovery
+
+## Your Tasks
+
+### Phase 1 — Architecture Review
+
+Critically review my proposed design.
+
+Do not agree with my decisions by default.
+
+Instead:
+
+- Point out flaws.
+- Identify hidden race conditions.
+- Find scalability bottlenecks.
+- Suggest production-grade alternatives.
+- Explain why your approach is better.
+- Discuss tradeoffs.
+- Recommend schema improvements if necessary.
+
+### Phase 2 — Design Improvements
+
+Produce:
+
+- Overall system architecture
+- Request lifecycle
+- Sequence diagrams (text format)
+- Transaction boundaries
+- Locking strategy
+- Isolation level selection
+- Retry strategy
+- Idempotency strategy
+- Error handling strategy
+- Recovery strategy
+- Scaling strategy
+
+### Phase 3 — Implementation Plan
+
+Break the implementation into small milestones.
+
+For example:
+
+1. Database layer
+2. Models
+3. Repositories
+4. Business logic
+5. API layer
+6. Middleware
+7. Metrics
+8. Logging
+9. Integration tests
+10. Performance optimization
+
+Do not jump ahead.
+
+### Phase 4 — Implementation
+
+Implement one milestone at a time.
+
+After each milestone:
+
+- Explain why the implementation is correct.
+- Explain concurrency implications.
+- Explain performance implications.
+- Wait before moving to the next milestone.
+
+### Coding Standards
+
+Produce production-quality Go code.
+
+Use:
+
+- idiomatic Go
+- context propagation
+- dependency injection
+- interfaces only where beneficial
+- proper error wrapping
+- structured logging
+- high testability
+- clean package boundaries
+
+Avoid unnecessary abstractions and over-engineering.
+
+### Performance Expectations
+
+Design for:
+
+- very high throughput
+- low latency
+- correctness under concurrency
+- fault tolerance
+- horizontal scalability
+- maintainability
+
+Whenever there are multiple possible implementations, compare them and recommend the best one as if you were reviewing code at Google, Uber, Stripe, or CockroachDB.
+
+Think deeply before answering. Challenge every assumption—including mine—and optimize the solution for correctness, performance, reliability, and production readiness.

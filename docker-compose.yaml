@@ -1,0 +1,102 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d mydb"]
+      interval: 5s
+      retries: 5
+      start_period: 5s
+
+  # One-shot: apply schema migrations, then exit.
+  migrate:
+    image: migrate/migrate:v4.17.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://myuser:mypassword@postgres:5432/mydb?sslmode=disable"
+      - "up"
+    restart: on-failure
+
+  # One-shot: load dev/test wallets (fixed UUIDs), then exit.
+  seed:
+    image: postgres:16
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGPASSWORD: mypassword
+    volumes:
+      - ./migrations:/migrations:ro
+    entrypoint: ["sh", "-c", "psql -h postgres -U myuser -d mydb -f /migrations/seed.sql"]
+    restart: on-failure
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # UI
+      - "4317:4317"   # OTLP gRPC
+
+  app:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: wallet_app
+    restart: always
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      jaeger:
+        condition: service_started
+    environment:
+      HTTP_ADDR: ":8080"
+      LOG_LEVEL: "info"
+      DATABASE_URL: "postgres://myuser:mypassword@postgres:5432/mydb?sslmode=disable"
+      TRACING_ENABLED: "true"
+      OTLP_ENDPOINT: "jaeger:4317"
+    ports:
+      - "8080:8080"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    depends_on:
+      - app
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:

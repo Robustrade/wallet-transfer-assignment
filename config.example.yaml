@@ -1,0 +1,29 @@
+# Copy to config.yaml to override defaults locally. Every key can also be set via
+# an env var of the same name in upper snake case (e.g. HTTP_ADDR), which wins.
+http_addr: ":8080"
+log_level: "info"
+shutdown_timeout: "15s"
+db_max_conns: 20
+
+# async worker tuning
+worker_count: 4
+worker_batch_size: 10
+worker_poll_interval: "500ms"
+reaper_interval: "30s"
+stuck_after: "60s"
+max_attempts: 5
+
+# tracing (OpenTelemetry), off by default
+service_name: "wallet-transfer"
+tracing_enabled: false
+otlp_endpoint: "localhost:4317"
+trace_sample_ratio: 1.0
+
+# Either set database_url directly...
+database_url: ""
+# ...or leave it empty and set the parts:
+db_host: "localhost"
+db_port: "5432"
+db_user: "myuser"
+db_password: "mypassword"
+db_name: "mydb"

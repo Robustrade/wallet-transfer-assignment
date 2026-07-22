@@ -1,0 +1,219 @@
+?   	wallet-transfer	[no test files]
+=== RUN   TestConfig_Defaults
+--- PASS: TestConfig_Defaults (0.00s)
+=== RUN   TestConfig_EnvOverride
+--- PASS: TestConfig_EnvOverride (0.00s)
+=== RUN   TestConfig_AssemblesDatabaseURLFromParts
+--- PASS: TestConfig_AssemblesDatabaseURLFromParts (0.00s)
+PASS
+ok  	wallet-transfer/internal/config	1.215s
+=== RUN   TestNewPool_InvalidURL
+--- PASS: TestNewPool_InvalidURL (0.00s)
+=== RUN   TestNewPool_Success
+--- PASS: TestNewPool_Success (0.03s)
+PASS
+ok  	wallet-transfer/internal/db	1.652s
+=== RUN   TestEntryType_Valid
+--- PASS: TestEntryType_Valid (0.00s)
+=== RUN   TestTransferState_ValidAndTerminal
+--- PASS: TestTransferState_ValidAndTerminal (0.00s)
+=== RUN   TestWallet_CanReceive
+--- PASS: TestWallet_CanReceive (0.00s)
+=== RUN   TestNewTransferParams_Validate
+=== RUN   TestNewTransferParams_Validate/valid
+=== RUN   TestNewTransferParams_Validate/empty_key
+=== RUN   TestNewTransferParams_Validate/zero_amount
+=== RUN   TestNewTransferParams_Validate/negative_amount
+=== RUN   TestNewTransferParams_Validate/same_wallet
+--- PASS: TestNewTransferParams_Validate (0.00s)
+    --- PASS: TestNewTransferParams_Validate/valid (0.00s)
+    --- PASS: TestNewTransferParams_Validate/empty_key (0.00s)
+    --- PASS: TestNewTransferParams_Validate/zero_amount (0.00s)
+    --- PASS: TestNewTransferParams_Validate/negative_amount (0.00s)
+    --- PASS: TestNewTransferParams_Validate/same_wallet (0.00s)
+=== RUN   TestWallet_CanDebit
+=== RUN   TestWallet_CanDebit/sufficient
+=== RUN   TestWallet_CanDebit/exact
+=== RUN   TestWallet_CanDebit/insufficient
+=== RUN   TestWallet_CanDebit/inactive
+--- PASS: TestWallet_CanDebit (0.00s)
+    --- PASS: TestWallet_CanDebit/sufficient (0.00s)
+    --- PASS: TestWallet_CanDebit/exact (0.00s)
+    --- PASS: TestWallet_CanDebit/insufficient (0.00s)
+    --- PASS: TestWallet_CanDebit/inactive (0.00s)
+=== RUN   TestTransferState_CanTransitionTo
+--- PASS: TestTransferState_CanTransitionTo (0.00s)
+PASS
+ok  	wallet-transfer/internal/domain	0.779s
+=== RUN   TestHealthz
+--- PASS: TestHealthz (0.00s)
+=== RUN   TestNotFound
+--- PASS: TestNotFound (0.00s)
+=== RUN   TestMethodNotAllowed
+--- PASS: TestMethodNotAllowed (0.00s)
+=== RUN   TestCreate_New_Returns202WithLocation
+--- PASS: TestCreate_New_Returns202WithLocation (0.00s)
+=== RUN   TestCreate_Replay_Returns200
+--- PASS: TestCreate_Replay_Returns200 (0.00s)
+=== RUN   TestCreate_ErrorMapping
+=== RUN   TestCreate_ErrorMapping/same_wallet
+=== RUN   TestCreate_ErrorMapping/empty_key
+=== RUN   TestCreate_ErrorMapping/invalid_amount
+=== RUN   TestCreate_ErrorMapping/unknown_wallet
+=== RUN   TestCreate_ErrorMapping/internal
+--- PASS: TestCreate_ErrorMapping (0.00s)
+    --- PASS: TestCreate_ErrorMapping/same_wallet (0.00s)
+    --- PASS: TestCreate_ErrorMapping/empty_key (0.00s)
+    --- PASS: TestCreate_ErrorMapping/invalid_amount (0.00s)
+    --- PASS: TestCreate_ErrorMapping/unknown_wallet (0.00s)
+    --- PASS: TestCreate_ErrorMapping/internal (0.00s)
+=== RUN   TestCreate_BadRequests
+=== RUN   TestCreate_BadRequests/unknown_field
+=== RUN   TestCreate_BadRequests/bad_from_uuid
+=== RUN   TestCreate_BadRequests/bad_to_uuid
+=== RUN   TestCreate_BadRequests/malformed_json
+--- PASS: TestCreate_BadRequests (0.00s)
+    --- PASS: TestCreate_BadRequests/unknown_field (0.00s)
+    --- PASS: TestCreate_BadRequests/bad_from_uuid (0.00s)
+    --- PASS: TestCreate_BadRequests/bad_to_uuid (0.00s)
+    --- PASS: TestCreate_BadRequests/malformed_json (0.00s)
+=== RUN   TestGet_OKAndNotFound
+--- PASS: TestGet_OKAndNotFound (0.00s)
+=== RUN   TestGet_BadUUID
+--- PASS: TestGet_BadUUID (0.00s)
+=== RUN   TestStatusForError
+--- PASS: TestStatusForError (0.00s)
+=== RUN   TestToTransferResponse
+--- PASS: TestToTransferResponse (0.00s)
+PASS
+ok  	wallet-transfer/internal/handler	1.683s
+=== RUN   TestLogger_New
+--- PASS: TestLogger_New (0.00s)
+=== RUN   TestLogger_InvalidLevel
+--- PASS: TestLogger_InvalidLevel (0.00s)
+PASS
+ok  	wallet-transfer/internal/logger	0.954s
+=== RUN   TestMetrics_RecordsAndExposes
+--- PASS: TestMetrics_RecordsAndExposes (0.00s)
+=== RUN   TestMetrics_DBPoolGauges
+--- PASS: TestMetrics_DBPoolGauges (0.00s)
+PASS
+ok  	wallet-transfer/internal/observability/metrics	0.200s
+=== RUN   TestTracing_DisabledIsNoop
+--- PASS: TestTracing_DisabledIsNoop (0.00s)
+=== RUN   TestTracing_EnabledInstallsProvider
+--- PASS: TestTracing_EnabledInstallsProvider (0.00s)
+PASS
+ok  	wallet-transfer/internal/observability/tracing	0.262s
+?   	wallet-transfer/internal/repository	[no test files]
+?   	wallet-transfer/internal/repository/postgres	[no test files]
+=== RUN   TestIsRetryable
+=== RUN   TestIsRetryable/serialization_failure
+=== RUN   TestIsRetryable/deadlock_detected
+=== RUN   TestIsRetryable/unique_violation
+=== RUN   TestIsRetryable/plain_error
+=== RUN   TestIsRetryable/nil
+--- PASS: TestIsRetryable (0.00s)
+    --- PASS: TestIsRetryable/serialization_failure (0.00s)
+    --- PASS: TestIsRetryable/deadlock_detected (0.00s)
+    --- PASS: TestIsRetryable/unique_violation (0.00s)
+    --- PASS: TestIsRetryable/plain_error (0.00s)
+    --- PASS: TestIsRetryable/nil (0.00s)
+=== RUN   TestRetry_RetriesThenSucceeds
+--- PASS: TestRetry_RetriesThenSucceeds (0.00s)
+=== RUN   TestRetry_ExhaustsAndReturnsError
+--- PASS: TestRetry_ExhaustsAndReturnsError (0.00s)
+=== RUN   TestRetry_NonRetryableReturnsImmediately
+--- PASS: TestRetry_NonRetryableReturnsImmediately (0.00s)
+=== RUN   TestRetry_ContextCancelled
+--- PASS: TestRetry_ContextCancelled (0.00s)
+=== RUN   TestBackoff_WithinBounds
+--- PASS: TestBackoff_WithinBounds (0.00s)
+=== RUN   TestProcessor_Happy
+--- PASS: TestProcessor_Happy (0.00s)
+=== RUN   TestProcessor_SkipsWhenNotProcessing
+--- PASS: TestProcessor_SkipsWhenNotProcessing (0.00s)
+=== RUN   TestProcessor_GetForUpdateError
+--- PASS: TestProcessor_GetForUpdateError (0.00s)
+=== RUN   TestProcessor_LockBusinessError_CommitsFailed
+--- PASS: TestProcessor_LockBusinessError_CommitsFailed (0.00s)
+=== RUN   TestProcessor_LockTransientError_Returns
+--- PASS: TestProcessor_LockTransientError_Returns (0.00s)
+=== RUN   TestProcessor_InsufficientFunds_CommitsFailed
+--- PASS: TestProcessor_InsufficientFunds_CommitsFailed (0.00s)
+=== RUN   TestProcessor_LedgerDuplicate_Finalizes
+--- PASS: TestProcessor_LedgerDuplicate_Finalizes (0.00s)
+=== RUN   TestProcessor_ApplyBalanceError_Returns
+--- PASS: TestProcessor_ApplyBalanceError_Returns (0.00s)
+=== RUN   TestProcessor_SetProcessedError_Returns
+--- PASS: TestProcessor_SetProcessedError_Returns (0.00s)
+=== RUN   TestProcessor_DeadLetter
+--- PASS: TestProcessor_DeadLetter (0.00s)
+=== RUN   TestProcessor_DeadLetter_AlreadyTerminalNoop
+--- PASS: TestProcessor_DeadLetter_AlreadyTerminalNoop (0.00s)
+=== RUN   TestProcessor_DeadLetter_GetError
+--- PASS: TestProcessor_DeadLetter_GetError (0.00s)
+=== RUN   TestNopRecorder
+--- PASS: TestNopRecorder (0.00s)
+=== RUN   TestProcessor_RetriesTransientTxError
+--- PASS: TestProcessor_RetriesTransientTxError (0.01s)
+=== RUN   TestCreateTransfer_ValidationFails
+--- PASS: TestCreateTransfer_ValidationFails (0.00s)
+=== RUN   TestCreateTransfer_NewIncrementsMetric
+--- PASS: TestCreateTransfer_NewIncrementsMetric (0.00s)
+=== RUN   TestCreateTransfer_ReplayDoesNotIncrement
+--- PASS: TestCreateTransfer_ReplayDoesNotIncrement (0.00s)
+=== RUN   TestCreateTransfer_StoreErrorPropagates
+--- PASS: TestCreateTransfer_StoreErrorPropagates (0.00s)
+=== RUN   TestGetTransfer_Delegates
+--- PASS: TestGetTransfer_Delegates (0.00s)
+PASS
+ok  	wallet-transfer/internal/service	1.037s
+=== RUN   TestAPI_EnqueueThenWorkerProcesses
+--- PASS: TestAPI_EnqueueThenWorkerProcesses (0.10s)
+=== RUN   TestRepo_EnqueueTransfer_Idempotent
+--- PASS: TestRepo_EnqueueTransfer_Idempotent (0.02s)
+=== RUN   TestRepo_EnqueueTransfer_UnknownWallet
+--- PASS: TestRepo_EnqueueTransfer_UnknownWallet (0.01s)
+=== RUN   TestRepo_ClaimPending_MovesToProcessing
+--- PASS: TestRepo_ClaimPending_MovesToProcessing (0.02s)
+=== RUN   TestRepo_Tx_ProcessUpdatesBalancesAndLedger
+--- PASS: TestRepo_Tx_ProcessUpdatesBalancesAndLedger (0.03s)
+=== RUN   TestRepo_Tx_DuplicateLedgerLegRejected
+--- PASS: TestRepo_Tx_DuplicateLedgerLegRejected (0.02s)
+=== RUN   TestRepo_Tx_OverdraftBackstop
+--- PASS: TestRepo_Tx_OverdraftBackstop (0.01s)
+=== RUN   TestRepo_ReapStuck_Requeues
+--- PASS: TestRepo_ReapStuck_Requeues (0.02s)
+=== RUN   TestRepo_GetTransferByID_NotFound
+--- PASS: TestRepo_GetTransferByID_NotFound (0.01s)
+=== RUN   TestService_CreateTransfer_Idempotent
+--- PASS: TestService_CreateTransfer_Idempotent (0.02s)
+=== RUN   TestService_Process_Happy
+--- PASS: TestService_Process_Happy (0.03s)
+=== RUN   TestService_Process_InsufficientFunds_CommitsFailed
+--- PASS: TestService_Process_InsufficientFunds_CommitsFailed (0.03s)
+=== RUN   TestService_Process_InactiveDestination_CommitsFailed
+--- PASS: TestService_Process_InactiveDestination_CommitsFailed (0.03s)
+=== RUN   TestService_Process_DoubleProcess_IsIdempotent
+--- PASS: TestService_Process_DoubleProcess_IsIdempotent (0.03s)
+=== RUN   TestService_Process_ConcurrentDebits_NoDoubleSpend
+--- PASS: TestService_Process_ConcurrentDebits_NoDoubleSpend (0.05s)
+=== RUN   TestWorker_ProcessesEnqueuedTransfer
+--- PASS: TestWorker_ProcessesEnqueuedTransfer (0.05s)
+=== RUN   TestWorker_ReaperRecoversAbandonedTransfer
+--- PASS: TestWorker_ReaperRecoversAbandonedTransfer (0.15s)
+PASS
+ok  	wallet-transfer/internal/tests/integration	0.855s
+?   	wallet-transfer/internal/tests/mock	[no test files]
+?   	wallet-transfer/internal/tests/testutils	[no test files]
+=== RUN   TestWorker_ClaimsProcessesAndReaps
+--- PASS: TestWorker_ClaimsProcessesAndReaps (0.01s)
+=== RUN   TestWorker_ProcessorErrorDoesNotStopClaimer
+--- PASS: TestWorker_ProcessorErrorDoesNotStopClaimer (0.01s)
+=== RUN   TestWorker_ClaimErrorIsSurvived
+--- PASS: TestWorker_ClaimErrorIsSurvived (0.01s)
+=== RUN   TestWorker_ReaperErrorIsSurvived
+--- PASS: TestWorker_ReaperErrorIsSurvived (0.02s)
+PASS
+ok  	wallet-transfer/internal/worker	0.911s

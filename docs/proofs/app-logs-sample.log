@@ -1,0 +1,9 @@
+{"level":"info","ts":"2026-07-22T16:23:41.754+0530","caller":"wallet-transfer-assignment/main.go:82","msg":"dependencies ready, starting server and worker"}
+{"level":"info","ts":"2026-07-22T16:23:41.755+0530","caller":"handler/server.go:81","msg":"http server listening","addr":":8080"}
+{"level":"info","ts":"2026-07-22T16:23:41.755+0530","caller":"worker/worker.go:55","msg":"worker starting","count":4,"batch_size":10,"poll_interval":0.5,"reap_interval":30}
+{"level":"info","ts":"2026-07-22T16:23:41.818+0530","caller":"handler/middleware.go:95","msg":"http request","method":"GET","path":"/healthz","status":200,"duration":0,"request_id":"b5db87d1-0d5a-4bbf-ba80-b651b3f2f041"}
+{"level":"info","ts":"2026-07-22T16:23:42.988+0530","caller":"handler/middleware.go:95","msg":"http request","method":"POST","path":"/api/v1/transfers","status":202,"duration":0.0041931,"request_id":"39fb8770-ed05-405c-b920-81c71b7e3e0a"}
+{"level":"info","ts":"2026-07-22T16:23:43.116+0530","caller":"handler/middleware.go:95","msg":"http request","method":"POST","path":"/api/v1/transfers","status":202,"duration":0.0035908,"request_id":"e19618eb-7197-4b8a-9dc6-cc6b759c7f8c"}
+{"level":"info","ts":"2026-07-22T16:23:43.250+0530","caller":"handler/middleware.go:95","msg":"http request","method":"POST","path":"/api/v1/transfers","status":202,"duration":0.0030589,"request_id":"8b45bd82-b3f9-498d-a86d-79770dfa94be"}
+{"level":"info","ts":"2026-07-22T16:23:43.373+0530","caller":"handler/middleware.go:95","msg":"http request","method":"POST","path":"/api/v1/transfers","status":202,"duration":0.0030989,"request_id":"50fe63b2-dc45-4391-9c23-7624d1e2a0d3"}
+{"level":"info","ts":"2026-07-22T16:23:43.502+0530","caller":"handler/middleware.go:95","msg":"http request","method":"POST","path":"/api/v1/transfers","status":202,"duration":0.0030402,"request_id":"61d08c71-821e-4db2-9803-3a401b49d7c7"}
