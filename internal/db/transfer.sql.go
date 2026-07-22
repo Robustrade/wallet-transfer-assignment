@@ -21,6 +21,7 @@ INSERT INTO transfers (
     status
 )
 VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (idempotency_key) DO NOTHING
 RETURNING id, idempotency_key, from_wallet_id, to_wallet_id, amount, status, created_at, updated_at
 `
 

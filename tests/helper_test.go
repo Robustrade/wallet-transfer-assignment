@@ -26,7 +26,7 @@ var (
 func TestMain(m *testing.M) {
 
 	// Load .env if present
-	_ = godotenv.Load()
+	_ = godotenv.Load("../.env")
 
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -34,8 +34,15 @@ func TestMain(m *testing.M) {
 	}
 
 	var err error
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		log.Fatalf("failed parsing database config: %v", err)
+	}
+	// Increase connection pool
+	config.MaxConns = 50
+	config.MinConns = 20
 
-	testPool, err = pgxpool.New(ctx, databaseURL)
+	testPool, err = pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		log.Fatalf("failed to connect database: %v", err)
 	}

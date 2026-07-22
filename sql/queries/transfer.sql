@@ -13,6 +13,7 @@ INSERT INTO transfers (
     status
 )
 VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (idempotency_key) DO NOTHING
 RETURNING *;
 
 -- name: UpdateTransferStatus :exec

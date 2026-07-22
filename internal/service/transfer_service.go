@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	db "github.com/mritunjaysingh22/wallet-transfer-assignment/internal/db"
@@ -17,9 +18,10 @@ import (
 )
 
 var (
-	ErrInsufficientBalance = errors.New("insufficient wallet balance")
-	ErrInvalidAmount       = errors.New("amount must be greater than zero")
-	ErrSameWallet          = errors.New("source and destination wallets must be different")
+	ErrInsufficientBalance   = errors.New("insufficient wallet balance")
+	ErrInvalidAmount         = errors.New("amount must be greater than zero")
+	ErrSameWallet            = errors.New("source and destination wallets must be different")
+	ErrInvalidIdempotencyKey = errors.New("idempotency key is required")
 )
 
 type TransferRequest struct {
@@ -114,6 +116,10 @@ func (s *TransferService) createTransferTx(
 ) (*TransferResponse, error) {
 	var err error
 	// 1. Validate request
+	if strings.TrimSpace(req.IdempotencyKey) == "" {
+		return nil, ErrInvalidIdempotencyKey
+	}
+
 	if req.Amount <= 0 {
 		return nil, ErrInvalidAmount
 	}
@@ -137,17 +143,19 @@ func (s *TransferService) createTransferTx(
 		return nil, err
 	}
 
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback(ctx)
-			panic(p)
-		}
+	defer tx.Rollback(ctx)
 
-		// Safe to call even after Commit()
-		if err != nil {
-			_ = tx.Rollback(ctx)
-		}
-	}()
+	// defer func() {
+	// 	if p := recover(); p != nil {
+	// 		_ = tx.Rollback(ctx)
+	// 		panic(p)
+	// 	}
+
+	// 	// Safe to call even after Commit()
+	// 	if err != nil {
+	// 		_ = tx.Rollback(ctx)
+	// 	}
+	// }()
 
 	qtx := s.queries.WithTx(tx)
 
@@ -217,12 +225,10 @@ func (s *TransferService) createTransferTx(
 	})
 	if err != nil {
 
-		var pgErr *pgconn.PgError
+		// ON CONFLICT DO NOTHING returns no rows
+		if errors.Is(err, pgx.ErrNoRows) {
 
-		if errors.As(err, &pgErr) &&
-			pgErr.Code == "23505" {
-
-			existing, err := qtx.GetTransferByIdempotencyKey(
+			existing, err := s.queries.GetTransferByIdempotencyKey(
 				ctx,
 				req.IdempotencyKey,
 			)
@@ -389,7 +395,7 @@ func (s *TransferService) CreateTransfer(
 			switch pgErr.Code {
 			case "40001", // serialization failure
 				"40P01": // deadlock detected
-				time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+				time.Sleep(time.Duration(attempt+1) * 10 * time.Millisecond)
 				continue
 			}
 		}

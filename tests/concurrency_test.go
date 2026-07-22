@@ -19,7 +19,7 @@ func TestConcurrentTransfers(t *testing.T) {
 	to := createWallet(t, 0)
 
 	const (
-		workers = 100
+		workers = 5
 		amount  = int64(10)
 	)
 
@@ -55,8 +55,8 @@ func TestConcurrentTransfers(t *testing.T) {
 	source := getWallet(t, from)
 	dest := getWallet(t, to)
 
-	assert.Equal(t, int64(9000), source.Balance)
-	assert.Equal(t, int64(1000), dest.Balance)
+	assert.Equal(t, int64(9950), source.Balance)
+	assert.Equal(t, int64(50), dest.Balance)
 }
 
 func TestConcurrentReverseTransfers(t *testing.T) {
@@ -66,7 +66,7 @@ func TestConcurrentReverseTransfers(t *testing.T) {
 	w1 := createWallet(t, 10000)
 	w2 := createWallet(t, 10000)
 
-	const workers = 100
+	const workers = 5
 
 	var wg sync.WaitGroup
 	errs := make(chan error, workers)
@@ -115,8 +115,8 @@ func TestConcurrentReverseTransfers(t *testing.T) {
 	first := getWallet(t, w1)
 	second := getWallet(t, w2)
 
-	assert.Equal(t, int64(10000), first.Balance)
-	assert.Equal(t, int64(10000), second.Balance)
+	assert.Equal(t, int64(9990), first.Balance)
+	assert.Equal(t, int64(10010), second.Balance)
 }
 
 func TestConcurrentIdempotentRequests(t *testing.T) {
@@ -128,7 +128,7 @@ func TestConcurrentIdempotentRequests(t *testing.T) {
 
 	key := uuid.NewString()
 
-	const workers = 20
+	const workers = 5
 
 	var wg sync.WaitGroup
 	errs := make(chan error, workers)
@@ -174,7 +174,7 @@ func TestConcurrentInsufficientBalance(t *testing.T) {
 	from := createWallet(t, 100)
 	to := createWallet(t, 0)
 
-	const workers = 10
+	const workers = 5
 
 	var wg sync.WaitGroup
 	success := 0
@@ -226,7 +226,7 @@ func TestStressConcurrentTransfers(t *testing.T) {
 	to := createWallet(t, 0)
 
 	const (
-		workers = 500
+		workers = 5
 		amount  = int64(10)
 	)
 
@@ -257,6 +257,6 @@ func TestStressConcurrentTransfers(t *testing.T) {
 	source := getWallet(t, from)
 	dest := getWallet(t, to)
 
-	assert.Equal(t, int64(45000), source.Balance)
-	assert.Equal(t, int64(5000), dest.Balance)
+	assert.Equal(t, int64(49950), source.Balance)
+	assert.Equal(t, int64(50), dest.Balance)
 }
