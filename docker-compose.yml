@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: wallet-app
+
+    ports:
+      - "8080:8080"
+
+    environment:
+      DB_PATH: /app/data/wallet.db
+
+    volumes:
+      - wallet_data:/app/data
+
+    restart: unless-stopped
+
+volumes:
+  wallet_data:

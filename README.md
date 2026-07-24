@@ -33,3 +33,25 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+
+## 
+# Wallet Service
+
+## Features
+- Idempotent transfer API
+- Double-entry ledger
+- Transaction-safe
+- Row-level locking
+- Dockerized
+
+## Run
+make run
+
+## Docker
+make docker
+
+## Test
+make test
+
+
