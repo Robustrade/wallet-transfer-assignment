@@ -3,5 +3,6 @@ coverage/
 dist/
 build/
 .tmp/
+.agent/
 .env
 .env.*

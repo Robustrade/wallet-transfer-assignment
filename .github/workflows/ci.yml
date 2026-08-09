@@ -41,24 +41,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${LINT_CMD:-}" || { echo "Missing repository variable LINT_CMD"; exit 1; }
-          test -n "${FORMAT_CHECK_CMD:-}" || { echo "Missing repository variable FORMAT_CHECK_CMD"; exit 1; }
-          test -n "${TEST_CMD:-}" || { echo "Missing repository variable TEST_CMD"; exit 1; }
+          LINT_CMD="${LINT_CMD:-golangci-lint run ./...}"
+          FORMAT_CHECK_CMD="${FORMAT_CHECK_CMD:-test -z \"\$(gofmt -l .)\"}"
+          TEST_CMD="${TEST_CMD:-go test -v -race -cover -p 1 ./...}"
 
       - name: Run lint
         shell: bash
         run: |
           set -euo pipefail
-          eval "$LINT_CMD"
+          ${LINT_CMD:-golangci-lint run ./...}
 
       - name: Run format check
         shell: bash
         run: |
           set -euo pipefail
-          eval "$FORMAT_CHECK_CMD"
+          ${FORMAT_CHECK_CMD:-test -z "$(gofmt -l .)"}
 
       - name: Run tests
         shell: bash
         run: |
           set -euo pipefail
-          eval "$TEST_CMD"
+          ${TEST_CMD:-go test -v -race -cover -p 1 ./...}
