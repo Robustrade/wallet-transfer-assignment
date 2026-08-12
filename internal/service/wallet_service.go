@@ -38,15 +38,33 @@ func (s *WalletService) Get(ctx context.Context, id string) (domain.Wallet, erro
 	return s.repos.Wallets().Get(ctx, id)
 }
 
+// LedgerPage is a page of a wallet's ledger history. NextBeforeID is nil
+// when there is no further page.
+type LedgerPage struct {
+	Entries      []domain.LedgerEntry
+	NextBeforeID *int64
+}
+
 // ListEntries returns a wallet's ledger history, newest first. limit is
 // clamped to a sane default/maximum; beforeID nil starts from the newest
-// entry.
-func (s *WalletService) ListEntries(ctx context.Context, walletID string, limit int, beforeID *int64) ([]domain.LedgerEntry, error) {
+// entry. It fetches one extra row to determine whether a further page
+// exists, rather than guessing from a full page.
+func (s *WalletService) ListEntries(ctx context.Context, walletID string, limit int, beforeID *int64) (LedgerPage, error) {
 	if limit <= 0 || limit > 100 {
 		limit = defaultLedgerPageSize
 	}
 	if _, err := s.repos.Wallets().Get(ctx, walletID); err != nil {
-		return nil, err
+		return LedgerPage{}, err
 	}
-	return s.repos.Ledger().ListByWallet(ctx, walletID, limit, beforeID)
+	entries, err := s.repos.Ledger().ListByWallet(ctx, walletID, limit+1, beforeID)
+	if err != nil {
+		return LedgerPage{}, err
+	}
+	page := LedgerPage{Entries: entries}
+	if len(entries) > limit {
+		page.Entries = entries[:limit]
+		last := page.Entries[len(page.Entries)-1].ID
+		page.NextBeforeID = &last
+	}
+	return page, nil
 }

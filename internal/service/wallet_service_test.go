@@ -55,11 +55,41 @@ func TestWalletService_ListEntries(t *testing.T) {
 	require.NoError(t, err)
 
 	walletSvc := service.NewWalletService(uow)
-	entries, err := walletSvc.ListEntries(ctx, "wallet_1", 10, nil)
+	page, err := walletSvc.ListEntries(ctx, "wallet_1", 10, nil)
 	require.NoError(t, err)
-	require.Len(t, entries, 1)
-	require.Equal(t, domain.LedgerEntryDebit, entries[0].EntryType)
+	require.Len(t, page.Entries, 1)
+	require.Equal(t, domain.LedgerEntryDebit, page.Entries[0].EntryType)
+	require.Nil(t, page.NextBeforeID, "a page smaller than the limit has no next page")
 
 	_, err = walletSvc.ListEntries(ctx, "missing", 10, nil)
 	require.ErrorIs(t, err, domain.ErrWalletNotFound)
+}
+
+func TestWalletService_ListEntries_Pagination(t *testing.T) {
+	ctx := context.Background()
+	uow := newFakeUnitOfWork()
+	seedWallet(t, uow, "wallet_1", "INR", 1000)
+	seedWallet(t, uow, "wallet_2", "INR", 0)
+
+	transferSvc := service.NewTransferService(uow)
+	for i := range 3 {
+		_, err := transferSvc.Create(ctx, domain.TransferCommand{
+			IdempotencyKey: "k" + string(rune('a'+i)),
+			FromWalletID:   "wallet_1",
+			ToWalletID:     "wallet_2",
+			AmountMinor:    10,
+		})
+		require.NoError(t, err)
+	}
+
+	walletSvc := service.NewWalletService(uow)
+	page, err := walletSvc.ListEntries(ctx, "wallet_1", 2, nil)
+	require.NoError(t, err)
+	require.Len(t, page.Entries, 2)
+	require.NotNil(t, page.NextBeforeID, "a full page must report a next cursor")
+
+	nextPage, err := walletSvc.ListEntries(ctx, "wallet_1", 2, page.NextBeforeID)
+	require.NoError(t, err)
+	require.Len(t, nextPage.Entries, 1)
+	require.Nil(t, nextPage.NextBeforeID)
 }

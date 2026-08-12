@@ -44,6 +44,11 @@ func NewTransferService(uow UnitOfWork) *TransferService {
 	}
 }
 
+// Get returns a transfer by id.
+func (s *TransferService) Get(ctx context.Context, id uuid.UUID) (domain.Transfer, error) {
+	return s.uow.Transfers().FindByID(ctx, id)
+}
+
 // Create settles cmd, or replays the result of an earlier call with the same
 // idempotency key. See docs/design.md §5 and §6.
 func (s *TransferService) Create(ctx context.Context, cmd domain.TransferCommand) (TransferResult, error) {
@@ -78,7 +83,7 @@ func (s *TransferService) Create(ctx context.Context, cmd domain.TransferCommand
 		if err != nil {
 			return err
 		}
-		transfer := domain.NewPendingTransfer(id, cmd, currency)
+		transfer := domain.NewPendingTransfer(id, cmd, currency, s.now())
 
 		inserted, err := r.Transfers().InsertIfAbsent(ctx, transfer)
 		if err != nil {

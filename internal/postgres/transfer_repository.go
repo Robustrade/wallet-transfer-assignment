@@ -22,11 +22,15 @@ type transferRepository struct {
 // resolves, then either observes the committed row (inserted=false) or finds
 // the key free again and inserts (inserted=true) if it rolled back.
 func (r *transferRepository) InsertIfAbsent(ctx context.Context, t domain.Transfer) (bool, error) {
+	// created_at/updated_at are passed explicitly (t.CreatedAt) rather than
+	// left to the column's DEFAULT now() so the row this call persists and
+	// the Transfer the service already holds in memory always agree — the
+	// service never has to re-read the row just to learn its own timestamp.
 	tag, err := r.q.Exec(ctx, `
-		INSERT INTO transfers (id, idempotency_key, request_hash, from_wallet_id, to_wallet_id, amount_minor, currency, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO transfers (id, idempotency_key, request_hash, from_wallet_id, to_wallet_id, amount_minor, currency, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
 		ON CONFLICT (idempotency_key) DO NOTHING`,
-		t.ID, t.IdempotencyKey, t.RequestHash, t.FromWalletID, t.ToWalletID, t.AmountMinor, t.Currency, string(t.Status))
+		t.ID, t.IdempotencyKey, t.RequestHash, t.FromWalletID, t.ToWalletID, t.AmountMinor, t.Currency, string(t.Status), t.CreatedAt)
 	if err != nil {
 		return false, translateError(err)
 	}
