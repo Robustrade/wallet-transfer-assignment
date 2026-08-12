@@ -146,9 +146,12 @@ curl -s http://localhost:8080/wallets/wallet_1
 
 ---
 
-## `GET /wallets/{id}/entries?limit=20&beforeId=`
+## `GET /wallets/{id}/entries?limit=20`
 
-Ledger history for a wallet, newest first, keyset-paginated on `ledger_entries.id`.
+A wallet's most recent ledger entries, newest first, up to `limit` (default
+20, max 100). No pagination cursor — this is an optional enhancement per
+`ASSIGNMENT.md`, and "most recent N" covers the useful case without a
+cursor to maintain.
 *(Optional enhancement.)*
 
 ```bash
@@ -156,23 +159,18 @@ curl -s 'http://localhost:8080/wallets/wallet_1/entries?limit=20'
 ```
 
 ```json
-{
-  "entries": [
-    {
-      "id": 42,
-      "transferId": "0190d1e7-3a2b-7c11-9d4e-2f6a8b1c0d3e",
-      "type": "DEBIT",
-      "amount": 100,
-      "currency": "INR",
-      "balanceAfter": 900,
-      "createdAt": "2026-08-12T10:00:00.234567Z"
-    }
-  ],
-  "nextBeforeId": 42
-}
+[
+  {
+    "id": 42,
+    "transferId": "0190d1e7-3a2b-7c11-9d4e-2f6a8b1c0d3e",
+    "type": "DEBIT",
+    "amount": 100,
+    "currency": "INR",
+    "balanceAfter": 900,
+    "createdAt": "2026-08-12T10:00:00.234567Z"
+  }
+]
 ```
-
-`nextBeforeId` is `null` when there is no further page.
 
 ---
 

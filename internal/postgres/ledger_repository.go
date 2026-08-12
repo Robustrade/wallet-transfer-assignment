@@ -3,8 +3,6 @@ package postgres
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/devthedeveloper/wallet-transfer-assignment/internal/domain"
 )
 
@@ -30,24 +28,13 @@ func (r *ledgerRepository) InsertPair(ctx context.Context, debit, credit domain.
 	return nil
 }
 
-func (r *ledgerRepository) ListByWallet(ctx context.Context, walletID string, limit int, beforeID *int64) ([]domain.LedgerEntry, error) {
-	var rows pgx.Rows
-	var err error
-	if beforeID != nil {
-		rows, err = r.q.Query(ctx, `
-			SELECT id, transfer_id, wallet_id, entry_type, amount_minor, currency, balance_after, created_at
-			FROM ledger_entries
-			WHERE wallet_id = $1 AND id < $2
-			ORDER BY id DESC
-			LIMIT $3`, walletID, *beforeID, limit)
-	} else {
-		rows, err = r.q.Query(ctx, `
-			SELECT id, transfer_id, wallet_id, entry_type, amount_minor, currency, balance_after, created_at
-			FROM ledger_entries
-			WHERE wallet_id = $1
-			ORDER BY id DESC
-			LIMIT $2`, walletID, limit)
-	}
+func (r *ledgerRepository) ListByWallet(ctx context.Context, walletID string, limit int) ([]domain.LedgerEntry, error) {
+	rows, err := r.q.Query(ctx, `
+		SELECT id, transfer_id, wallet_id, entry_type, amount_minor, currency, balance_after, created_at
+		FROM ledger_entries
+		WHERE wallet_id = $1
+		ORDER BY id DESC
+		LIMIT $2`, walletID, limit)
 	if err != nil {
 		return nil, translateError(err)
 	}

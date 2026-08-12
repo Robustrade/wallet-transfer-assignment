@@ -55,17 +55,16 @@ func TestWalletService_ListEntries(t *testing.T) {
 	require.NoError(t, err)
 
 	walletSvc := service.NewWalletService(uow)
-	page, err := walletSvc.ListEntries(ctx, "wallet_1", 10, nil)
+	entries, err := walletSvc.ListEntries(ctx, "wallet_1", 10)
 	require.NoError(t, err)
-	require.Len(t, page.Entries, 1)
-	require.Equal(t, domain.LedgerEntryDebit, page.Entries[0].EntryType)
-	require.Nil(t, page.NextBeforeID, "a page smaller than the limit has no next page")
+	require.Len(t, entries, 1)
+	require.Equal(t, domain.LedgerEntryDebit, entries[0].EntryType)
 
-	_, err = walletSvc.ListEntries(ctx, "missing", 10, nil)
+	_, err = walletSvc.ListEntries(ctx, "missing", 10)
 	require.ErrorIs(t, err, domain.ErrWalletNotFound)
 }
 
-func TestWalletService_ListEntries_Pagination(t *testing.T) {
+func TestWalletService_ListEntries_LimitIsRespected(t *testing.T) {
 	ctx := context.Background()
 	uow := newFakeUnitOfWork()
 	seedWallet(t, uow, "wallet_1", "INR", 1000)
@@ -83,13 +82,7 @@ func TestWalletService_ListEntries_Pagination(t *testing.T) {
 	}
 
 	walletSvc := service.NewWalletService(uow)
-	page, err := walletSvc.ListEntries(ctx, "wallet_1", 2, nil)
+	entries, err := walletSvc.ListEntries(ctx, "wallet_1", 2)
 	require.NoError(t, err)
-	require.Len(t, page.Entries, 2)
-	require.NotNil(t, page.NextBeforeID, "a full page must report a next cursor")
-
-	nextPage, err := walletSvc.ListEntries(ctx, "wallet_1", 2, page.NextBeforeID)
-	require.NoError(t, err)
-	require.Len(t, nextPage.Entries, 1)
-	require.Nil(t, nextPage.NextBeforeID)
+	require.Len(t, entries, 2, "3 debits exist but only the 2 most recent should be returned")
 }

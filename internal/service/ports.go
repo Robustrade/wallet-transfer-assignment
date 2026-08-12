@@ -74,7 +74,6 @@ type LedgerRepository interface {
 	// InsertPair writes both halves of a double-entry in one statement
 	// batch. Both rows must belong to the same transfer.
 	InsertPair(ctx context.Context, debit, credit domain.LedgerEntry) error
-	// ListByWallet returns entries newest-first, keyset-paginated on id.
-	// beforeID nil means "start from the newest entry".
-	ListByWallet(ctx context.Context, walletID string, limit int, beforeID *int64) ([]domain.LedgerEntry, error)
+	// ListByWallet returns the wallet's most recent entries, newest first.
+	ListByWallet(ctx context.Context, walletID string, limit int) ([]domain.LedgerEntry, error)
 }

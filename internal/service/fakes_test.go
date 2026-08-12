@@ -229,15 +229,12 @@ func (r *fakeLedgerRepo) InsertPair(_ context.Context, debit, credit domain.Ledg
 	return nil
 }
 
-func (r *fakeLedgerRepo) ListByWallet(_ context.Context, walletID string, limit int, beforeID *int64) ([]domain.LedgerEntry, error) {
+func (r *fakeLedgerRepo) ListByWallet(_ context.Context, walletID string, limit int) ([]domain.LedgerEntry, error) {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
 	var out []domain.LedgerEntry
 	for _, e := range slices.Backward(r.store.ledger) {
 		if e.WalletID != walletID {
-			continue
-		}
-		if beforeID != nil && e.ID >= *beforeID {
 			continue
 		}
 		out = append(out, e)

@@ -44,13 +44,13 @@ func TestTransferService_Create_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(100), to.BalanceMinor)
 
-	debitEntries, err := uow.Ledger().ListByWallet(ctx, "wallet_1", 10, nil)
+	debitEntries, err := uow.Ledger().ListByWallet(ctx, "wallet_1", 10)
 	require.NoError(t, err)
 	require.Len(t, debitEntries, 1)
 	require.Equal(t, domain.LedgerEntryDebit, debitEntries[0].EntryType)
 	require.Equal(t, int64(900), debitEntries[0].BalanceAfter)
 
-	creditEntries, err := uow.Ledger().ListByWallet(ctx, "wallet_2", 10, nil)
+	creditEntries, err := uow.Ledger().ListByWallet(ctx, "wallet_2", 10)
 	require.NoError(t, err)
 	require.Len(t, creditEntries, 1)
 	require.Equal(t, domain.LedgerEntryCredit, creditEntries[0].EntryType)
@@ -79,7 +79,7 @@ func TestTransferService_Create_ReplayIdenticalRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(900), from.BalanceMinor, "balance must move exactly once")
 
-	entries, err := uow.Ledger().ListByWallet(ctx, "wallet_1", 10, nil)
+	entries, err := uow.Ledger().ListByWallet(ctx, "wallet_1", 10)
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "the ledger must not gain a second entry on replay")
 }
@@ -120,7 +120,7 @@ func TestTransferService_Create_InsufficientFunds(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(50), from.BalanceMinor, "balance must be untouched by a failed transfer")
 
-	entries, err := uow.Ledger().ListByWallet(ctx, "wallet_1", 10, nil)
+	entries, err := uow.Ledger().ListByWallet(ctx, "wallet_1", 10)
 	require.NoError(t, err)
 	require.Empty(t, entries, "a failed transfer must produce zero ledger entries")
 
@@ -197,7 +197,7 @@ func TestTransferService_Create_RetriesTransientTransactionFailures(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, int64(900), from.BalanceMinor, "exactly one logical transfer despite 3 Do() attempts")
 
-	entries, err := base.Ledger().ListByWallet(ctx, "wallet_1", 10, nil)
+	entries, err := base.Ledger().ListByWallet(ctx, "wallet_1", 10)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 }

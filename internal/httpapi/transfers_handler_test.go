@@ -46,8 +46,8 @@ func (fakeWalletService) Create(context.Context, string, string) (domain.Wallet,
 func (fakeWalletService) Get(context.Context, string) (domain.Wallet, error) {
 	return domain.Wallet{}, nil
 }
-func (fakeWalletService) ListEntries(context.Context, string, int, *int64) (service.LedgerPage, error) {
-	return service.LedgerPage{}, nil
+func (fakeWalletService) ListEntries(context.Context, string, int) ([]domain.LedgerEntry, error) {
+	return nil, nil
 }
 
 type fakeHealthChecker struct{ err error }

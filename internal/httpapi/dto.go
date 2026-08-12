@@ -110,12 +110,7 @@ type ledgerEntryResponse struct {
 	CreatedAt    string `json:"createdAt"`
 }
 
-type ledgerEntriesResponse struct {
-	Entries      []ledgerEntryResponse `json:"entries"`
-	NextBeforeID *int64                `json:"nextBeforeId"`
-}
-
-func newLedgerEntriesResponse(entries []domain.LedgerEntry, nextBeforeID *int64) ledgerEntriesResponse {
+func newLedgerEntriesResponse(entries []domain.LedgerEntry) []ledgerEntryResponse {
 	out := make([]ledgerEntryResponse, len(entries))
 	for i, e := range entries {
 		out[i] = ledgerEntryResponse{
@@ -128,7 +123,7 @@ func newLedgerEntriesResponse(entries []domain.LedgerEntry, nextBeforeID *int64)
 			CreatedAt:    formatTime(e.CreatedAt),
 		}
 	}
-	return ledgerEntriesResponse{Entries: out, NextBeforeID: nextBeforeID}
+	return out
 }
 
 func formatTime(t time.Time) string {

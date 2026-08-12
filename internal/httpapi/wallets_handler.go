@@ -9,14 +9,13 @@ import (
 	"strconv"
 
 	"github.com/devthedeveloper/wallet-transfer-assignment/internal/domain"
-	"github.com/devthedeveloper/wallet-transfer-assignment/internal/service"
 )
 
 // WalletService is the subset of service.WalletService this handler needs.
 type WalletService interface {
 	Create(ctx context.Context, id, currency string) (domain.Wallet, error)
 	Get(ctx context.Context, id string) (domain.Wallet, error)
-	ListEntries(ctx context.Context, walletID string, limit int, beforeID *int64) (service.LedgerPage, error)
+	ListEntries(ctx context.Context, walletID string, limit int) ([]domain.LedgerEntry, error)
 }
 
 type walletsHandler struct {
@@ -63,7 +62,10 @@ const (
 	maxEntriesLimit     = 100
 )
 
-// ListEntries handles GET /wallets/{id}/entries.
+// ListEntries handles GET /wallets/{id}/entries — the wallet's most recent
+// ledger activity, newest first. No pagination: this is an optional
+// enhancement per ASSIGNMENT.md, and "most recent N" covers it without a
+// cursor to maintain.
 func (h *walletsHandler) ListEntries(w http.ResponseWriter, r *http.Request) {
 	limit := defaultEntriesLimit
 	if v := r.URL.Query().Get("limit"); v != "" {
@@ -75,20 +77,10 @@ func (h *walletsHandler) ListEntries(w http.ResponseWriter, r *http.Request) {
 		limit = n
 	}
 
-	var beforeID *int64
-	if v := r.URL.Query().Get("beforeId"); v != "" {
-		n, err := strconv.ParseInt(v, 10, 64)
-		if err != nil {
-			writeValidationError(w, "beforeId", "beforeId must be an integer")
-			return
-		}
-		beforeID = &n
-	}
-
-	page, err := h.wallets.ListEntries(r.Context(), r.PathValue("id"), limit, beforeID)
+	entries, err := h.wallets.ListEntries(r.Context(), r.PathValue("id"), limit)
 	if err != nil {
 		writeDomainError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, newLedgerEntriesResponse(page.Entries, page.NextBeforeID))
+	writeJSON(w, http.StatusOK, newLedgerEntriesResponse(entries))
 }

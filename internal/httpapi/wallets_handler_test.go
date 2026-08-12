@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -26,7 +27,7 @@ type fakeWalletServiceFull struct {
 	createErr    error
 	getResult    domain.Wallet
 	getErr       error
-	entriesPage  service.LedgerPage
+	entries      []domain.LedgerEntry
 	entriesErr   error
 }
 
@@ -36,8 +37,8 @@ func (f *fakeWalletServiceFull) Create(context.Context, string, string) (domain.
 func (f *fakeWalletServiceFull) Get(context.Context, string) (domain.Wallet, error) {
 	return f.getResult, f.getErr
 }
-func (f *fakeWalletServiceFull) ListEntries(context.Context, string, int, *int64) (service.LedgerPage, error) {
-	return f.entriesPage, f.entriesErr
+func (f *fakeWalletServiceFull) ListEntries(context.Context, string, int) ([]domain.LedgerEntry, error) {
+	return f.entries, f.entriesErr
 }
 
 type fakeTransferServiceUnused struct{}
@@ -103,12 +104,8 @@ func TestWalletsHandler_Get_NotFound(t *testing.T) {
 }
 
 func TestWalletsHandler_ListEntries(t *testing.T) {
-	nextID := int64(41)
-	fake := &fakeWalletServiceFull{entriesPage: service.LedgerPage{
-		Entries: []domain.LedgerEntry{
-			{ID: 42, TransferID: uuid.Must(uuid.NewV7()), WalletID: "wallet_1", EntryType: domain.LedgerEntryDebit, AmountMinor: 100, Currency: "INR", BalanceAfter: 900, CreatedAt: time.Now()},
-		},
-		NextBeforeID: &nextID,
+	fake := &fakeWalletServiceFull{entries: []domain.LedgerEntry{
+		{ID: 42, TransferID: uuid.Must(uuid.NewV7()), WalletID: "wallet_1", EntryType: domain.LedgerEntryDebit, AmountMinor: 100, Currency: "INR", BalanceAfter: 900, CreatedAt: time.Now()},
 	}}
 	srv := newWalletTestServer(fake)
 	defer srv.Close()
@@ -117,10 +114,10 @@ func TestWalletsHandler_ListEntries(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	body := decodeBody(t, resp)
-	entries := body["entries"].([]any)
+	var entries []map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&entries))
 	require.Len(t, entries, 1)
-	require.Equal(t, float64(41), body["nextBeforeId"])
+	require.Equal(t, "DEBIT", entries[0]["type"])
 }
 
 func TestWalletsHandler_ListEntries_InvalidLimit(t *testing.T) {
