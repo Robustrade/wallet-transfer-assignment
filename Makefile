@@ -49,15 +49,18 @@ test-unit: ## run unit tests only, no database required
 test: db-up ## start postgres, wait healthy, run the full suite (unit + integration)
 	@echo "waiting for postgres to be healthy..."
 	@until $(DOCKER) inspect --format='{{json .State.Health.Status}}' wallet-transfer-postgres 2>/dev/null | grep -q healthy; do sleep 1; done
-	TEST_DATABASE_URL="$(DATABASE_URL)" go test ./... -race -count=1
+	# -p 1: DB-touching packages share one live database, so packages must
+	# not run concurrently (e.g. test/integration's TRUNCATE would race
+	# against internal/postgres's constraint tests otherwise).
+	TEST_DATABASE_URL="$(DATABASE_URL)" go test ./... -race -count=1 -p 1
 
 test-integration: db-up ## run only the integration suite
 	@until $(DOCKER) inspect --format='{{json .State.Health.Status}}' wallet-transfer-postgres 2>/dev/null | grep -q healthy; do sleep 1; done
-	TEST_DATABASE_URL="$(DATABASE_URL)" go test ./test/... ./internal/postgres/... -race -count=1
+	TEST_DATABASE_URL="$(DATABASE_URL)" go test ./test/... ./internal/postgres/... -race -count=1 -p 1
 
 cover: db-up ## run tests with coverage report
 	@until $(DOCKER) inspect --format='{{json .State.Health.Status}}' wallet-transfer-postgres 2>/dev/null | grep -q healthy; do sleep 1; done
-	TEST_DATABASE_URL="$(DATABASE_URL)" go test ./... -race -count=1 -coverprofile=coverage.out
+	TEST_DATABASE_URL="$(DATABASE_URL)" go test ./... -race -count=1 -p 1 -coverprofile=coverage.out
 	go tool cover -func=coverage.out | tail -1
 
 # ------------------------------------------------------------------- docker
