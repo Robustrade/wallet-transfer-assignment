@@ -145,6 +145,14 @@ test.
 - `GET /wallets/{id}`, `GET /wallets/{id}/entries`, `/metrics` are the
   assignment's optional enhancements; implemented at a basic but complete
   level, not gold-plated.
+- The data-access layer uses GORM (connection pooling, transaction
+  lifecycle, simple reads). The concurrency-critical statements — the
+  `FOR NO KEY UPDATE` lock, the guarded balance `UPDATE`, the
+  `ON CONFLICT DO NOTHING` idempotency claim — are still the exact raw SQL
+  described above, issued through GORM's own escape hatches
+  (`clause.Locking`, `.Raw()`, `clause.OnConflict`) rather than left to its
+  query builder. Full rationale and what stayed vs. changed:
+  `docs/design.md` §13.
 
 ## Checklist
 

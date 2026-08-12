@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -9,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/gorm"
 )
 
 //go:embed migrations/*.sql
@@ -65,26 +66,37 @@ func loadMigrations() ([]migration, error) {
 // schema_migrations, in ascending version order, each in its own
 // transaction. It is safe to call concurrently from multiple process starts:
 // a Postgres advisory lock serializes the whole operation.
-func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
+//
+// This runs entirely over database/sql (via gdb's underlying *sql.DB)
+// rather than GORM's query builder — schema management is raw DDL, GORM's
+// struct-mapped API has nothing to offer here, and pg_advisory_lock/unlock
+// must run on the exact same physical connection, which database/sql's
+// reserved-connection API (DB.Conn) guarantees directly.
+func Migrate(ctx context.Context, gdb *gorm.DB) error {
 	migrations, err := loadMigrations()
 	if err != nil {
 		return err
 	}
 
-	conn, err := pool.Acquire(ctx)
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		return fmt.Errorf("get underlying sql.DB: %w", err)
+	}
+
+	conn, err := sqlDB.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("acquire connection for migration lock: %w", err)
 	}
-	defer conn.Release()
+	defer conn.Close()
 
-	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", migrationAdvisoryLockKey); err != nil {
+	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationAdvisoryLockKey); err != nil {
 		return fmt.Errorf("acquire migration advisory lock: %w", err)
 	}
 	defer func() {
-		_, _ = conn.Exec(ctx, "SELECT pg_advisory_unlock($1)", migrationAdvisoryLockKey)
+		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationAdvisoryLockKey)
 	}()
 
-	if _, err := conn.Exec(ctx, `
+	if _, err := conn.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version    INTEGER PRIMARY KEY,
 			name       TEXT NOT NULL,
@@ -93,22 +105,9 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	applied := map[int]bool{}
-	rows, err := conn.Query(ctx, "SELECT version FROM schema_migrations")
+	applied, err := appliedVersions(ctx, conn)
 	if err != nil {
-		return fmt.Errorf("read schema_migrations: %w", err)
-	}
-	for rows.Next() {
-		var v int
-		if err := rows.Scan(&v); err != nil {
-			rows.Close()
-			return fmt.Errorf("scan schema_migrations: %w", err)
-		}
-		applied[v] = true
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("read schema_migrations: %w", err)
+		return err
 	}
 
 	for _, m := range migrations {
@@ -123,22 +122,43 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-func applyMigration(ctx context.Context, conn *pgxpool.Conn, m migration) error {
-	tx, err := conn.Begin(ctx)
+func appliedVersions(ctx context.Context, conn *sql.Conn) (map[int]bool, error) {
+	rows, err := conn.QueryContext(ctx, "SELECT version FROM schema_migrations")
+	if err != nil {
+		return nil, fmt.Errorf("read schema_migrations: %w", err)
+	}
+	defer rows.Close()
+
+	applied := map[int]bool{}
+	for rows.Next() {
+		var v int
+		if err := rows.Scan(&v); err != nil {
+			return nil, fmt.Errorf("scan schema_migrations: %w", err)
+		}
+		applied[v] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read schema_migrations: %w", err)
+	}
+	return applied, nil
+}
+
+func applyMigration(ctx context.Context, conn *sql.Conn, m migration) error {
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(ctx, m.upSQL); err != nil {
+	if _, err := tx.ExecContext(ctx, m.upSQL); err != nil {
 		return fmt.Errorf("exec up.sql: %w", err)
 	}
-	if _, err := tx.Exec(ctx,
+	if _, err := tx.ExecContext(ctx,
 		"INSERT INTO schema_migrations (version, name) VALUES ($1, $2)",
 		m.version, m.name,
 	); err != nil {
 		return fmt.Errorf("record migration: %w", err)
 	}
 
-	return tx.Commit(ctx)
+	return tx.Commit()
 }

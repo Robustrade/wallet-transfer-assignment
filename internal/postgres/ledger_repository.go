@@ -3,25 +3,28 @@ package postgres
 import (
 	"context"
 
+	"gorm.io/gorm"
+
 	"github.com/devthedeveloper/wallet-transfer-assignment/internal/domain"
 )
 
 type ledgerRepository struct {
-	q dbtx
+	q *gorm.DB
 }
 
 // InsertPair writes both halves of a double-entry in a single statement, so
-// there is never a moment where one exists without the other. The
-// ledger_entries_one_per_side unique constraint additionally guarantees no
-// transfer can ever accumulate more than one of each type.
+// there is never a moment where one exists without the other. Raw SQL
+// rather than two GORM Create() calls, for the same reason: one INSERT, not
+// two round trips that could interleave with something else.
 func (r *ledgerRepository) InsertPair(ctx context.Context, debit, credit domain.LedgerEntry) error {
-	_, err := r.q.Exec(ctx, `
+	err := r.q.WithContext(ctx).Exec(`
 		INSERT INTO ledger_entries (transfer_id, wallet_id, entry_type, amount_minor, currency, balance_after)
 		VALUES
-			($1, $2, 'DEBIT',  $3, $4, $5),
-			($1, $6, 'CREDIT', $3, $4, $7)`,
+			(?, ?, 'DEBIT',  ?, ?, ?),
+			(?, ?, 'CREDIT', ?, ?, ?)`,
 		debit.TransferID, debit.WalletID, debit.AmountMinor, debit.Currency, debit.BalanceAfter,
-		credit.WalletID, credit.BalanceAfter)
+		credit.TransferID, credit.WalletID, credit.AmountMinor, credit.Currency, credit.BalanceAfter,
+	).Error
 	if err != nil {
 		return translateError(err)
 	}
@@ -29,29 +32,28 @@ func (r *ledgerRepository) InsertPair(ctx context.Context, debit, credit domain.
 }
 
 func (r *ledgerRepository) ListByWallet(ctx context.Context, walletID string, limit int) ([]domain.LedgerEntry, error) {
-	rows, err := r.q.Query(ctx, `
-		SELECT id, transfer_id, wallet_id, entry_type, amount_minor, currency, balance_after, created_at
-		FROM ledger_entries
-		WHERE wallet_id = $1
-		ORDER BY id DESC
-		LIMIT $2`, walletID, limit)
+	var models []ledgerEntryModel
+	err := r.q.WithContext(ctx).
+		Where("wallet_id = ?", walletID).
+		Order("id DESC").
+		Limit(limit).
+		Find(&models).Error
 	if err != nil {
 		return nil, translateError(err)
 	}
-	defer rows.Close()
 
-	var entries []domain.LedgerEntry
-	for rows.Next() {
-		var e domain.LedgerEntry
-		var entryType string
-		if err := rows.Scan(&e.ID, &e.TransferID, &e.WalletID, &entryType, &e.AmountMinor, &e.Currency, &e.BalanceAfter, &e.CreatedAt); err != nil {
-			return nil, err
+	entries := make([]domain.LedgerEntry, len(models))
+	for i, m := range models {
+		entries[i] = domain.LedgerEntry{
+			ID:           m.ID,
+			TransferID:   m.TransferID,
+			WalletID:     m.WalletID,
+			EntryType:    domain.LedgerEntryType(m.EntryType),
+			AmountMinor:  m.AmountMinor,
+			Currency:     m.Currency,
+			BalanceAfter: m.BalanceAfter,
+			CreatedAt:    m.CreatedAt,
 		}
-		e.EntryType = domain.LedgerEntryType(entryType)
-		entries = append(entries, e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	return entries, nil
 }

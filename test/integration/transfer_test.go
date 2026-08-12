@@ -40,10 +40,10 @@ func TestTransfer_HappyPath(t *testing.T) {
 
 	var debitBalanceAfter, creditBalanceAfter int64
 	ctx := context.Background()
-	require.NoError(t, db.Pool().QueryRow(ctx,
-		`SELECT balance_after FROM ledger_entries WHERE transfer_id = $1 AND entry_type = 'DEBIT'`, transferID).Scan(&debitBalanceAfter))
-	require.NoError(t, db.Pool().QueryRow(ctx,
-		`SELECT balance_after FROM ledger_entries WHERE transfer_id = $1 AND entry_type = 'CREDIT'`, transferID).Scan(&creditBalanceAfter))
+	require.NoError(t, db.Gorm().WithContext(ctx).
+		Raw(`SELECT balance_after FROM ledger_entries WHERE transfer_id = ? AND entry_type = 'DEBIT'`, transferID).Scan(&debitBalanceAfter).Error)
+	require.NoError(t, db.Gorm().WithContext(ctx).
+		Raw(`SELECT balance_after FROM ledger_entries WHERE transfer_id = ? AND entry_type = 'CREDIT'`, transferID).Scan(&creditBalanceAfter).Error)
 	require.Equal(t, int64(900), debitBalanceAfter)
 	require.Equal(t, int64(100), creditBalanceAfter)
 
@@ -78,9 +78,13 @@ func TestTransfer_InsufficientFundsPersistsAsFailed(t *testing.T) {
 	require.Zero(t, debits)
 	require.Zero(t, credits)
 
-	var status, failureCode string
-	require.NoError(t, db.Pool().QueryRow(context.Background(),
-		`SELECT status, failure_code FROM transfers WHERE id = $1`, transferID).Scan(&status, &failureCode))
+	var row struct {
+		Status      string `gorm:"column:status"`
+		FailureCode string `gorm:"column:failure_code"`
+	}
+	require.NoError(t, db.Gorm().WithContext(context.Background()).
+		Raw(`SELECT status, failure_code FROM transfers WHERE id = ?`, transferID).Scan(&row).Error)
+	status, failureCode := row.Status, row.FailureCode
 	require.Equal(t, "FAILED", status)
 	require.Equal(t, "INSUFFICIENT_FUNDS", failureCode)
 
@@ -114,13 +118,13 @@ func TestTransfer_RollbackLeavesNothingBehind(t *testing.T) {
 	// even a PENDING row").
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	tx, err := db.Pool().Begin(ctx)
-	require.NoError(t, err)
-	_, err = tx.Exec(ctx, `
+	tx := db.Gorm().WithContext(ctx).Begin()
+	require.NoError(t, tx.Error)
+	err := tx.Exec(`
 		INSERT INTO transfers (id, idempotency_key, request_hash, from_wallet_id, to_wallet_id, amount_minor, currency, status)
-		VALUES (gen_random_uuid(), 'rollback-key', 'deadbeef', 'wallet_1', 'wallet_2', 100, 'INR', 'PENDING')`)
+		VALUES (gen_random_uuid(), 'rollback-key', 'deadbeef', 'wallet_1', 'wallet_2', 100, 'INR', 'PENDING')`).Error
 	require.NoError(t, err)
-	require.NoError(t, tx.Rollback(ctx))
+	require.NoError(t, tx.Rollback().Error)
 
 	// The key must be completely free afterwards: a normal request succeeds.
 	resp := postJSON(t, srv.URL+"/transfers", map[string]any{

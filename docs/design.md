@@ -386,5 +386,46 @@ row locks and the unique constraint — not the other way around.
 
 ## 13. Deviations from the original plan
 
-None yet — this section will be updated if implementation surfaces a place where the
-plan above needs to change.
+**GORM was added as the data-access layer**, replacing a hand-written `pgx`/`pgxpool`
+implementation that was the original design. This was a direct, explicit request from
+the repository owner after the first working version was already reviewed — not a
+change made to solve a problem the raw-SQL version had.
+
+The integration matters more than the choice of library, so here is exactly what
+changed and what didn't:
+
+- **What GORM owns:** the connection pool (`gorm.Open` over `database/sql` +
+  `pgx/v5/stdlib`), transaction lifecycle (`db.Transaction(...)`, wrapped by the same
+  retry loop described in §7), simple reads (`Take`, `Find`), and the migration
+  runner's advisory-lock/transaction bookkeeping.
+- **What GORM does *not* own:** the SQL text for anything the concurrency guarantees in
+  §7 depend on. `GetForUpdate` issues `clause.Locking{Strength: "NO KEY UPDATE"}` — a
+  literal escape hatch, not GORM inferring a lock strength — so it renders exactly
+  `FOR NO KEY UPDATE`, the same clause the raw-`pgx` version used and for the same
+  reason (see §7). `ApplyDelta`'s guarded balance update and `InsertPair`'s two-entry
+  ledger write are both `.Raw()`/`.Exec()` with the identical SQL text the earlier
+  version had — GORM is executing it, not generating it. `InsertIfAbsent` uses
+  `clause.OnConflict{Columns: [idempotency_key], DoNothing: true}`, which is GORM's
+  named way of writing `ON CONFLICT (idempotency_key) DO NOTHING` — again a literal
+  request, not an inferred one.
+- **Schema ownership didn't move.** The migration files in
+  `internal/postgres/migrations/` are unchanged and remain the only definition of the
+  schema — the ENUM types, CHECK constraints, and the two PL/pgSQL trigger functions
+  have no GORM equivalent (`AutoMigrate` cannot express them), so `AutoMigrate` is not
+  used anywhere. GORM's model structs (`internal/postgres/models.go`) exist purely to
+  give GORM typed access to tables whose shape those migrations already define.
+
+Net effect: every query this document describes runs the same SQL against the same
+schema with the same lock strength as before. What changed is who opens the connection,
+manages the transaction, and executes that SQL — not what the SQL says. The full test
+suite, including the concurrency and deadlock-resistance tests in
+`test/integration/concurrency_test.go`, passed unmodified against the GORM version on
+the first run, which is the practical confirmation that the swap didn't change
+behavior.
+
+The tradeoff worth naming plainly: GORM is a fifth direct dependency (with its own
+transitive tree — `jinzhu/inflection`, `jinzhu/now`) for a service whose
+concurrency-critical paths still bypass its query builder entirely. That's a genuine
+cost with no correctness benefit here — the raw-`pgx` version was not harder to read or
+less correct. It was added because it was asked for, and the goal in doing so was to
+add it without weakening anything §7 through §9 already established.

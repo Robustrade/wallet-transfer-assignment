@@ -62,6 +62,22 @@ was correct) surfaced a cyclomatic-complexity violation and two `gosec`
 findings, all fixed rather than suppressed except where suppression was the
 actually-correct answer (backoff jitter is not a security-sensitive value).
 
+Two follow-up requests after the first working version was reviewed were
+handled the same way — implement, don't just agree: asked to simplify and
+remove overengineering, the model audited the codebase and found one real
+offender (a full keyset-pagination system on an endpoint `ASSIGNMENT.md`
+lists as optional) rather than making cosmetic cuts to code that was
+already load-bearing for what the assignment evaluates. Asked to add an
+ORM — a direct reversal of the original plan's explicit anti-goal — the
+model flagged the one real risk once (that this service's correctness
+rests on exact lock-clause and guarded-update SQL, which most ORM query
+builders don't let you write precisely) via a clarifying question about
+*which* ORM, then implemented GORM as requested with those specific
+statements kept as raw SQL through GORM's own escape hatches
+(`clause.Locking`, `.Raw()`, `clause.OnConflict`) rather than left to its
+query builder. See `docs/design.md` §13 for the full accounting of what
+changed and what deliberately didn't.
+
 ## 3. Prompts
 
 The complete specification the implementation was built against is

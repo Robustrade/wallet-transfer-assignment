@@ -39,9 +39,9 @@ func newTestServer(t *testing.T, db *postgres.DB) *httptest.Server {
 func resetDB(t *testing.T, db *postgres.DB) {
 	t.Helper()
 	ctx := context.Background()
-	_, err := db.Pool().Exec(ctx, `TRUNCATE ledger_entries, transfers, wallets RESTART IDENTITY CASCADE`)
+	err := db.Gorm().WithContext(ctx).Exec(`TRUNCATE ledger_entries, transfers, wallets RESTART IDENTITY CASCADE`).Error
 	require.NoError(t, err)
-	_, err = db.Pool().Exec(ctx, `INSERT INTO wallets (id, kind, currency, balance_minor) VALUES ('treasury_inr', 'SYSTEM', 'INR', 0)`)
+	err = db.Gorm().WithContext(ctx).Exec(`INSERT INTO wallets (id, kind, currency, balance_minor) VALUES ('treasury_inr', 'SYSTEM', 'INR', 0)`).Error
 	require.NoError(t, err)
 }
 
@@ -87,7 +87,8 @@ func fundWallet(t *testing.T, srv *httptest.Server, walletID string, amount int6
 func getWalletBalance(t *testing.T, db *postgres.DB, id string) int64 {
 	t.Helper()
 	var balance int64
-	err := db.Pool().QueryRow(context.Background(), `SELECT balance_minor FROM wallets WHERE id = $1`, id).Scan(&balance)
+	err := db.Gorm().WithContext(context.Background()).
+		Raw(`SELECT balance_minor FROM wallets WHERE id = ?`, id).Scan(&balance).Error
 	require.NoError(t, err)
 	return balance
 }
@@ -95,11 +96,17 @@ func getWalletBalance(t *testing.T, db *postgres.DB, id string) int64 {
 func countLedgerEntries(t *testing.T, db *postgres.DB, transferID string) (debits, credits int) {
 	t.Helper()
 	ctx := context.Background()
-	require.NoError(t, db.Pool().QueryRow(ctx,
-		`SELECT COUNT(*) FROM ledger_entries WHERE transfer_id = $1 AND entry_type = 'DEBIT'`, transferID).Scan(&debits))
-	require.NoError(t, db.Pool().QueryRow(ctx,
-		`SELECT COUNT(*) FROM ledger_entries WHERE transfer_id = $1 AND entry_type = 'CREDIT'`, transferID).Scan(&credits))
+	require.NoError(t, db.Gorm().WithContext(ctx).
+		Raw(`SELECT COUNT(*) FROM ledger_entries WHERE transfer_id = ? AND entry_type = 'DEBIT'`, transferID).Scan(&debits).Error)
+	require.NoError(t, db.Gorm().WithContext(ctx).
+		Raw(`SELECT COUNT(*) FROM ledger_entries WHERE transfer_id = ? AND entry_type = 'CREDIT'`, transferID).Scan(&credits).Error)
 	return debits, credits
+}
+
+type walletLedgerBalance struct {
+	ID         string `gorm:"column:id"`
+	Stored     int64  `gorm:"column:balance_minor"`
+	FromLedger int64  `gorm:"column:ledger_balance"`
 }
 
 // assertInvariants checks the global properties described in
@@ -109,55 +116,51 @@ func countLedgerEntries(t *testing.T, db *postgres.DB, transferID string) (debit
 func assertInvariants(t *testing.T, db *postgres.DB) {
 	t.Helper()
 	ctx := context.Background()
+	gdb := db.Gorm().WithContext(ctx)
 
 	var walletSum int64
-	require.NoError(t, db.Pool().QueryRow(ctx, `SELECT COALESCE(SUM(balance_minor), 0) FROM wallets`).Scan(&walletSum))
+	require.NoError(t, gdb.Raw(`SELECT COALESCE(SUM(balance_minor), 0) FROM wallets`).Scan(&walletSum).Error)
 	require.Zero(t, walletSum, "closed ledger: total balance across all wallets must sum to zero")
 
 	var ledgerSum int64
-	require.NoError(t, db.Pool().QueryRow(ctx, `
+	require.NoError(t, gdb.Raw(`
 		SELECT COALESCE(SUM(CASE WHEN entry_type = 'CREDIT' THEN amount_minor ELSE -amount_minor END), 0)
-		FROM ledger_entries`).Scan(&ledgerSum))
+		FROM ledger_entries`).Scan(&ledgerSum).Error)
 	require.Zero(t, ledgerSum, "every debit must be matched by an equal credit")
 
-	rows, err := db.Pool().Query(ctx, `
+	var balances []walletLedgerBalance
+	require.NoError(t, gdb.Raw(`
 		SELECT w.id, w.balance_minor,
 		       COALESCE(SUM(CASE WHEN le.entry_type = 'CREDIT' THEN le.amount_minor
 		                          WHEN le.entry_type = 'DEBIT'  THEN -le.amount_minor
 		                          ELSE 0 END), 0) AS ledger_balance
 		FROM wallets w
 		LEFT JOIN ledger_entries le ON le.wallet_id = w.id
-		GROUP BY w.id, w.balance_minor`)
-	require.NoError(t, err)
-	defer rows.Close()
-	for rows.Next() {
-		var id string
-		var stored, fromLedger int64
-		require.NoError(t, rows.Scan(&id, &stored, &fromLedger))
-		require.Equal(t, stored, fromLedger, "wallet %s: stored balance must equal its ledger sum", id)
+		GROUP BY w.id, w.balance_minor`).Scan(&balances).Error)
+	for _, b := range balances {
+		require.Equal(t, b.Stored, b.FromLedger, "wallet %s: stored balance must equal its ledger sum", b.ID)
 	}
-	require.NoError(t, rows.Err())
 
 	var badProcessed int
-	require.NoError(t, db.Pool().QueryRow(ctx, `
+	require.NoError(t, gdb.Raw(`
 		SELECT COUNT(*) FROM transfers t
 		WHERE t.status = 'PROCESSED'
 		  AND (
 		        (SELECT COUNT(*) FROM ledger_entries le WHERE le.transfer_id = t.id AND le.entry_type = 'DEBIT')  != 1
 		     OR (SELECT COUNT(*) FROM ledger_entries le WHERE le.transfer_id = t.id AND le.entry_type = 'CREDIT') != 1
-		  )`).Scan(&badProcessed))
+		  )`).Scan(&badProcessed).Error)
 	require.Zero(t, badProcessed, "every PROCESSED transfer must have exactly one DEBIT and one CREDIT")
 
 	var failedWithLedger int
-	require.NoError(t, db.Pool().QueryRow(ctx, `
+	require.NoError(t, gdb.Raw(`
 		SELECT COUNT(*) FROM transfers t
 		WHERE t.status = 'FAILED' AND EXISTS (SELECT 1 FROM ledger_entries le WHERE le.transfer_id = t.id)
-	`).Scan(&failedWithLedger))
+	`).Scan(&failedWithLedger).Error)
 	require.Zero(t, failedWithLedger, "a FAILED transfer must have zero ledger entries")
 
 	var negativeUserWallets int
-	require.NoError(t, db.Pool().QueryRow(ctx, `
+	require.NoError(t, gdb.Raw(`
 		SELECT COUNT(*) FROM wallets WHERE kind = 'USER' AND balance_minor < 0
-	`).Scan(&negativeUserWallets))
+	`).Scan(&negativeUserWallets).Error)
 	require.Zero(t, negativeUserWallets, "no USER wallet may go negative")
 }

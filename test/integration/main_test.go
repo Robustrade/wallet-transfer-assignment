@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 			fmt.Fprintln(os.Stderr, "connect to test database:", err)
 			os.Exit(1)
 		}
-		if err := postgres.Migrate(ctx, db.Pool()); err != nil {
+		if err := postgres.Migrate(ctx, db.Gorm()); err != nil {
 			cancel()
 			fmt.Fprintln(os.Stderr, "migrate test database:", err)
 			os.Exit(1)

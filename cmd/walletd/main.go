@@ -52,7 +52,7 @@ func run(migrateOnly bool) error {
 	}
 	defer db.Close()
 
-	if err := postgres.Migrate(ctx, db.Pool()); err != nil {
+	if err := postgres.Migrate(ctx, db.Gorm()); err != nil {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
 	logger.Info("migrations applied")

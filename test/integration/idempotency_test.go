@@ -39,7 +39,8 @@ func TestIdempotency_SequentialReplay(t *testing.T) {
 	require.Equal(t, 1, credits)
 
 	var transferRowCount int
-	require.NoError(t, db.Pool().QueryRow(t.Context(), `SELECT COUNT(*) FROM transfers WHERE idempotency_key = 'abc123'`).Scan(&transferRowCount))
+	require.NoError(t, db.Gorm().WithContext(t.Context()).
+		Raw(`SELECT COUNT(*) FROM transfers WHERE idempotency_key = 'abc123'`).Scan(&transferRowCount).Error)
 	require.Equal(t, 1, transferRowCount, "exactly one transfer row for the key")
 
 	assertInvariants(t, db)
@@ -119,7 +120,8 @@ func TestIdempotency_ConcurrentDuplicateRequests(t *testing.T) {
 	require.Equal(t, 1, nonReplayed, "exactly one of the concurrent attempts must be the original, non-replayed request")
 
 	var transferRowCount int
-	require.NoError(t, db.Pool().QueryRow(t.Context(), `SELECT COUNT(*) FROM transfers WHERE idempotency_key = 'concurrent-key'`).Scan(&transferRowCount))
+	require.NoError(t, db.Gorm().WithContext(t.Context()).
+		Raw(`SELECT COUNT(*) FROM transfers WHERE idempotency_key = 'concurrent-key'`).Scan(&transferRowCount).Error)
 	require.Equal(t, 1, transferRowCount, "exactly one transfer row despite 25 concurrent requests")
 
 	transferID, _ := bodies[0]["id"].(string)

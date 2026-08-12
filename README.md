@@ -31,8 +31,11 @@ idempotency strategy, locking strategy, alternatives considered — lives in
  └───────────────────────────────┬───────────────────────────┘
                                   │  service.UnitOfWork / Repos
  ┌────────────────────────────── ▼ ───────────────────────────┐
- │  internal/postgres    row locking (FOR NO KEY UPDATE),       │
- │  (repository layer)    guarded UPDATEs, tx retry, migrations │
+ │  internal/postgres    GORM-backed connection/tx management;  │
+ │  (repository layer)    locking, guarded UPDATEs and the       │
+ │                         idempotency claim stay raw SQL via    │
+ │                         .Raw()/clause.Locking — see            │
+ │                         docs/design.md §13                     │
  └───────────────────────────────┬───────────────────────────┘
                                   │
  ┌────────────────────────────── ▼ ───────────────────────────┐

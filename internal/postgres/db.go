@@ -4,25 +4,17 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net/url"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"github.com/devthedeveloper/wallet-transfer-assignment/internal/service"
 )
 
-// dbtx is satisfied by both *pgxpool.Pool and pgx.Tx, so repository
-// implementations can run against either a bare pool (non-transactional
-// reads) or an in-flight transaction (writes) without duplicating code.
-type dbtx interface {
-	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
-	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-}
-
-// Config controls pool sizing and timeout behaviour.
+// Config controls connection pooling and timeout behaviour.
 type Config struct {
 	DatabaseURL      string
 	MaxConns         int32
@@ -30,51 +22,97 @@ type Config struct {
 	LockTimeout      time.Duration
 }
 
-// DB wraps a pgxpool.Pool and implements service.UnitOfWork.
+// DB wraps a *gorm.DB and implements service.UnitOfWork. GORM is used here
+// as a typed connection/transaction manager and for simple reads — it is
+// deliberately NOT trusted to generate the SQL for anything
+// concurrency-critical (locking a wallet, the guarded balance update, the
+// idempotency claim). Those go through .Raw()/.Exec() with the exact SQL
+// text this service has always used, so the locking guarantees in
+// docs/design.md §7 don't depend on an ORM's query-builder defaults. See
+// docs/design.md §13 for the full rationale.
 type DB struct {
-	pool        *pgxpool.Pool
+	gorm        *gorm.DB
 	lockTimeout time.Duration
 }
 
-// NewDB opens a connection pool and configures a per-connection
-// statement_timeout so no single query can hang the pool indefinitely.
+// NewDB opens a GORM connection over Postgres. statement_timeout is applied
+// per-connection via the DSN's `options` parameter (GORM/pgx's stdlib
+// driver pools through database/sql, which has no per-connect hook the way
+// pgxpool did, so this is the equivalent mechanism).
 func NewDB(ctx context.Context, cfg Config) (*DB, error) {
-	pgCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	dsn, err := withStatementTimeout(cfg.DatabaseURL, cfg.StatementTimeout)
 	if err != nil {
-		return nil, fmt.Errorf("parse database url: %w", err)
+		return nil, fmt.Errorf("build dsn: %w", err)
+	}
+
+	gdb, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger:                 logger.Default.LogMode(logger.Silent),
+		SkipDefaultTransaction: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open gorm connection: %w", err)
+	}
+
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		return nil, fmt.Errorf("get underlying sql.DB: %w", err)
 	}
 	if cfg.MaxConns > 0 {
-		pgCfg.MaxConns = cfg.MaxConns
+		sqlDB.SetMaxOpenConns(int(cfg.MaxConns))
 	}
-	stmtTimeoutMS := cfg.StatementTimeout.Milliseconds()
-	pgCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		_, err := conn.Exec(ctx, fmt.Sprintf("SET statement_timeout = %d", stmtTimeoutMS))
-		return err
+	if err := sqlDB.PingContext(ctx); err != nil {
+		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	pool, err := pgxpool.NewWithConfig(ctx, pgCfg)
-	if err != nil {
-		return nil, fmt.Errorf("create pool: %w", err)
-	}
-	return &DB{pool: pool, lockTimeout: cfg.LockTimeout}, nil
+	return &DB{gorm: gdb, lockTimeout: cfg.LockTimeout}, nil
 }
 
-// Pool exposes the underlying pool for callers that need it directly (the
-// migrator, health checks).
-func (db *DB) Pool() *pgxpool.Pool { return db.pool }
+func withStatementTimeout(rawURL string, statementTimeout time.Duration) (string, error) {
+	if statementTimeout <= 0 {
+		return rawURL, nil
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("parse database url: %w", err)
+	}
+	q := u.Query()
+	stmtOpt := fmt.Sprintf("-c statement_timeout=%d", statementTimeout.Milliseconds())
+	if existing := q.Get("options"); existing != "" {
+		stmtOpt = existing + " " + stmtOpt
+	}
+	q.Set("options", stmtOpt)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
 
-// Close releases all pooled connections.
-func (db *DB) Close() { db.pool.Close() }
+// Gorm exposes the underlying *gorm.DB for the migrator and for direct SQL
+// in tests. Not used by application code outside this package.
+func (db *DB) Gorm() *gorm.DB { return db.gorm }
+
+// Close releases the underlying connection pool.
+func (db *DB) Close() error {
+	sqlDB, err := db.gorm.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
+}
 
 // Ping verifies the database is reachable.
-func (db *DB) Ping(ctx context.Context) error { return db.pool.Ping(ctx) }
+func (db *DB) Ping(ctx context.Context) error {
+	sqlDB, err := db.gorm.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.PingContext(ctx)
+}
 
 // Wallets, Transfers and Ledger implement service.Repos for
 // non-transactional reads (e.g. the idempotency replay fast path), backed
-// directly by the pool.
-func (db *DB) Wallets() service.WalletRepository     { return &walletRepository{q: db.pool} }
-func (db *DB) Transfers() service.TransferRepository { return &transferRepository{q: db.pool} }
-func (db *DB) Ledger() service.LedgerRepository      { return &ledgerRepository{q: db.pool} }
+// directly by the connection pool.
+func (db *DB) Wallets() service.WalletRepository     { return &walletRepository{q: db.gorm} }
+func (db *DB) Transfers() service.TransferRepository { return &transferRepository{q: db.gorm} }
+func (db *DB) Ledger() service.LedgerRepository      { return &ledgerRepository{q: db.gorm} }
 
 const (
 	maxTxAttempts  = 3
@@ -110,32 +148,24 @@ func (db *DB) Do(ctx context.Context, fn func(ctx context.Context, r service.Rep
 	return lastErr
 }
 
-func (db *DB) doOnce(ctx context.Context, fn func(ctx context.Context, r service.Repos) error) (err error) {
-	tx, err := db.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback(ctx)
-			return
+func (db *DB) doOnce(ctx context.Context, fn func(ctx context.Context, r service.Repos) error) error {
+	return db.gorm.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if db.lockTimeout > 0 {
+			// SET LOCAL doesn't support bind parameters, so this is a
+			// formatted literal rather than a `?`-parameterized Exec.
+			stmt := fmt.Sprintf("SET LOCAL lock_timeout = '%dms'", db.lockTimeout.Milliseconds())
+			if err := tx.Exec(stmt).Error; err != nil {
+				return fmt.Errorf("set lock_timeout: %w", err)
+			}
 		}
-		err = tx.Commit(ctx)
-	}()
 
-	if db.lockTimeout > 0 {
-		if _, lockErr := tx.Exec(ctx, fmt.Sprintf("SET LOCAL lock_timeout = '%dms'", db.lockTimeout.Milliseconds())); lockErr != nil {
-			return fmt.Errorf("set lock_timeout: %w", lockErr)
+		repos := &txRepos{
+			wallets:   &walletRepository{q: tx},
+			transfers: &transferRepository{q: tx},
+			ledger:    &ledgerRepository{q: tx},
 		}
-	}
-
-	repos := &txRepos{
-		wallets:   &walletRepository{q: tx},
-		transfers: &transferRepository{q: tx},
-		ledger:    &ledgerRepository{q: tx},
-	}
-
-	return fn(ctx, repos)
+		return fn(ctx, repos)
+	})
 }
 
 type txRepos struct {
