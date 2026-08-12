@@ -99,6 +99,7 @@ func (db *DB) Do(ctx context.Context, fn func(ctx context.Context, r service.Rep
 		if !isRetryableCode(err) || attempt == maxTxAttempts {
 			return err
 		}
+		//nolint:gosec // jitter for retry backoff timing, not a security-sensitive value
 		backoff := time.Duration(attempt)*retryBaseDelay + time.Duration(rand.Intn(int(retryBaseDelay.Milliseconds())))*time.Millisecond
 		select {
 		case <-time.After(backoff):

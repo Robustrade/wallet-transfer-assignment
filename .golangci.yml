@@ -31,9 +31,16 @@ linters-settings:
 
 issues:
   exclude-rules:
+    # gosec/gocyclo: test data and table-driven tests don't carry the same
+    # risk/complexity budget as production code.
+    # bodyclose/noctx: tests close response bodies via t.Cleanup (which
+    # these linters don't trace through) and hit local httptest.Server
+    # instances where a request context adds nothing.
     - path: _test\.go
       linters:
         - gosec
         - gocyclo
+        - bodyclose
+        - noctx
   max-issues-per-linter: 0
   max-same-issues: 0

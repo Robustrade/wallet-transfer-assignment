@@ -1,0 +1,82 @@
+name: solution-ci
+
+# Additive to the template's ci.yml / sonarqube.yml — this workflow proves
+# the solution builds, lints clean, and passes its full test suite
+# (including the concurrency and idempotency integration tests) against a
+# real Postgres, on a standard GitHub-hosted runner. It intentionally does
+# not touch ci.yml/sonarqube.yml, which pin a self-hosted runner and are the
+# template's own grading harness.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-lint-test:
+    name: build-lint-test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wallet
+          POSTGRES_PASSWORD: wallet
+          POSTGRES_DB: walletdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wallet -d walletdb"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://wallet:wallet@localhost:5432/walletdb?sslmode=disable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Check gofmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needs to be run on:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Install golangci-lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v1.64.8
+
+      - name: Run golangci-lint
+        shell: bash
+        run: "$(go env GOPATH)/bin/golangci-lint run ./..."
+
+      - name: Build
+        run: go build ./...
+
+      - name: Run tests (race detector, unit + integration)
+        # -p 1: DB-touching packages share the service container above, so
+        # they must run as separate processes sequentially, not in
+        # parallel — see the Makefile and docs/design.md §2.1.
+        run: go test ./... -race -count=1 -p 1

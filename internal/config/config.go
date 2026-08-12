@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"time"
@@ -48,6 +49,9 @@ func Load() (Config, error) {
 	maxConns, err := getInt("DB_MAX_CONNS", 10)
 	if err != nil {
 		return Config{}, err
+	}
+	if maxConns <= 0 || maxConns > math.MaxInt32 {
+		return Config{}, fmt.Errorf("DB_MAX_CONNS: must be between 1 and %d, got %d", math.MaxInt32, maxConns)
 	}
 	cfg.DBMaxConns = int32(maxConns)
 
