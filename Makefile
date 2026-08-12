@@ -35,7 +35,7 @@ fmt: ## check gofmt is clean
 vet: ## go vet
 	go vet ./...
 
-lint: ## run golangci-lint
+lint: ## run golangci-lint (needs a Go 1.24.x toolchain on PATH — v1.64.8 mistypechecks pgx under newer Go compilers, e.g. 1.26)
 	golangci-lint run ./...
 
 tidy: ## go mod tidy
