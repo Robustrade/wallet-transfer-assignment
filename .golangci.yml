@@ -1,0 +1,46 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - ineffassign
+    - revive
+    - gocritic
+    - gosec
+    - misspell
+    - bodyclose
+    - rowserrcheck
+    - sqlclosecheck
+    - noctx
+    - errorlint
+    - gocyclo
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  revive:
+    rules:
+      - name: exported
+        disabled: false
+
+issues:
+  exclude-rules:
+    # gosec/gocyclo: test data and table-driven tests don't carry the same
+    # risk/complexity budget as production code.
+    # bodyclose/noctx: tests close response bodies via t.Cleanup (which
+    # these linters don't trace through) and hit local httptest.Server
+    # instances where a request context adds nothing.
+    - path: _test\.go
+      linters:
+        - gosec
+        - gocyclo
+        - bodyclose
+        - noctx
+  max-issues-per-linter: 0
+  max-same-issues: 0
