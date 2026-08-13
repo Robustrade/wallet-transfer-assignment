@@ -1,0 +1,538 @@
+{
+  "info": {
+    "name": "Wallet Transfer Assignment",
+    "description": "Covers every endpoint: health check, wallet creation/balance/ledger, and transfers including the idempotency, concurrency, and validation edge cases (replay, insufficient funds, wallet not found, same-wallet, currency mismatch). Run folders top to bottom, or use 'Run collection' to execute everything with the built-in test assertions.\n\nBefore running: start the server locally with `make run`, then import this collection and hit Send, or use the collection Runner.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080", "type": "string" },
+    { "key": "wallet_from_id", "value": "wallet_1", "type": "string" },
+    { "key": "wallet_to_id", "value": "wallet_2", "type": "string" },
+    { "key": "wallet_empty_id", "value": "wallet_3", "type": "string" },
+    { "key": "wallet_eur_id", "value": "wallet_eur_demo", "type": "string" },
+    { "key": "last_idempotency_key", "value": "", "type": "string" },
+    { "key": "last_transfer_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Body reports ok\", function () {",
+                  "    pm.expect(pm.response.json().status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/healthz",
+              "host": ["{{base_url}}"],
+              "path": ["healthz"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Wallets",
+      "item": [
+        {
+          "name": "Create Wallet (USD demo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 (created) or 409 (already exists from a previous run)\", function () {",
+                  "    pm.expect([201, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{wallet_from_id}}\",\n  \"balance\": 50000,\n  \"currency\": \"USD\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/wallets",
+              "host": ["{{base_url}}"],
+              "path": ["wallets"]
+            },
+            "description": "wallet_1/wallet_2/wallet_3 are already seeded on server startup, so this will typically return 409 -- that's expected, not a failure. Change wallet_from_id to create a brand new wallet instead."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Wallet (EUR, for currency-mismatch demo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 (created) or 409 (already exists from a previous run)\", function () {",
+                  "    pm.expect([201, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{wallet_eur_id}}\",\n  \"balance\": 5000,\n  \"currency\": \"EUR\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/wallets",
+              "host": ["{{base_url}}"],
+              "path": ["wallets"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Wallet Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Has id, balance, currency\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"id\");",
+                  "    pm.expect(json).to.have.property(\"balance\");",
+                  "    pm.expect(json).to.have.property(\"currency\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallets/{{wallet_from_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["wallets", "{{wallet_from_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Wallet Balance (not found)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallets/wallet_does_not_exist",
+              "host": ["{{base_url}}"],
+              "path": ["wallets", "wallet_does_not_exist"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Wallet Ledger",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Response is an array\", function () {",
+                  "    pm.expect(pm.response.json()).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallets/{{wallet_from_id}}/ledger",
+              "host": ["{{base_url}}"],
+              "path": ["wallets", "{{wallet_from_id}}", "ledger"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Transfers",
+      "item": [
+        {
+          "name": "1. Create Transfer (fresh, success)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"fresh_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 (freshly processed)\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Status field is PROCESSED\", function () {",
+                  "    pm.expect(json.status).to.eql(\"PROCESSED\");",
+                  "});",
+                  "pm.collectionVariables.set(\"last_idempotency_key\", json.idempotencyKey);",
+                  "pm.collectionVariables.set(\"last_transfer_id\", json.transferId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{fresh_idempotency_key}}\",\n  \"fromWalletId\": \"{{wallet_from_id}}\",\n  \"toWalletId\": \"{{wallet_to_id}}\",\n  \"amount\": 100\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/transfers",
+              "host": ["{{base_url}}"],
+              "path": ["transfers"]
+            },
+            "description": "Generates a new idempotencyKey each run (via {{$guid}} in the pre-request script) and stores it + the resulting transferId as collection variables, used by the next few requests."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Replay Same Transfer (duplicate idempotencyKey)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200 (replayed, not re-processed)\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Returns the exact same transferId as request 1\", function () {",
+                  "    pm.expect(pm.response.json().transferId).to.eql(pm.collectionVariables.get(\"last_transfer_id\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{last_idempotency_key}}\",\n  \"fromWalletId\": \"{{wallet_from_id}}\",\n  \"toWalletId\": \"{{wallet_to_id}}\",\n  \"amount\": 100\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/transfers",
+              "host": ["{{base_url}}"],
+              "path": ["transfers"]
+            },
+            "description": "Same idempotencyKey + same payload as request 1 -- must replay the original result. Run request 1 first."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Same Key, Different Payload (rejected)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 409 (idempotency key reused with a different payload)\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{last_idempotency_key}}\",\n  \"fromWalletId\": \"{{wallet_from_id}}\",\n  \"toWalletId\": \"{{wallet_to_id}}\",\n  \"amount\": 999\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/transfers",
+              "host": ["{{base_url}}"],
+              "path": ["transfers"]
+            },
+            "description": "Same idempotencyKey as request 1, but a different amount -- this is a client bug, not a legitimate retry. Run request 1 first."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Get Transfer By Id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"transferId matches\", function () {",
+                  "    pm.expect(pm.response.json().transferId).to.eql(pm.collectionVariables.get(\"last_transfer_id\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/transfers/{{last_transfer_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["transfers", "{{last_transfer_id}}"]
+            },
+            "description": "Run request 1 first so last_transfer_id is populated."
+          },
+          "response": []
+        },
+        {
+          "name": "5. Insufficient Funds",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"insufficient_funds_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422\", function () { pm.response.to.have.status(422); });",
+                  "pm.test(\"Transfer recorded as FAILED\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql(\"FAILED\");",
+                  "    pm.expect(json.failureReason).to.eql(\"insufficient funds\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{insufficient_funds_key}}\",\n  \"fromWalletId\": \"{{wallet_empty_id}}\",\n  \"toWalletId\": \"{{wallet_to_id}}\",\n  \"amount\": 100\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/transfers",
+              "host": ["{{base_url}}"],
+              "path": ["transfers"]
+            },
+            "description": "wallet_3 is seeded with a 0 balance -- any positive amount out of it fails funds check."
+          },
+          "response": []
+        },
+        {
+          "name": "6. Wallet Not Found",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"wallet_not_found_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{wallet_not_found_key}}\",\n  \"fromWalletId\": \"{{wallet_from_id}}\",\n  \"toWalletId\": \"wallet_does_not_exist\",\n  \"amount\": 50\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/transfers",
+              "host": ["{{base_url}}"],
+              "path": ["transfers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "7. Same Wallet Validation",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"same_wallet_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{same_wallet_key}}\",\n  \"fromWalletId\": \"{{wallet_from_id}}\",\n  \"toWalletId\": \"{{wallet_from_id}}\",\n  \"amount\": 50\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/transfers",
+              "host": ["{{base_url}}"],
+              "path": ["transfers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "8. Missing Required Field",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWalletId\": \"{{wallet_from_id}}\",\n  \"toWalletId\": \"{{wallet_to_id}}\",\n  \"amount\": 50\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/transfers",
+              "host": ["{{base_url}}"],
+              "path": ["transfers"]
+            },
+            "description": "idempotencyKey omitted on purpose -- Gin's binding:\"required\" tag should reject this before the service layer is even called."
+          },
+          "response": []
+        },
+        {
+          "name": "9. Currency Mismatch",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"currency_mismatch_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error mentions currency\", function () {",
+                  "    pm.expect(pm.response.json().error).to.include(\"currenc\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{currency_mismatch_key}}\",\n  \"fromWalletId\": \"{{wallet_from_id}}\",\n  \"toWalletId\": \"{{wallet_eur_id}}\",\n  \"amount\": 50\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/transfers",
+              "host": ["{{base_url}}"],
+              "path": ["transfers"]
+            },
+            "description": "Run 'Create Wallet (EUR, for currency-mismatch demo)' in the Wallets folder first so wallet_eur_demo exists."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -5,3 +5,6 @@ build/
 .tmp/
 .env
 .env.*
+!.env.example
+bin/
+*.test
