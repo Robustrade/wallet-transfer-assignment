@@ -1,35 +1,97 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+A wallet-to-wallet transfer service with idempotent requests, a double-entry
+ledger, and safe concurrent execution. Correctness is enforced at the database
+layer (constraints + row locks) rather than in application code.
 
-## Included
+Full design rationale: [`docs/DESIGN.md`](docs/DESIGN.md).
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+## Stack
 
-## Intended use
+FastAPI · SQLAlchemy 2.0 · Alembic · PostgreSQL · pytest
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+## Run
 
-## Notes
+```bash
+docker compose up --build
+```
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+The app starts on `http://localhost:8000` after running migrations. Seed a
+couple of wallets:
 
-## How to Submit Assignment
+```bash
+docker compose exec app python -m scripts.seed
+```
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+### Run locally without Docker
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+```bash
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+export DATABASE_URL=postgresql+psycopg2://wallet:wallet@localhost:5432/wallet
+alembic upgrade head
+python -m scripts.seed
+uvicorn app.main:app --reload
+```
+
+## API
+
+### `POST /transfers`
+
+```bash
+curl -X POST http://localhost:8000/transfers \
+  -H 'Content-Type: application/json' \
+  -d '{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100}'
+```
+
+`201` on success, `200` on an idempotent replay:
+
+```json
+{ "transferId": "…", "status": "PROCESSED", "fromWalletId": "wallet_1", "toWalletId": "wallet_2", "amount": 100 }
+```
+
+| HTTP | code | when |
+|------|------|------|
+| 400 | `INVALID_REQUEST` | missing field, `amount <= 0`, self-transfer |
+| 404 | `WALLET_NOT_FOUND` | wallet does not exist |
+| 409 | `IDEMPOTENCY_KEY_CONFLICT` | key reused with a different body |
+| 422 | `INSUFFICIENT_FUNDS` | source balance too low |
+
+### Reads
+
+- `GET /wallets/{id}` — current balance
+- `GET /transfers/{id}` — a single transfer
+- `GET /health`
+
+## How correctness is guaranteed
+
+- **Idempotency** — the `idempotency_key` is a primary key; the insert itself is
+  the concurrency gate, so a retried request can never create a second transfer.
+  A repeat with the same body returns the stored original response.
+- **Concurrency** — each transfer runs in one transaction with
+  `SELECT … FOR UPDATE` on both wallets, locked in id order to avoid deadlocks.
+  A `CHECK (balance >= 0)` constraint backstops against overdraw.
+- **Double-entry ledger** — exactly two entries per transfer, enforced by a
+  `UNIQUE (transfer_id, type)` constraint.
+- **State machine** — `PENDING → PROCESSED | FAILED`, guarded transitions.
+
+## Tests
+
+Tests run against PostgreSQL (the concurrency test needs real row locks). With a
+database available at `DATABASE_URL`:
+
+```bash
+pytest
+```
+
+Covers the happy path, idempotency (replay + conflict), insufficient funds,
+validation, and a concurrency test asserting no double-spend under 10 racing
+debits.
+
+## AI usage
+
+This solution was built with the help of Claude Code (AI assistant). It was used
+to draft the design document, scaffold boilerplate, and cross-check test
+coverage. All design decisions — idempotency via unique-insert, deterministic
+lock ordering, and pushing invariants into database constraints — were directed
+and reviewed by me, and I can walk through any part of the implementation.
