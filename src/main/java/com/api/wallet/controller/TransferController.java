@@ -12,8 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/transfers")
-public class
-TransferController {
+public class TransferController {
 
     private final TransferService transferService;
 

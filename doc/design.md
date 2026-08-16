@@ -133,7 +133,7 @@ Step-by-step:
    - Persist an `idempotency_records` row caching the resulting `TransferResponse` (and HTTP status) for future replays.
    - The transaction commits (or fully rolls back) as a single unit.
 5. **Concurrent-duplicate race.** If a second request with the same key committed first between step 3's check and step 4's insert, the `saveAndFlush` throws `DataIntegrityViolationException`. `TransferService` catches it, re-reads `idempotency_records` for that key (guaranteed visible now, since Postgres blocks the losing insert until the winning transaction finishes) and replays the winner's response.
-6. **Response.** The controller returns the transfer's own `status`-derived HTTP code (`201` for `PROCESSED`, `422` for `FAILED`) with the `TransferResponse` body.
+6. **Response.** The controller returns the transfer's own `status`-derived HTTP code (`201` for `PROCESSED`, `400` for `FAILED`) with the `TransferResponse` body.
 
 ## Concurrency Handling
 
