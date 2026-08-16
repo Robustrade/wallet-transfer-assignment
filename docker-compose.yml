@@ -20,9 +20,9 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: wallet
-      DB_USER: wallet
-      DB_PASSWORD: wallet
+      DB_NAME: postgres
+      DB_USER: postgres
+      DB_PASSWORD: postgres
     ports:
       - "8080:8080"
     depends_on:
