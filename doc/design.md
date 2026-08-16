@@ -80,7 +80,7 @@ Request:
 }
 ```
 
-Response — `201 Created` (always, whether the transfer processed or failed — the HTTP call succeeded either way; `status` carries the business outcome):
+Response — `201 Created` if the transfer processed, `400 Bad Request` if it failed a business rule (e.g. insufficient funds); `status`/`failureReason` in the body carry the same outcome either way. The mapping lives on `TransferStatus.httpStatus()` and is applied consistently on both the first attempt and idempotent replays (the resolved status is persisted in `idempotency_records.response_status` and reused verbatim):
 
 ```json
 {
@@ -101,6 +101,8 @@ Error responses (`{status, error, message, timestamp}`):
 |--------|----------------------------------------------------------------------|
 | 400    | Bean validation failure (blank field, non-positive amount), or `fromWalletId == toWalletId`. |
 | 404    | `fromWalletId` or `toWalletId` does not exist.                      |
+
+Note: a `FAILED` transfer (e.g. insufficient funds) also returns `400`, but with a `TransferResponse` body (`{transferId, status: "FAILED", failureReason, ...}`), not the `{status, error, message, timestamp}` shape above — the two `400` cases are distinguishable only by response body shape, not status code.
 
 ### `GET /wallets/{walletId}`
 
@@ -131,7 +133,7 @@ Step-by-step:
    - Persist an `idempotency_records` row caching the resulting `TransferResponse` (and HTTP status) for future replays.
    - The transaction commits (or fully rolls back) as a single unit.
 5. **Concurrent-duplicate race.** If a second request with the same key committed first between step 3's check and step 4's insert, the `saveAndFlush` throws `DataIntegrityViolationException`. `TransferService` catches it, re-reads `idempotency_records` for that key (guaranteed visible now, since Postgres blocks the losing insert until the winning transaction finishes) and replays the winner's response.
-6. **Response.** The controller wraps the result as `201 Created` — the transfer's own `status` field (`PROCESSED`/`FAILED`) carries the business outcome.
+6. **Response.** The controller returns the transfer's own `status`-derived HTTP code (`201` for `PROCESSED`, `422` for `FAILED`) with the `TransferResponse` body.
 
 ## Concurrency Handling
 
@@ -154,7 +156,7 @@ Step-by-step:
 
 - A valid transfer creates a `PROCESSED` transfer, debits/credits both wallets correctly, and writes exactly one balanced `DEBIT`/`CREDIT` ledger pair.
 - The same `idempotencyKey` always replays the original response — both on an identical retry and on a retry with a different request body — and the transfer is applied exactly once (balance debited once, exactly 2 ledger entries, not 4 or 6).
-- Insufficient funds produces a `FAILED` transfer with `failureReason = INSUFFICIENT_FUNDS`, no ledger entries, and the `fromWallet` balance untouched.
+- Insufficient funds produces a `400 Bad Request` response with a `FAILED` transfer, `failureReason = INSUFFICIENT_FUNDS`, no ledger entries, and the `fromWallet` balance untouched.
 - Invalid requests (`fromWalletId == toWalletId` → `400`; unknown wallet → `404`) never create a `Transfer` row.
 
 ### `TransferServiceTest` (unit, mocked repositories)

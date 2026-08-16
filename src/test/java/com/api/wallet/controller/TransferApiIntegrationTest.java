@@ -120,7 +120,7 @@ class TransferApiIntegrationTest {
                         new CreateTransferRequest(idempotencyKey, fromWalletId, toWalletId, new BigDecimal("5000")));
 
         mockMvc.perform(post("/transfers").contentType(MediaType.APPLICATION_JSON).content(requestBody))
-                .andExpect(status().isCreated())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value("FAILED"))
                 .andExpect(jsonPath("$.failureReason").value("INSUFFICIENT_FUNDS"));
 

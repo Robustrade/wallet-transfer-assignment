@@ -4,7 +4,6 @@ import com.api.wallet.dto.CreateTransferRequest;
 import com.api.wallet.dto.TransferResponse;
 import com.api.wallet.service.TransferService;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,7 +23,6 @@ TransferController {
 
     @PostMapping
     public ResponseEntity<TransferResponse> createTransfer(@Valid @RequestBody CreateTransferRequest request) {
-        TransferResponse response = transferService.createTransfer(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return transferService.createTransfer(request);
     }
 }

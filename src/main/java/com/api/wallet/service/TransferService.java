@@ -10,6 +10,7 @@ import com.api.wallet.repository.WalletRepository;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
@@ -36,7 +37,7 @@ public class TransferService {
         this.transferAttemptExecutor = transferAttemptExecutor;
     }
 
-    public TransferResponse createTransfer(CreateTransferRequest request) {
+    public ResponseEntity<TransferResponse> createTransfer(CreateTransferRequest request) {
         if (request.fromWalletId().equals(request.toWalletId())) {
             throw new IllegalArgumentException("fromWalletId and toWalletId must differ");
         }
@@ -48,7 +49,8 @@ public class TransferService {
         }
 
         try {
-            return transferAttemptExecutor.attemptTransfer(request);
+            TransferResponse response = transferAttemptExecutor.attemptTransfer(request);
+            return ResponseEntity.status(response.status().httpStatus()).body(response);
         } catch (DataIntegrityViolationException raceLost) {
             IdempotencyRecord winner =
                     idempotencyRecordRepository
@@ -68,7 +70,8 @@ public class TransferService {
                 .toList();
     }
 
-    private TransferResponse replay(IdempotencyRecord existing) {
-        return jsonMapper.readValue(existing.getResponseBody(), TransferResponse.class);
+    private ResponseEntity<TransferResponse> replay(IdempotencyRecord existing) {
+        TransferResponse response = jsonMapper.readValue(existing.getResponseBody(), TransferResponse.class);
+        return ResponseEntity.status(existing.getResponseStatus()).body(response);
     }
 }

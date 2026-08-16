@@ -12,7 +12,6 @@ import com.api.wallet.repository.LedgerEntryRepository;
 import com.api.wallet.repository.TransferRepository;
 import com.api.wallet.repository.WalletRepository;
 import java.math.BigDecimal;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
@@ -69,7 +68,10 @@ class TransferAttemptExecutor {
 
         idempotencyRecordRepository.save(
                 IdempotencyRecord.of(
-                        request.idempotencyKey(), transfer.getId(), HttpStatus.CREATED.value(), writeJson(response)));
+                        request.idempotencyKey(),
+                        transfer.getId(),
+                        transfer.getStatus().httpStatus(),
+                        writeJson(response)));
 
         return response;
     }

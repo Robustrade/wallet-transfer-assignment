@@ -88,7 +88,7 @@ class TransferServiceTest {
         when(transferRepository.saveAndFlush(any(Transfer.class)))
                 .thenThrow(new DataIntegrityViolationException("duplicate key"));
 
-        TransferResponse replayed = transferService.createTransfer(request);
+        TransferResponse replayed = transferService.createTransfer(request).getBody();
 
         assertThat(replayed.status()).isEqualTo(TransferStatus.PROCESSED);
         assertThat(fromWallet.getBalance()).isEqualByComparingTo("900");
