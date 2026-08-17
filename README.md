@@ -35,7 +35,15 @@ This repository is a reusable coding assignment template for evaluating backend 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
 
 ## AI usage
-Each line of the code is written from scratch and by author and no coding agent is used. However I have used Chatgpt and Google search for research purposes.
+* Each line of the code is written from scratch and by author and no coding agent is used. However I have used Chatgpt and Google search for research purposes.
+* There are areas where improvements can be made, but due to time constraints it wasn't possible. How ever it can be discussed in future.
+
+## Stack
+* Golang: Programming Language
+* Postgres: Persistent
+* pgxpool: Connection Pool
+* golang-migrate: Database migration
+* mockgen: Mock code generation from interfaces
 
 ## Database Schema Design
 There are 3 tables are created:
