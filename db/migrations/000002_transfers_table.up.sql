@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS transfers (
+    id VARCHAR(40) PRIMARY KEY,
+    from_wallet_id VARCHAR(40)NOT NULL REFERENCES wallets(id),
+    to_wallet_id VARCHAR(40) NOT NULL REFERENCES wallets(id),
+    amount BIGINT NOT NULL CHECK (amount > 0),
+    status VARCHAR(20) NOT NULL CHECK(status IN ('PENDING', 'PROCESSED','FAILED')),
+    idempotency_key VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
