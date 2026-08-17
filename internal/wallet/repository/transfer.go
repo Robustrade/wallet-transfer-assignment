@@ -80,17 +80,16 @@ func (t *walletRepository) CreateTransfer(ctx context.Context, transfer domain.T
 
 	// create transfer entry
 	transferEntryQuery := `INSERT INTO wallet.transfers (id, from_wallet_id, to_wallet_id, amount, status, idempotency_key)
-							VALUES ($1, $2, $3, $4, $5, $6)
-							RETURNING id, from_wallet_id, to_wallet_id, amount, status, idempotency_key, created_at, updated_at;`
+							VALUES ($1, $2, $3, $4, $5, $6)`
 
 	transferId := uuid.NewString()
 	_, err = tx.Exec(ctx, transferEntryQuery, transferId, transfer.FromWallet, transfer.ToWallet, transfer.Amount, domain.StatusPending, transfer.IdempotencyKey)
 	if err != nil {
-		return domain.Transfer{}, fmt.Errorf("Couldn't create transfer entry")
+		return domain.Transfer{}, fmt.Errorf("Couldn't create transfer entry: %w", err)
 	}
 
 	// update debit and credit wallets
-	if debitWallet.Balance < tr.Amount {
+	if debitWallet.Balance < transfer.Amount {
 		return domain.Transfer{}, fmt.Errorf("Insufficient fund")
 	}
 	updateWalletQuery := `UPDATE wallet.wallets
@@ -98,11 +97,11 @@ func (t *walletRepository) CreateTransfer(ctx context.Context, transfer domain.T
 							WHERE id = $2;`
 	_, err = tx.Exec(ctx, updateWalletQuery, debitWallet.Balance-transfer.Amount, debitWallet.ID)
 	if err != nil {
-		return domain.Transfer{}, fmt.Errorf("Error while updating debit wallet balance")
+		return domain.Transfer{}, fmt.Errorf("Error while updating debit wallet balance: %w", err)
 	}
 	_, err = tx.Exec(ctx, updateWalletQuery, creditWallet.Balance+transfer.Amount, creditWallet.ID)
 	if err != nil {
-		return domain.Transfer{}, fmt.Errorf("Error while updating credit wallet balance")
+		return domain.Transfer{}, fmt.Errorf("Error while updating credit wallet balance: %w", err)
 	}
 
 	// create ledger entries
