@@ -1,6 +1,26 @@
 -include .env
 export
 
+GO_BIN=/home/rakesh/bin/go/bin/go
+
+BINARY_NAME=wallet
+BUILD_DIR=bin
+
+all: clean build run
+
+build:
+	mkdir -p $(BUILD_DIR)
+	$(GO_BIN) build -o ./$(BUILD_DIR)/$(BINARY_NAME) ./cmd/main.go
+
+run:
+	./$(BUILD_DIR)/$(BINARY_NAME)
+
+clean:
+	rm -rf $(BUILD_DIR)
+
+format:
+	gofmt -w .
+
 test:
 	go test ./...
 
