@@ -1,0 +1,15 @@
+[importlinter]
+root_packages =
+    wallet_transfer
+
+# Enforces the assignment's required layering (handler -> service -> repository -> domain):
+# a layer may import anything below it, never anything above. `make lint` runs this via
+# `lint-imports`, guarded to no-op until src/wallet_transfer/ exists.
+[importlinter:contract:layered-architecture]
+name = Layered architecture (handler -> service -> repository -> domain)
+type = layers
+layers =
+    wallet_transfer.handlers
+    wallet_transfer.services
+    wallet_transfer.repositories
+    wallet_transfer.domain

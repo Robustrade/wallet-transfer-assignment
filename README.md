@@ -1,35 +1,58 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+A wallet-to-wallet transfer service: idempotent `POST /transfers`, a double-entry ledger, wallet
+balances, and concurrency-safe debits. Python, FastAPI, and PostgreSQL (`asyncpg`), built against
+ten reviewed Architecture Decision Records.
 
-## Included
+## Design
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+Start with [`ARCHITECTURE.md`](./ARCHITECTURE.md) — an Executive Summary, a System Overview
+diagram, and one section per component (`handlers`, `services`, `repositories`, `domain`). Every
+non-trivial design decision (schema, idempotency mechanism, locking strategy) has its own ADR in
+[`docs/decisions/adrs/`](./docs/decisions/adrs/), all Accepted:
 
-## Intended use
+| ADR | Decision |
+|---|---|
+| [0001](./docs/decisions/adrs/adr-0001-language-and-persistence-choice.md) | Python + PostgreSQL |
+| [0002](./docs/decisions/adrs/adr-0002-idempotency-strategy.md) | Idempotency strategy |
+| [0003](./docs/decisions/adrs/adr-0003-concurrency-locking-strategy.md) | Concurrency / locking strategy |
+| [0004](./docs/decisions/adrs/adr-0004-schema-and-migrations.md) | Schema and migrations |
+| [0005](./docs/decisions/adrs/adr-0005-api-contract-first-openapi.md) | API contract-first (OpenAPI) |
+| [0006](./docs/decisions/adrs/adr-0006-interface-first-tdd.md) | Interface-first TDD |
+| [0007](./docs/decisions/adrs/adr-0007-async-io-asyncpg.md) | Async I/O end-to-end via `asyncpg` |
+| [0008](./docs/decisions/adrs/adr-0008-single-request-transfer-resolution.md) | Single-request transfer resolution |
+| [0009](./docs/decisions/adrs/adr-0009-stored-balance-not-derived.md) | Stored balance, not ledger-derived |
+| [0010](./docs/decisions/adrs/adr-0010-demo-wallet-seeding.md) | Demo wallet seeding |
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+[`HANDOVER.md`](./HANDOVER.md) is the implementation kickoff briefing, kept as a historical
+record; [`AGENTS.md`](./AGENTS.md) is the canonical agent context (hard rules, layering contract,
+forbidden patterns).
 
-## Notes
+## Run it
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+```
+just demo
+```
 
-## How to Submit Assignment
+Full containerized stack — Postgres, the app, and four seeded demo wallets. See
+[`.agents/skills/run-app/SKILL.md`](./.agents/skills/run-app/SKILL.md) for the local-dev mode
+(`just up` + `just dev`) and the concurrency demo (`just simulate`).
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+## Test it
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+```
+just ci
+```
+
+Lint, format-check, the full test suite (domain, service-layer against an in-memory fake,
+repository/end-to-end against real Postgres via `testcontainers`), and the OpenAPI drift check.
+
+## API contract
+
+[`openapi/spec.yaml`](./openapi/spec.yaml) is the hand-authored source of truth for the API;
+Swagger UI is available at `/docs` once the app is running.
+
+## AI usage
+
+See this submission's PR description for the AI disclosure, and
+[`docs/ai-transcripts/`](./docs/ai-transcripts/) for the full session transcripts.

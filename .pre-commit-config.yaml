@@ -1,0 +1,37 @@
+repos:
+  # Secret scanning — blocks leaks before they hit the remote
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # Python linting + formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Type checking — runs via the project's own venv (language: system), not mirrors-mypy's
+  # isolated env, so it can actually resolve pytest/asyncpg/etc.'s types instead of flagging
+  # every third-party decorator as untyped under strict mode.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: system
+        types: [python]
+        require_serial: true
+
+  # Architecture boundary enforcement (see .importlinter)
+  - repo: local
+    hooks:
+      - id: import-linter
+        name: import-linter (architecture boundaries)
+        entry: >-
+          bash -c 'if [ -d src/wallet_transfer ]; then lint-imports;
+          else echo "import-linter skip - src/wallet_transfer not created yet"; fi'
+        language: system
+        pass_filenames: false

@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet_transfer
+    ports:
+      - "5432:5432"
+    volumes:
+      - wallet_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet_transfer"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - wallet_transfer_net
+
+  # Runs the app container itself. Does NOT run migrations (ADR-0004 — migrations are a
+  # deploy/setup-time concern via `just migrate`, never part of the service's runtime path), so
+  # `just migrate` (optionally SEED_DEMO_DATA=true) must be run before the app can serve requests
+  # against a fresh database. `just demo` sequences this correctly.
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://wallet:wallet@postgres:5432/wallet_transfer
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wallet_transfer_net
+
+volumes:
+  wallet_pg_data:
+
+networks:
+  wallet_transfer_net:
+    name: wallet_transfer_net

@@ -1,0 +1,134 @@
+openapi: 3.0.3
+info:
+  title: Wallet Transfer Service
+  version: "1.0.0"
+  description: >
+    Wallet-to-wallet transfers with idempotent request handling, a double-entry ledger, and
+    concurrency-safe balance updates. See ADR-0002 (idempotency), ADR-0003 (concurrency),
+    ADR-0008 (response contract) for the reasoning behind this shape.
+paths:
+  /transfers:
+    post:
+      operationId: createTransfer
+      summary: Create a wallet-to-wallet transfer
+      description: >
+        Resolves synchronously to PROCESSED or FAILED within this request — PENDING is never a
+        durably observable status (ADR-0008). Replaying the same idempotencyKey with an identical
+        payload returns the original result; the same key with a different payload is a 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransferRequest"
+      responses:
+        "200":
+          description: >
+            The transfer resolved to PROCESSED or FAILED — see the body's status field, and
+            failureReason when FAILED. A FAILED result (e.g. insufficient funds) is a correctly
+            handled business outcome, not a transport-level error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResponse"
+        "404":
+          description: fromWalletId or toWalletId does not reference an existing wallet. Nothing persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: idempotencyKey was already used for a request with a different payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: >
+            Malformed request body, or a well-formed body that violates a domain-level invariant
+            (self-transfer, non-positive amount). Nothing persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: >
+            Bounded retry exhausted under lock contention. Nothing was persisted by any attempt,
+            so it is safe to retry later with the same idempotencyKey.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    CreateTransferRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - idempotencyKey
+        - fromWalletId
+        - toWalletId
+        - amount
+      properties:
+        idempotencyKey:
+          type: string
+          minLength: 1
+          description: Client-supplied key. Required — see ADR-0002 for why this isn't optional.
+        fromWalletId:
+          type: string
+          format: uuid
+        toWalletId:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+          description: >
+            Integer minor units (e.g. cents) — never a float. Deliberately unconstrained here
+            (no minimum): non-positive amount is rejected as a domain-level invariant (ADR-0002),
+            not a request-shape constraint, so it must reach the domain layer to be checked.
+    TransferResponse:
+      type: object
+      required:
+        - id
+        - idempotencyKey
+        - fromWalletId
+        - toWalletId
+        - amount
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        idempotencyKey:
+          type: string
+        fromWalletId:
+          type: string
+          format: uuid
+        toWalletId:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+        status:
+          type: string
+          enum: [PROCESSED, FAILED]
+          description: PENDING is never returned — see ADR-0008.
+        failureReason:
+          type: string
+          nullable: true
+          description: Present when status is FAILED (e.g. "INSUFFICIENT_FUNDS"), null otherwise.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
