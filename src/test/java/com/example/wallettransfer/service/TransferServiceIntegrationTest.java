@@ -7,6 +7,9 @@ import com.example.wallettransfer.exception.IdempotencyConflictException;
 import com.example.wallettransfer.testcontainer.PostgresTestContainer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -27,6 +30,9 @@ class TransferServiceIntegrationTest extends PostgresTestContainer {
 
     @Autowired
     private TransferService transferService;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Test
     void successfulTransferUpdatesBalancesAndWritesBalancedDoubleEntryLedger() {
@@ -168,6 +174,51 @@ class TransferServiceIntegrationTest extends PostgresTestContainer {
         assertThat(count("idempotency_records")).isEqualTo(1);
     }
 
+    @Test
+    void processedTransferWithoutACompleteLedgerPairIsRejectedAtCommit() {
+        createWallet("source", "100.0000");
+        createWallet("destination", "0.0000");
+
+        assertLedgerInvariantViolation(() -> {
+            UUID transferId = UUID.randomUUID();
+            insertPendingTransfer(transferId, "source", "destination", "25.0000");
+            insertLedgerEntry(transferId, "source", "DEBIT", "25.0000");
+            markTransferProcessed(transferId);
+        });
+    }
+
+    @Test
+    void processedTransferWithAPostingForTheWrongWalletIsRejectedAtCommit() {
+        createWallet("source", "100.0000");
+        createWallet("destination", "0.0000");
+        createWallet("unrelated", "0.0000");
+
+        assertLedgerInvariantViolation(() -> {
+            UUID transferId = UUID.randomUUID();
+            insertPendingTransfer(transferId, "source", "destination", "25.0000");
+            insertLedgerEntry(transferId, "source", "DEBIT", "25.0000");
+            insertLedgerEntry(transferId, "unrelated", "CREDIT", "25.0000");
+            markTransferProcessed(transferId);
+        });
+    }
+
+    @Test
+    void failedTransferWithLedgerPostingsIsRejectedAtCommit() {
+        createWallet("source", "100.0000");
+        createWallet("destination", "0.0000");
+
+        assertLedgerInvariantViolation(() -> {
+            UUID transferId = UUID.randomUUID();
+            insertPendingTransfer(transferId, "source", "destination", "25.0000");
+            insertLedgerEntry(transferId, "source", "DEBIT", "25.0000");
+            insertLedgerEntry(transferId, "destination", "CREDIT", "25.0000");
+            jdbcTemplate.update(
+                    "UPDATE transfers SET status = 'FAILED', failure_reason = 'DECLINED', completed_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    transferId
+            );
+        });
+    }
+
     private TransferResponse concurrentTransfer(
             CountDownLatch ready,
             CountDownLatch start,
@@ -193,6 +244,41 @@ class TransferServiceIntegrationTest extends PostgresTestContainer {
             String amount
     ) {
         return new CreateTransferRequest(key, from, to, new BigDecimal(amount));
+    }
+
+    private void assertLedgerInvariantViolation(Runnable transactionBody) {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+
+        assertThatThrownBy(() -> transaction.executeWithoutResult(status -> transactionBody.run()))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("ledger invariant");
+    }
+
+    private void insertPendingTransfer(UUID transferId, String fromWalletId, String toWalletId, String amount) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO transfers(id, from_wallet_id, to_wallet_id, amount, status, created_at)
+                        VALUES (?, ?, ?, ?::numeric, 'PENDING', CURRENT_TIMESTAMP)
+                        """,
+                transferId, fromWalletId, toWalletId, amount
+        );
+    }
+
+    private void insertLedgerEntry(UUID transferId, String walletId, String entryType, String amount) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO ledger_entries(id, wallet_id, transfer_id, entry_type, amount, created_at)
+                        VALUES (?, ?, ?, ?, ?::numeric, CURRENT_TIMESTAMP)
+                        """,
+                UUID.randomUUID(), walletId, transferId, entryType, amount
+        );
+    }
+
+    private void markTransferProcessed(UUID transferId) {
+        jdbcTemplate.update(
+                "UPDATE transfers SET status = 'PROCESSED', completed_at = CURRENT_TIMESTAMP WHERE id = ?",
+                transferId
+        );
     }
 
     private BigDecimal balance(String walletId) {
