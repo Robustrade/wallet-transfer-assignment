@@ -202,3 +202,112 @@ databaseChangeLog:
               - column:
                   name: balance
                   valueNumeric: 500.0000
+
+  - changeSet:
+      id: 3
+      author: app
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE FUNCTION assert_transfer_ledger_invariant(target_transfer_id UUID)
+              RETURNS VOID
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                transfer_row transfers%ROWTYPE;
+                ledger_entry_count INTEGER;
+                matching_debit_count INTEGER;
+                matching_credit_count INTEGER;
+              BEGIN
+                SELECT *
+                INTO transfer_row
+                FROM transfers
+                WHERE id = target_transfer_id;
+
+                IF NOT FOUND THEN
+                  RETURN;
+                END IF;
+
+                SELECT
+                  COUNT(*)::INTEGER,
+                  COUNT(*) FILTER (
+                    WHERE entry_type = 'DEBIT'
+                      AND wallet_id = transfer_row.from_wallet_id
+                      AND amount = transfer_row.amount
+                  )::INTEGER,
+                  COUNT(*) FILTER (
+                    WHERE entry_type = 'CREDIT'
+                      AND wallet_id = transfer_row.to_wallet_id
+                      AND amount = transfer_row.amount
+                  )::INTEGER
+                INTO ledger_entry_count, matching_debit_count, matching_credit_count
+                FROM ledger_entries
+                WHERE transfer_id = target_transfer_id;
+
+                IF transfer_row.status = 'PROCESSED' THEN
+                  IF ledger_entry_count <> 2
+                    OR matching_debit_count <> 1
+                    OR matching_credit_count <> 1 THEN
+                    RAISE EXCEPTION 'Transfer % violates ledger invariant: processed transfers require one matching debit and credit', target_transfer_id
+                      USING ERRCODE = '23514';
+                  END IF;
+                ELSIF ledger_entry_count <> 0 THEN
+                  RAISE EXCEPTION 'Transfer % violates ledger invariant: only processed transfers may have postings', target_transfer_id
+                    USING ERRCODE = '23514';
+                END IF;
+              END;
+              $$;
+
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE FUNCTION validate_transfer_ledger_invariant()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                PERFORM assert_transfer_ledger_invariant(NEW.id);
+                RETURN NULL;
+              END;
+              $$;
+
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE FUNCTION validate_ledger_entry_invariant()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                IF TG_OP = 'UPDATE' THEN
+                  PERFORM assert_transfer_ledger_invariant(OLD.transfer_id);
+                END IF;
+
+                IF TG_OP <> 'DELETE' THEN
+                  PERFORM assert_transfer_ledger_invariant(NEW.transfer_id);
+                ELSE
+                  PERFORM assert_transfer_ledger_invariant(OLD.transfer_id);
+                END IF;
+
+                RETURN NULL;
+              END;
+              $$;
+
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE CONSTRAINT TRIGGER ck_processed_transfer_ledger
+              AFTER INSERT OR UPDATE ON transfers
+              DEFERRABLE INITIALLY DEFERRED
+              FOR EACH ROW
+              EXECUTE FUNCTION validate_transfer_ledger_invariant();
+
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE CONSTRAINT TRIGGER ck_ledger_entry_matches_transfer
+              AFTER INSERT OR UPDATE OR DELETE ON ledger_entries
+              DEFERRABLE INITIALLY DEFERRED
+              FOR EACH ROW
+              EXECUTE FUNCTION validate_ledger_entry_invariant();

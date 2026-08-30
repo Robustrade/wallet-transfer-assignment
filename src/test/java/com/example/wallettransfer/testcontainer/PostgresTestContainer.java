@@ -32,10 +32,7 @@ public abstract class PostgresTestContainer {
 
     @BeforeEach
     void cleanDatabase() {
-        jdbcTemplate.update("DELETE FROM idempotency_records");
-        jdbcTemplate.update("DELETE FROM ledger_entries");
-        jdbcTemplate.update("DELETE FROM transfers");
-        jdbcTemplate.update("DELETE FROM wallets");
+        jdbcTemplate.execute("TRUNCATE TABLE idempotency_records, ledger_entries, transfers, wallets");
     }
 
     protected void createWallet(String id, String balance) {
