@@ -1,0 +1,204 @@
+databaseChangeLog:
+  - changeSet:
+      id: 1
+      author: app
+      changes:
+        - createTable:
+            tableName: wallets
+            columns:
+              - column:
+                  name: id
+                  type: VARCHAR(64)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: balance
+                  type: NUMERIC(19, 4)
+                  constraints:
+                    nullable: false
+                    checkConstraint: balance >= 0
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: transfers
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: from_wallet_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_transfer_from_wallet
+                    references: wallets(id)
+              - column:
+                  name: to_wallet_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_transfer_to_wallet
+                    references: wallets(id)
+              - column:
+                  name: amount
+                  type: NUMERIC(19, 4)
+                  constraints:
+                    nullable: false
+                    checkConstraint: amount > 0
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+                    checkConstraint: "status IN ('PENDING', 'PROCESSED', 'FAILED')"
+              - column:
+                  name: failure_reason
+                  type: VARCHAR(255)
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+              - column:
+                  name: completed_at
+                  type: TIMESTAMPTZ
+        - sql:
+            sql: >-
+              ALTER TABLE transfers
+              ADD CONSTRAINT ck_transfer_distinct_wallets CHECK (from_wallet_id <> to_wallet_id)
+
+        - createTable:
+            tableName: ledger_entries
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: wallet_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_ledger_wallet
+                    references: wallets(id)
+              - column:
+                  name: transfer_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_ledger_transfer
+                    references: transfers(id)
+              - column:
+                  name: entry_type
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+                    checkConstraint: "entry_type IN ('DEBIT', 'CREDIT')"
+              - column:
+                  name: amount
+                  type: NUMERIC(19, 4)
+                  constraints:
+                    nullable: false
+                    checkConstraint: amount > 0
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            constraintName: uq_ledger_transfer_type
+            tableName: ledger_entries
+            columnNames: transfer_id, entry_type
+
+        - createTable:
+            tableName: idempotency_records
+            columns:
+              - column:
+                  name: idempotency_key
+                  type: VARCHAR(100)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: request_hash
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: transfer_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    unique: true
+                    foreignKeyName: fk_idempotency_transfer
+                    references: transfers(id)
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+
+        - createIndex:
+            indexName: idx_transfers_from_wallet_created_at
+            tableName: transfers
+            columns:
+              - column:
+                  name: from_wallet_id
+              - column:
+                  name: created_at
+        - createIndex:
+            indexName: idx_transfers_to_wallet_created_at
+            tableName: transfers
+            columns:
+              - column:
+                  name: to_wallet_id
+              - column:
+                  name: created_at
+        - createIndex:
+            indexName: idx_ledger_wallet_created_at
+            tableName: ledger_entries
+            columns:
+              - column:
+                  name: wallet_id
+              - column:
+                  name: created_at
+        - createIndex:
+            indexName: idx_ledger_transfer
+            tableName: ledger_entries
+            columns:
+              - column:
+                  name: transfer_id
+
+  - changeSet:
+      id: 2
+      author: app
+      changes:
+        - insert:
+            tableName: wallets
+            columns:
+              - column:
+                  name: id
+                  value: wallet_1
+              - column:
+                  name: balance
+                  valueNumeric: 1000.0000
+        - insert:
+            tableName: wallets
+            columns:
+              - column:
+                  name: id
+                  value: wallet_2
+              - column:
+                  name: balance
+                  valueNumeric: 500.0000

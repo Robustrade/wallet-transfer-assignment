@@ -5,3 +5,9 @@ build/
 .tmp/
 .env
 .env.*
+
+
+target/
+.idea/
+.vscode/
+*.iml
