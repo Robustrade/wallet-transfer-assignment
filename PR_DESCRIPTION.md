@@ -1,96 +1,68 @@
-# Wallet Transfer Service
-
 ## Summary
 
-Implements `POST /transfers` with durable idempotency, stored wallet balances, a double-entry ledger, safe transfer state transitions, and concurrency-safe debits.
+Implements `POST /transfers` with stored wallet balances, durable idempotency, a double-entry ledger, guarded transfer states, and concurrency-safe debits. A PostgreSQL deferred constraint trigger now prevents any transaction from committing an invalid ledger state.
 
-## Database schema
+## AI disclosure
 
-Four tables are used:
+I used Codex, an AI coding agent, to review the repository, reason about the transaction and ledger invariants, implement the approved migration and tests, and run the verification suite. I reviewed the generated changes and chose the final approach.
 
-- `wallets`: wallet ID and non-negative stored balance.
-- `transfers`: source/destination, amount, `PENDING|PROCESSED|FAILED`, failure reason, timestamps.
-- `ledger_entries`: immutable `DEBIT`/`CREDIT` postings. `(transfer_id, entry_type)` is unique so a transfer cannot get duplicate debit or credit postings.
-- `idempotency_records`: full idempotency key as primary key, canonical request SHA-256 hash, and unique reference to the original transfer.
+Prompts used in this session:
 
-DB constraints enforce positive amounts, non-negative wallet balances, valid statuses/types, different source/destination wallets, FKs, and ledger uniqueness. Indexes support wallet/ledger history lookups.
+- `review this repo and Assignments.md is the problem satatement and expectations`
+- `fix P1 — Ledger invariants are not enforced by the database.`
+- `approve`
 
-## Idempotency strategy
+The full interaction transcript is available in the coding-agent session associated with this submission.
 
-At the start of the transaction, the service obtains a PostgreSQL transaction-scoped advisory lock derived from the idempotency key. This solves the race where two first-time requests for the same never-before-seen key arrive simultaneously.
+## Schema Design
 
-After acquiring that lock:
+- `wallets` stores a non-negative materialized balance.
+- `transfers` stores source/destination wallet IDs, amount, `PENDING|PROCESSED|FAILED` state, failure reason, and timestamps.
+- `ledger_entries` stores debit and credit postings with foreign keys to wallets and transfers. `(transfer_id, entry_type)` prevents duplicate entries of either type.
+- `idempotency_records` stores the idempotency key, a canonical request hash, and the original transfer.
 
-1. Read `idempotency_records` by the full key.
-2. If it exists and its request hash matches, return the original transfer without touching wallets or ledger.
-3. If it exists but the hash differs, return HTTP 409.
-4. Otherwise continue and persist the key -> transfer mapping in the same DB transaction as the transfer.
+The schema also enforces positive amounts, valid enum values, distinct transfer wallets, foreign keys, and useful history indexes.
 
-The request hash includes source wallet, destination wallet, and normalized amount; the idempotency key itself is intentionally excluded from the hash.
+Change set 3 adds deferred PostgreSQL constraint triggers. At commit, a `PROCESSED` transfer must have exactly one debit from its source wallet and one credit to its destination wallet, both matching the transfer amount. `PENDING` and `FAILED` transfers may not have ledger postings.
 
-An insufficient-funds result is persisted as `FAILED`, so repeating the same key returns the same failed transfer. Unexpected DB/runtime failures roll back the transaction, including the idempotency row, making a retry safe.
+## Idempotency Strategy
 
-## Concurrency handling
+Each request takes a PostgreSQL transaction-scoped advisory lock derived from its idempotency key, then reads the durable idempotency record.
 
-Wallets are read with pessimistic write locks (`SELECT ... FOR UPDATE`). Both wallet IDs are always locked in lexical order.
+- A repeated key with the same canonical payload returns the original transfer without side effects.
+- A repeated key with a different payload returns HTTP 409.
+- The idempotency record, transfer, balance updates, ledger rows, and terminal state are committed in one transaction. Unexpected failures roll back all of them.
 
-Example with a source balance of 1000 and two concurrent transfers of 1000:
+## Concurrency Strategy
 
-- request A locks the source, sees 1000, debits it, writes both ledger rows, and commits;
-- request B waits for the source lock, then reads the committed balance of 0 and becomes `FAILED`;
-- source balance never goes negative and only one pair of ledger rows is created.
+Wallet rows are loaded with `SELECT ... FOR UPDATE` and acquired in lexical wallet-ID order. This serializes competing debits while avoiding opposite-direction lock ordering. A transfer that waits for a concurrent debit observes the latest committed balance and fails safely if insufficient funds remain.
 
-Stable wallet lock ordering also reduces deadlock risk for simultaneous `A -> B` and `B -> A` transfers.
+## How to Run
 
-## Transaction boundary
+1. Start PostgreSQL: `docker compose up -d`
+2. Start the service: `mvn spring-boot:run`
+3. Send `POST http://localhost:9090/transfers` with `idempotencyKey`, `fromWalletId`, `toWalletId`, and `amount`.
 
-A single `@Transactional` service method covers:
+## How to Test
 
-- idempotency locking/check
-- PENDING transfer creation
-- wallet row locks
-- source debit
-- destination credit
-- DEBIT ledger row
-- CREDIT ledger row
-- terminal transfer state
-- idempotency mapping
+- Run `mvn clean test` with Docker available for Testcontainers.
+- The suite covers successful transfers, idempotent replay/conflicts, insufficient funds, concurrent debit safety, concurrent duplicate requests, state transitions, and database-enforced ledger invariant violations.
 
-An unexpected failure rolls the entire operation back, preventing partial execution such as “debit committed but credit/ledger missing.”
+## Tradeoffs / Assumptions
 
-## Transfer state machine
+- Stored balances make reads cheap; atomic transactions keep them consistent with the ledger.
+- Pessimistic locking favors correctness and clear behavior over maximum throughput for a hot wallet.
+- Advisory locks and deferred triggers are PostgreSQL-specific, which is acceptable because PostgreSQL is the preferred assignment database.
+- The API has no currency field, so every wallet is assumed to use the same unit.
 
-Allowed transitions are explicitly guarded in the entity:
+## Checklist
 
-- `PENDING -> PROCESSED`
-- `PENDING -> FAILED`
+- [x] Tests pass (`mvn clean test`: 31 tests)
+- [ ] Lint passes (no repository lint command is configured)
+- [ ] Format check passes (no repository format command is configured)
+- [ ] README or notes updated (docs/wallet-transfer-readme.md)
+- [x] PR description explains schema, idempotency, and concurrency
 
-A terminal transfer cannot transition again.
 
-## Testing
-
-Tests cover:
-
-- successful balance movement
-- exactly two balanced ledger rows
-- same-key replay with no repeated side effect
-- same key with a changed request -> conflict
-- insufficient funds and failed-result replay
-- two concurrent full-balance debits
-- many simultaneous requests with the same idempotency key
-- request fingerprint normalization
-- transfer state transition guards
-
-PostgreSQL integration tests use Testcontainers so row/advisory locking is exercised against PostgreSQL rather than an in-memory database.
-
-## Assumptions / trade-offs
-
-- Stored balances were chosen instead of deriving every balance from the ledger because reads are cheap while transaction atomicity keeps balances and ledger consistent.
-- Pessimistic locking prioritizes correctness and simplicity over maximum throughput for a hot wallet.
-- PostgreSQL advisory locks are database-specific, which is acceptable here because PostgreSQL is the preferred database in the assignment.
-- Only `PROCESSED` transfers create ledger postings. `FAILED` attempts move no value and therefore create no accounting entries.
-- The API contract has no currency field, so all wallet amounts are assumed to use the same currency/unit.
-
-## AI usage
-
-See `AI_USAGE.md` for the tool, workflow, and prompts used.
+## Notes
+Visit `docs/wallet-transfer-readme.md` for a more detailed explanation.
