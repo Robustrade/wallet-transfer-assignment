@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: wallet-transfer-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5434/walletdb}
+    username: ${DB_USERNAME:wallet}
+    password: ${DB_PASSWORD:wallet}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          time_zone: UTC
+
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+server:
+  port: ${PORT:9090}

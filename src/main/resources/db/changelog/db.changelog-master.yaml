@@ -1,0 +1,313 @@
+databaseChangeLog:
+  - changeSet:
+      id: 1
+      author: app
+      changes:
+        - createTable:
+            tableName: wallets
+            columns:
+              - column:
+                  name: id
+                  type: VARCHAR(64)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: balance
+                  type: NUMERIC(19, 4)
+                  constraints:
+                    nullable: false
+                    checkConstraint: balance >= 0
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: transfers
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: from_wallet_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_transfer_from_wallet
+                    references: wallets(id)
+              - column:
+                  name: to_wallet_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_transfer_to_wallet
+                    references: wallets(id)
+              - column:
+                  name: amount
+                  type: NUMERIC(19, 4)
+                  constraints:
+                    nullable: false
+                    checkConstraint: amount > 0
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+                    checkConstraint: "status IN ('PENDING', 'PROCESSED', 'FAILED')"
+              - column:
+                  name: failure_reason
+                  type: VARCHAR(255)
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+              - column:
+                  name: completed_at
+                  type: TIMESTAMPTZ
+        - sql:
+            sql: >-
+              ALTER TABLE transfers
+              ADD CONSTRAINT ck_transfer_distinct_wallets CHECK (from_wallet_id <> to_wallet_id)
+
+        - createTable:
+            tableName: ledger_entries
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: wallet_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_ledger_wallet
+                    references: wallets(id)
+              - column:
+                  name: transfer_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_ledger_transfer
+                    references: transfers(id)
+              - column:
+                  name: entry_type
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+                    checkConstraint: "entry_type IN ('DEBIT', 'CREDIT')"
+              - column:
+                  name: amount
+                  type: NUMERIC(19, 4)
+                  constraints:
+                    nullable: false
+                    checkConstraint: amount > 0
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            constraintName: uq_ledger_transfer_type
+            tableName: ledger_entries
+            columnNames: transfer_id, entry_type
+
+        - createTable:
+            tableName: idempotency_records
+            columns:
+              - column:
+                  name: idempotency_key
+                  type: VARCHAR(100)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: request_hash
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: transfer_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    unique: true
+                    foreignKeyName: fk_idempotency_transfer
+                    references: transfers(id)
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+
+        - createIndex:
+            indexName: idx_transfers_from_wallet_created_at
+            tableName: transfers
+            columns:
+              - column:
+                  name: from_wallet_id
+              - column:
+                  name: created_at
+        - createIndex:
+            indexName: idx_transfers_to_wallet_created_at
+            tableName: transfers
+            columns:
+              - column:
+                  name: to_wallet_id
+              - column:
+                  name: created_at
+        - createIndex:
+            indexName: idx_ledger_wallet_created_at
+            tableName: ledger_entries
+            columns:
+              - column:
+                  name: wallet_id
+              - column:
+                  name: created_at
+        - createIndex:
+            indexName: idx_ledger_transfer
+            tableName: ledger_entries
+            columns:
+              - column:
+                  name: transfer_id
+
+  - changeSet:
+      id: 2
+      author: app
+      changes:
+        - insert:
+            tableName: wallets
+            columns:
+              - column:
+                  name: id
+                  value: wallet_1
+              - column:
+                  name: balance
+                  valueNumeric: 1000.0000
+        - insert:
+            tableName: wallets
+            columns:
+              - column:
+                  name: id
+                  value: wallet_2
+              - column:
+                  name: balance
+                  valueNumeric: 500.0000
+
+  - changeSet:
+      id: 3
+      author: app
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE FUNCTION assert_transfer_ledger_invariant(target_transfer_id UUID)
+              RETURNS VOID
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                transfer_row transfers%ROWTYPE;
+                ledger_entry_count INTEGER;
+                matching_debit_count INTEGER;
+                matching_credit_count INTEGER;
+              BEGIN
+                SELECT *
+                INTO transfer_row
+                FROM transfers
+                WHERE id = target_transfer_id;
+
+                IF NOT FOUND THEN
+                  RETURN;
+                END IF;
+
+                SELECT
+                  COUNT(*)::INTEGER,
+                  COUNT(*) FILTER (
+                    WHERE entry_type = 'DEBIT'
+                      AND wallet_id = transfer_row.from_wallet_id
+                      AND amount = transfer_row.amount
+                  )::INTEGER,
+                  COUNT(*) FILTER (
+                    WHERE entry_type = 'CREDIT'
+                      AND wallet_id = transfer_row.to_wallet_id
+                      AND amount = transfer_row.amount
+                  )::INTEGER
+                INTO ledger_entry_count, matching_debit_count, matching_credit_count
+                FROM ledger_entries
+                WHERE transfer_id = target_transfer_id;
+
+                IF transfer_row.status = 'PROCESSED' THEN
+                  IF ledger_entry_count <> 2
+                    OR matching_debit_count <> 1
+                    OR matching_credit_count <> 1 THEN
+                    RAISE EXCEPTION 'Transfer % violates ledger invariant: processed transfers require one matching debit and credit', target_transfer_id
+                      USING ERRCODE = '23514';
+                  END IF;
+                ELSIF ledger_entry_count <> 0 THEN
+                  RAISE EXCEPTION 'Transfer % violates ledger invariant: only processed transfers may have postings', target_transfer_id
+                    USING ERRCODE = '23514';
+                END IF;
+              END;
+              $$;
+
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE FUNCTION validate_transfer_ledger_invariant()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                PERFORM assert_transfer_ledger_invariant(NEW.id);
+                RETURN NULL;
+              END;
+              $$;
+
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE FUNCTION validate_ledger_entry_invariant()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                IF TG_OP = 'UPDATE' THEN
+                  PERFORM assert_transfer_ledger_invariant(OLD.transfer_id);
+                END IF;
+
+                IF TG_OP <> 'DELETE' THEN
+                  PERFORM assert_transfer_ledger_invariant(NEW.transfer_id);
+                ELSE
+                  PERFORM assert_transfer_ledger_invariant(OLD.transfer_id);
+                END IF;
+
+                RETURN NULL;
+              END;
+              $$;
+
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE CONSTRAINT TRIGGER ck_processed_transfer_ledger
+              AFTER INSERT OR UPDATE ON transfers
+              DEFERRABLE INITIALLY DEFERRED
+              FOR EACH ROW
+              EXECUTE FUNCTION validate_transfer_ledger_invariant();
+
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE CONSTRAINT TRIGGER ck_ledger_entry_matches_transfer
+              AFTER INSERT OR UPDATE OR DELETE ON ledger_entries
+              DEFERRABLE INITIALLY DEFERRED
+              FOR EACH ROW
+              EXECUTE FUNCTION validate_ledger_entry_invariant();
