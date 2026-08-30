@@ -55,6 +55,11 @@ func TestHTTPValidation(t *testing.T) {
 	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status %d body %s", res.StatusCode, res.Body)
 	}
+
+	trailing := postJSON(t, srv.URL+"/transfers", `{"idempotencyKey":"k","fromWalletId":"a","toWalletId":"b","amount":1}{"x":1}`)
+	if trailing.StatusCode != http.StatusBadRequest {
+		t.Fatalf("trailing json status %d body %s", trailing.StatusCode, trailing.Body)
+	}
 }
 
 type httpResult struct {
