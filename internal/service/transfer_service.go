@@ -154,22 +154,6 @@ func (s *TransferService) CreateTransfer(
 		RequestHash:    hash,
 	}
 
-	if err := s.transferRepo.Create(ctx, tx, transfer); err != nil {
-		// Another concurrent request may have created the same
-		// idempotency key between our SELECT and INSERT.
-		if isUniqueViolation(err) {
-			_ = tx.Rollback(ctx)
-
-			return s.getExistingTransfer(
-				ctx,
-				req.IdempotencyKey,
-				hash,
-			)
-		}
-
-		return nil, err
-	}
-
 	// Lock both wallets in deterministic order.
 	orderedIDs := orderedWalletIDs(
 		req.FromWalletID,
@@ -199,6 +183,22 @@ func (s *TransferService) CreateTransfer(
 		wallets[walletID] = wallet
 	}
 
+	if err := s.transferRepo.Create(ctx, tx, transfer); err != nil {
+		// Another concurrent request may have created the same
+		// idempotency key between our SELECT and INSERT.
+		if isUniqueViolation(err) {
+			_ = tx.Rollback(ctx)
+
+			return s.getExistingTransfer(
+				ctx,
+				req.IdempotencyKey,
+				hash,
+			)
+		}
+
+		return nil, err
+	}
+
 	fromWallet := wallets[req.FromWalletID]
 	toWallet := wallets[req.ToWalletID]
 
@@ -214,11 +214,24 @@ func (s *TransferService) CreateTransfer(
 
 		transfer.Status = domain.TransferFailed
 
+		persistedTransfer, err := s.transferRepo.GetByIdempotencyKey(
+			ctx,
+			tx,
+			req.IdempotencyKey,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if persistedTransfer == nil {
+			return nil, fmt.Errorf("transfer disappeared after status update")
+		}
+
 		if err := tx.Commit(ctx); err != nil {
 			return nil, fmt.Errorf("commit failed transfer: %w", err)
 		}
 
-		return transfer, ErrInsufficientBalance
+		return persistedTransfer, ErrInsufficientBalance
 	}
 
 	if err := s.walletRepo.UpdateBalance(
@@ -274,11 +287,24 @@ func (s *TransferService) CreateTransfer(
 
 	transfer.Status = domain.TransferProcessed
 
+	persistedTransfer, err := s.transferRepo.GetByIdempotencyKey(
+		ctx,
+		tx,
+		req.IdempotencyKey,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if persistedTransfer == nil {
+		return nil, fmt.Errorf("transfer disappeared after status update")
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit transfer: %w", err)
 	}
 
-	return transfer, nil
+	return persistedTransfer, nil
 }
 
 func isUniqueViolation(err error) bool {
@@ -322,7 +348,8 @@ func (s *TransferService) getExistingTransfer(
 
 	if transfer.RequestHash != expectedHash {
 		return nil, fmt.Errorf(
-			"idempotency key already used with a different request",
+			"%w: idempotency key already used with a different request",
+			ErrIdempotencyConflict,
 		)
 	}
 

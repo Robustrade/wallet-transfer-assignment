@@ -37,7 +37,7 @@ func (r *PostgresWalletRepository) GetByID(
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("wallet not found: %s", id)
+			return nil, fmt.Errorf("%w: %s", ErrWalletNotFound, id)
 		}
 
 		return nil, fmt.Errorf("get wallet: %w", err)
@@ -68,7 +68,7 @@ func (r *PostgresWalletRepository) GetByIDForUpdate(
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("wallet not found: %s", id)
+			return nil, fmt.Errorf("%w: %s", ErrWalletNotFound, id)
 		}
 
 		return nil, fmt.Errorf("get wallet for update: %w", err)

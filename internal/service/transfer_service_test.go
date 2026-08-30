@@ -29,7 +29,7 @@ func testDatabaseURL() string {
 		return value
 	}
 
-	return "postgres://wallet:wallet@127.0.0.1:5432/wallet_transfer"
+	return "postgres://wallet:wallet@127.0.0.1:5433/wallet_transfer"
 }
 
 func setupTestDatabase(t *testing.T) *pgxpool.Pool {
@@ -194,6 +194,70 @@ func TestCreateTransfer(t *testing.T) {
 	}
 }
 
+func TestCreateTransfer_PopulatesTimestamps(t *testing.T) {
+	pool := setupTestDatabase(t)
+	fromID, toID := seedWallets(t, pool)
+
+	service := newTestService(pool)
+
+	result, err := service.CreateTransfer(
+		context.Background(),
+		CreateTransferRequest{
+			IdempotencyKey: "test-timestamps-" + uuid.NewString(),
+			FromWalletID:   fromID,
+			ToWalletID:     toID,
+			Amount:         100,
+		},
+	)
+	if err != nil {
+		t.Fatalf("create transfer: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("expected transfer result")
+	}
+
+	if result.CreatedAt.IsZero() {
+		t.Fatal("expected CreatedAt to be populated")
+	}
+
+	if result.UpdatedAt.IsZero() {
+		t.Fatal("expected UpdatedAt to be populated")
+	}
+
+	if result.CreatedAt.After(time.Now()) {
+		t.Fatal("expected CreatedAt not to be in the future")
+	}
+
+	if result.UpdatedAt.Before(result.CreatedAt) {
+		t.Fatal("expected UpdatedAt to be at or after CreatedAt")
+	}
+}
+func TestCreateTransfer_WalletNotFound(t *testing.T) {
+	pool := setupTestDatabase(t)
+	_, toID := seedWallets(t, pool)
+
+	service := newTestService(pool)
+
+	missingWalletID := uuid.NewString()
+
+	_, err := service.CreateTransfer(
+		context.Background(),
+		CreateTransferRequest{
+			IdempotencyKey: "test-wallet-not-found-" + uuid.NewString(),
+			FromWalletID:   missingWalletID,
+			ToWalletID:     toID,
+			Amount:         100,
+		},
+	)
+
+	if !errors.Is(err, ErrWalletNotFound) {
+		t.Fatalf(
+			"expected ErrWalletNotFound, got %v",
+			err,
+		)
+	}
+}
 func TestCreateTransfer_InsufficientBalance(t *testing.T) {
 	pool := setupTestDatabase(t)
 
@@ -830,6 +894,165 @@ func TestCreateTransfer_ConcurrentIdempotency(t *testing.T) {
 	}
 }
 
+func TestCreateTransfer_ConcurrentIdempotencyConflict(t *testing.T) {
+	pool := setupTestDatabase(t)
+
+	ctx := context.Background()
+
+	fromID := uuid.NewString()
+	toID := uuid.NewString()
+	idempotencyKey := "concurrent-idempotency-conflict-" + uuid.NewString()
+
+	_, err := pool.Exec(
+		ctx,
+		`INSERT INTO wallets (id, balance)
+		 VALUES ($1, $2), ($3, $4)`,
+		fromID,
+		int64(1000),
+		toID,
+		int64(0),
+	)
+	if err != nil {
+		t.Fatalf("seed wallets: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_, _ = pool.Exec(
+			ctx,
+			`DELETE FROM ledger_entries
+			 WHERE wallet_id IN ($1, $2)`,
+			fromID,
+			toID,
+		)
+
+		_, _ = pool.Exec(
+			ctx,
+			`DELETE FROM transfers
+			 WHERE idempotency_key = $1`,
+			idempotencyKey,
+		)
+
+		_, _ = pool.Exec(
+			ctx,
+			`DELETE FROM wallets
+			 WHERE id IN ($1, $2)`,
+			fromID,
+			toID,
+		)
+	})
+
+	svc := newTestService(pool)
+
+	start := make(chan struct{})
+	results := make(chan transferResult, 2)
+
+	// Request 1 uses amount 100.
+	go func() {
+		<-start
+
+		transfer, err := svc.CreateTransfer(
+			context.Background(),
+			CreateTransferRequest{
+				IdempotencyKey: idempotencyKey,
+				FromWalletID:   fromID,
+				ToWalletID:     toID,
+				Amount:         100,
+			},
+		)
+
+		results <- transferResult{
+			transfer: transfer,
+			err:      err,
+		}
+	}()
+
+	// Request 2 uses the same idempotency key but amount 200.
+	go func() {
+		<-start
+
+		transfer, err := svc.CreateTransfer(
+			context.Background(),
+			CreateTransferRequest{
+				IdempotencyKey: idempotencyKey,
+				FromWalletID:   fromID,
+				ToWalletID:     toID,
+				Amount:         200,
+			},
+		)
+
+		results <- transferResult{
+			transfer: transfer,
+			err:      err,
+		}
+	}()
+
+	close(start)
+
+	var successCount int
+	var conflictCount int
+
+	for i := 0; i < 2; i++ {
+		res := <-results
+
+		if res.err == nil {
+			successCount++
+
+			if res.transfer == nil {
+				t.Fatal("expected transfer result for successful request")
+			}
+
+			if res.transfer.Status != domain.TransferProcessed {
+				t.Fatalf(
+					"expected successful transfer to be PROCESSED, got %s",
+					res.transfer.Status,
+				)
+			}
+
+			continue
+		}
+
+		if errors.Is(res.err, ErrIdempotencyConflict) {
+			conflictCount++
+			continue
+		}
+
+		t.Fatalf("unexpected error: %v", res.err)
+	}
+
+	if successCount != 1 {
+		t.Fatalf(
+			"expected exactly one successful request, got %d",
+			successCount,
+		)
+	}
+
+	if conflictCount != 1 {
+		t.Fatalf(
+			"expected exactly one idempotency conflict, got %d",
+			conflictCount,
+		)
+	}
+
+	var transferCount int
+
+	err = pool.QueryRow(
+		ctx,
+		`SELECT COUNT(*)
+		 FROM transfers
+		 WHERE idempotency_key = $1`,
+		idempotencyKey,
+	).Scan(&transferCount)
+	if err != nil {
+		t.Fatalf("count transfers: %v", err)
+	}
+
+	if transferCount != 1 {
+		t.Fatalf(
+			"expected exactly one transfer record, got %d",
+			transferCount,
+		)
+	}
+}
 func TestCreateTransfer_FailedTransferIsIdempotent(t *testing.T) {
 	pool := setupTestDatabase(t)
 
