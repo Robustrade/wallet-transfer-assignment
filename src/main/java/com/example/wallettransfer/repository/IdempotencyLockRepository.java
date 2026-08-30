@@ -21,7 +21,7 @@ public class IdempotencyLockRepository {
      * effectively charging the source wallet twice. This is the classic "check-then-act" race.
      *
      * How it works:
-     * pg_advisory_xact_lock() is a session-level mutex inside PostgreSQL. Only one transaction
+     * pg_advisory_xact_lock() is a transaction-scoped mutex inside PostgreSQL. Only one transaction
      * can hold the lock for a given key at a time — any other transaction trying to acquire
      * the same lock will block until the first one commits or rolls back.
      * The lock is automatically released at the end of the transaction, so no cleanup needed.
