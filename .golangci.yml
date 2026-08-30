@@ -1,0 +1,16 @@
+# golangci-lint
+run:
+  timeout: 3m
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gofmt
+
+issues:
+  exclude-use-default: false

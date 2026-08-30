@@ -1,35 +1,54 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+Go service for wallet-to-wallet transfers with PostgreSQL. See [ASSIGNMENT.md](ASSIGNMENT.md) and [DESIGN.md](DESIGN.md).
 
-## Included
+## Run locally
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+```bash
+docker compose up -d
+export DATABASE_URL='postgres://wallet:wallet@localhost:5433/wallet?sslmode=disable'
+go run ./cmd/server
+```
 
-## Intended use
+Health check: `GET http://localhost:8080/healthz`
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+### Create wallets and transfer
 
-## Notes
+```bash
+curl -sS -X POST http://localhost:8080/wallets \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"wallet_1","balance":100}'
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+curl -sS -X POST http://localhost:8080/wallets \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"wallet_2","balance":0}'
 
-## How to Submit Assignment
+curl -sS -X POST http://localhost:8080/transfers \
+  -H 'Content-Type: application/json' \
+  -d '{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100}'
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+curl -sS http://localhost:8080/wallets/wallet_1
+```
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+`HTTP_ADDR` defaults to `:8080`. Amounts are integers (no floats).
+
+## Tests
+
+Tests start an embedded PostgreSQL process. You can point them at an existing database with `TEST_DATABASE_URL`.
+
+```bash
+go test ./... -count=1
+```
+
+## Lint and format
+
+```bash
+gofmt -w .
+golangci-lint run ./...
+```
+
+Expected CI repository variables:
+
+- `LINT_CMD`: `golangci-lint run ./...`
+- `FORMAT_CHECK_CMD`: `test -z "$(gofmt -l .)"`
+- `TEST_CMD`: `go test ./... -count=1`
