@@ -5,3 +5,6 @@ build/
 .tmp/
 .env
 .env.*
+bin/
+coverage.out
+vendor/
