@@ -41,9 +41,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${LINT_CMD:-}" || { echo "Missing repository variable LINT_CMD"; exit 1; }
-          test -n "${FORMAT_CHECK_CMD:-}" || { echo "Missing repository variable FORMAT_CHECK_CMD"; exit 1; }
-          test -n "${TEST_CMD:-}" || { echo "Missing repository variable TEST_CMD"; exit 1; }
+          export LINT_CMD="${LINT_CMD:-golangci-lint run ./...}"
+          export FORMAT_CHECK_CMD="${FORMAT_CHECK_CMD:-bash scripts/format-check.sh}"
+          export TEST_CMD="${TEST_CMD:-go test ./... -count=1}"
+          echo "LINT_CMD=$LINT_CMD" >> "$GITHUB_ENV"
+          echo "FORMAT_CHECK_CMD=$FORMAT_CHECK_CMD" >> "$GITHUB_ENV"
+          echo "TEST_CMD=$TEST_CMD" >> "$GITHUB_ENV"
 
       - name: Run lint
         shell: bash
