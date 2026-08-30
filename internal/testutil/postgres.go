@@ -72,6 +72,7 @@ func startEmbedded() (string, error) {
 			Logger(io.Discard),
 	)
 	if err := embedded.Start(); err != nil {
+		_ = os.RemoveAll(dir)
 		return "", fmt.Errorf("embedded postgres: %w", err)
 	}
 	return fmt.Sprintf("postgres://wallet:wallet@127.0.0.1:%d/wallet?sslmode=disable", port), nil
