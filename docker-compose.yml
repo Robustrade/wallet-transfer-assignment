@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: wallet-transfer-postgres
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet_transfer
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
