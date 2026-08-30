@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -41,8 +42,15 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 			if applied {
 				return nil
 			}
-			if _, err := tx.Exec(ctx, string(sqlBytes)); err != nil {
-				return fmt.Errorf("apply %s: %w", filename, err)
+			// pgx prepared/extended protocol rejects multi-statement scripts.
+			for _, stmt := range strings.Split(string(sqlBytes), ";") {
+				stmt = strings.TrimSpace(stmt)
+				if stmt == "" {
+					continue
+				}
+				if _, err := tx.Exec(ctx, stmt); err != nil {
+					return fmt.Errorf("apply %s: %w", filename, err)
+				}
 			}
 			_, err := tx.Exec(ctx, `INSERT INTO schema_migrations (filename) VALUES ($1)`, filename)
 			return err
