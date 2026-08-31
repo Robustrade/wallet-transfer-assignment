@@ -33,3 +33,62 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+## Solution: Wallet Transfer Service
+
+This submission implements a Go HTTP service with PostgreSQL persistence. The required
+endpoint is `POST /transfers`; details of its transaction, idempotency, and concurrency
+strategy are in [DESIGN.md](DESIGN.md).
+
+### Run
+
+Requires Go 1.24 or newer:
+
+```sh
+go run ./cmd/server
+```
+
+Start PostgreSQL first:
+
+```sh
+docker compose up -d
+```
+
+The service listens on `http://localhost:8080` and defaults to the database started by
+Compose. Set `DATABASE_URL` to select a different PostgreSQL database. Wallets are seeded
+through the repository for this deliberately focused assignment.
+
+### Example
+
+```sh
+curl -X POST http://localhost:8080/transfers -H "Content-Type: application/json" -d '{"idempotencyKey":"transfer-001","fromWalletId":"7f6a7bd0-42cc-4a49-aa55-6db7d1075b56","toWalletId":"8b64e2d7-a678-4cc5-9c02-b340cdbb3dc5","amount":100}'
+```
+
+The response is `201 Created` for a processed transfer. Repeating the same request
+returns the original transfer with `replayed: true`; reusing a key for different input
+returns `409 Conflict`.
+
+### Wallet APIs and operations
+
+- `GET /wallets/{uuid}/balance` returns the wallet's current balance.
+- `GET /wallets/{uuid}/transfers?limit=50` returns recent incoming and outgoing transfers (maximum `100`).
+- `GET /metrics` exposes Prometheus-compatible process counters.
+- `GET /healthz` returns the service health status.
+
+Each response includes an `X-Request-ID`. The service emits structured request-completion logs
+and retries transient PostgreSQL serialization/deadlock errors up to three times.
+
+### Test
+
+```sh
+go test ./...
+```
+
+Tests cover transfers, idempotent replay and conflicts, insufficient funds,
+double-entry creation, and competing debits. They are PostgreSQL integration tests; the
+Run them against the Compose database with the command below (PowerShell syntax):
+
+```powershell
+$env:TEST_DATABASE_URL = "postgres://wallet:wallet@localhost:5433/wallets?sslmode=disable"
+go test ./...
+```

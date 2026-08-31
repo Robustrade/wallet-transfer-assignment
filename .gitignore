@@ -1,7 +1,12 @@
 .DS_Store
 coverage/
+coverage.out
+coverage.html
 dist/
 build/
+bin/
 .tmp/
 .env
 .env.*
+wallets.db
+*.exe
