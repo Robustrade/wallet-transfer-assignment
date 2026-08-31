@@ -3,19 +3,15 @@ package service_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
+	"github.com/google/uuid"
 	"github.com/mshabab1296/wallet-transfer-assignment/internal/domain"
 	"github.com/mshabab1296/wallet-transfer-assignment/internal/repository"
 	"github.com/mshabab1296/wallet-transfer-assignment/internal/service"
 )
-
-var sequence atomic.Int64
 
 type fixture struct {
 	svc               *service.TransferService
@@ -34,8 +30,13 @@ func newFixture(t *testing.T, balance int64) fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = repo.Close() })
-	prefix := fmt.Sprintf("test_%d_%d", time.Now().UnixNano(), sequence.Add(1))
-	f := fixture{svc: service.NewTransferService(repo), repo: repo, alice: prefix + "_alice", bob: prefix + "_bob", carol: prefix + "_carol"}
+	f := fixture{
+		svc:   service.NewTransferService(repo),
+		repo:  repo,
+		alice: uuid.NewString(),
+		bob:   uuid.NewString(),
+		carol: uuid.NewString(),
+	}
 	for id, amount := range map[string]int64{f.alice: balance, f.bob: 0, f.carol: 0} {
 		if err := repo.CreateWallet(context.Background(), id, amount); err != nil {
 			t.Fatal(err)
@@ -43,6 +44,8 @@ func newFixture(t *testing.T, balance int64) fixture {
 	}
 	return f
 }
+
+// TestTransferUpdatesBalancesAndCreatesBalancedPair verifies the successful transfer path.
 func TestTransferUpdatesBalancesAndCreatesBalancedPair(t *testing.T) {
 	f := newFixture(t, 100)
 	got, err := f.svc.CreateTransfer(context.Background(), domain.CreateTransferRequest{IdempotencyKey: f.alice + "_one", FromWalletID: f.alice, ToWalletID: f.bob, Amount: 40})
@@ -62,6 +65,8 @@ func TestTransferUpdatesBalancesAndCreatesBalancedPair(t *testing.T) {
 		t.Fatalf("bob=%d", balance)
 	}
 }
+
+// TestSameIdempotencyKeyReplaysOriginalTransfer verifies that identical retries have no extra side effects.
 func TestSameIdempotencyKeyReplaysOriginalTransfer(t *testing.T) {
 	f := newFixture(t, 100)
 	request := domain.CreateTransferRequest{IdempotencyKey: f.alice + "_same", FromWalletID: f.alice, ToWalletID: f.bob, Amount: 40}
@@ -80,6 +85,8 @@ func TestSameIdempotencyKeyReplaysOriginalTransfer(t *testing.T) {
 		t.Fatalf("duplicate debited twice: %d", balance)
 	}
 }
+
+// TestKeyReuseWithDifferentRequestIsRejected prevents an idempotency key from masking different input.
 func TestKeyReuseWithDifferentRequestIsRejected(t *testing.T) {
 	f := newFixture(t, 100)
 	_, err := f.svc.CreateTransfer(context.Background(), domain.CreateTransferRequest{IdempotencyKey: f.alice + "_same", FromWalletID: f.alice, ToWalletID: f.bob, Amount: 40})
@@ -91,6 +98,8 @@ func TestKeyReuseWithDifferentRequestIsRejected(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+// TestInsufficientFundsIsRecordedAndReplaySafe verifies that a failed debit is persisted and replayed safely.
 func TestInsufficientFundsIsRecordedAndReplaySafe(t *testing.T) {
 	f := newFixture(t, 10)
 	request := domain.CreateTransferRequest{IdempotencyKey: f.alice + "_too_much", FromWalletID: f.alice, ToWalletID: f.bob, Amount: 20}
@@ -106,6 +115,8 @@ func TestInsufficientFundsIsRecordedAndReplaySafe(t *testing.T) {
 		t.Fatalf("balance=%d", balance)
 	}
 }
+
+// TestConcurrentTransfersCannotDoubleSpend verifies wallet row locks allow only one competing debit to succeed.
 func TestConcurrentTransfersCannotDoubleSpend(t *testing.T) {
 	f := newFixture(t, 100)
 	requests := []domain.CreateTransferRequest{{IdempotencyKey: f.alice + "_one", FromWalletID: f.alice, ToWalletID: f.bob, Amount: 80}, {IdempotencyKey: f.alice + "_two", FromWalletID: f.alice, ToWalletID: f.carol, Amount: 80}}
@@ -136,5 +147,37 @@ func TestConcurrentTransfersCannotDoubleSpend(t *testing.T) {
 	}
 	if balance, _ := f.repo.Balance(context.Background(), f.alice); balance != 20 {
 		t.Fatalf("alice=%d", balance)
+	}
+}
+
+// TestBalanceReturnsTheCurrentStoredAmount verifies the wallet balance query contract.
+func TestBalanceReturnsTheCurrentStoredAmount(t *testing.T) {
+	f := newFixture(t, 100)
+	if _, err := f.svc.CreateTransfer(context.Background(), domain.CreateTransferRequest{IdempotencyKey: f.alice + "-balance-check", FromWalletID: f.alice, ToWalletID: f.bob, Amount: 35}); err != nil {
+		t.Fatal(err)
+	}
+	if balance, err := f.svc.Balance(context.Background(), f.alice); err != nil || balance != 65 {
+		t.Fatalf("balance=%d err=%v", balance, err)
+	}
+}
+
+// TestTransferHistoryIncludesSourceAndDestinationTransfers verifies both wallet roles are returned.
+func TestTransferHistoryIncludesSourceAndDestinationTransfers(t *testing.T) {
+	f := newFixture(t, 100)
+	requests := []domain.CreateTransferRequest{
+		{IdempotencyKey: f.alice + "-history-outgoing", FromWalletID: f.alice, ToWalletID: f.bob, Amount: 25},
+		{IdempotencyKey: f.alice + "-history-incoming", FromWalletID: f.bob, ToWalletID: f.alice, Amount: 10},
+	}
+	for _, request := range requests {
+		if _, err := f.svc.CreateTransfer(context.Background(), request); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history, err := f.svc.TransferHistory(context.Background(), f.alice, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("history length=%d", len(history))
 	}
 }

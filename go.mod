@@ -2,7 +2,11 @@ module github.com/mshabab1296/wallet-transfer-assignment
 
 go 1.24.0
 
-require github.com/jackc/pgx/v5 v5.7.6
+require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/google/uuid v1.6.0
+	github.com/jackc/pgx/v5 v5.7.6
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect

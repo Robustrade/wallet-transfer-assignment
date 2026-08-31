@@ -9,9 +9,9 @@ rejected; reusing it with an identical request returns the original completed re
 
 ## Data model
 
-- `wallets`: current balance in integer minor units; a `CHECK (balance >= 0)` constraint
+- `wallets`: UUID primary key and current balance in integer minor units; a `CHECK (balance >= 0)` constraint
   prevents persisted negative balances.
-- `transfers`: one state-machine record per requested transfer (`PENDING`, `PROCESSED`,
+- `transfers`: UUID primary key and one state-machine record per requested transfer (`PENDING`, `PROCESSED`,
   or `FAILED`).
 - `ledger_entries`: immutable debit and credit rows. A unique `(transfer_id, entry_type)`
   constraint permits one debit and one credit only.
@@ -42,8 +42,20 @@ operation.
 
 ## Operations and tests
 
-The handler logs no sensitive request body. The service exposes typed validation,
-not-found, insufficient-funds, and idempotency-conflict errors for transport mapping.
-Tests cover successful transfer, replay, conflicting key reuse, insufficient funds,
-ledger pairing, and concurrent debit attempts. `docker compose up -d` starts the local
-PostgreSQL instance used by the service and integration tests.
+The HTTP layer emits structured logs with a request ID, method, route, status, and
+duration; it never logs request bodies or balance values. `GET /metrics` exposes a small
+Prometheus-compatible metric set for request volume, processed/failed transfers, and
+idempotent replays.
+
+`GET /wallets/{id}/balance` returns the current stored balance. `GET
+/wallets/{id}/transfers?limit=50` returns recent transfers where the wallet was either
+the source or destination. Both endpoints use UUID wallet IDs and return typed
+not-found/validation errors.
+
+PostgreSQL serialization failures and deadlocks are retried up to three times with a
+short bounded backoff. Each attempt preserves the same idempotency key; a committed
+attempt is therefore returned safely on a retry rather than causing duplicate side
+effects. Tests cover successful transfer, replay, conflicting key reuse, insufficient
+funds, ledger pairing, concurrent debit attempts, balances, and transfer history.
+`docker compose up -d` starts the local PostgreSQL instance used by the service and
+integration tests.
