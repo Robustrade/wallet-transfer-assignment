@@ -20,16 +20,17 @@ rejected; reusing it with an identical request returns the original completed re
 
 ## Transaction and concurrency strategy
 
-The service uses SQLite in WAL mode and executes the complete workflow in one write
-transaction (`BEGIN IMMEDIATE`). This serializes competing writers, so two debits of the
-same wallet cannot both observe the same available balance. The transaction atomically
-creates the idempotency and transfer records, checks and updates balances, inserts both
-ledger entries, and marks the transfer `PROCESSED`. Any error rolls back every change.
+The service uses PostgreSQL. Each request is executed in a database transaction that
+locks its two wallet rows using `SELECT ... FOR UPDATE`, always in ascending wallet-ID
+order. Consequently, two transfers that debit the same wallet serialize safely, while
+transfers involving unrelated wallets can continue in parallel. Locking in a deterministic
+order prevents the common `A -> B` / `B -> A` deadlock pattern.
 
-SQLite is appropriate for this small, self-contained assignment. In production on
-PostgreSQL, the same workflow would use a transaction plus deterministic `SELECT ... FOR
-UPDATE` locks on both wallet rows, a unique idempotency-key index, and retry handling for
-serialization/deadlock errors.
+The transaction atomically creates the idempotency and transfer records, checks and
+updates balances, inserts both ledger entries, and marks the transfer `PROCESSED`. Any
+unexpected error rolls back every change. A unique idempotency-key constraint handles a
+race between duplicate requests; the losing request reads and returns the committed
+original result.
 
 ## Failures and retries
 
@@ -39,9 +40,10 @@ are returned without another debit. A caller that reuses a key for different inp
 receives a conflict, preventing accidental key reuse from silently returning the wrong
 operation.
 
-## Observability and tests
+## Operations and tests
 
 The handler logs no sensitive request body. The service exposes typed validation,
 not-found, insufficient-funds, and idempotency-conflict errors for transport mapping.
 Tests cover successful transfer, replay, conflicting key reuse, insufficient funds,
-ledger pairing, and concurrent debit attempts.
+ledger pairing, and concurrent debit attempts. `docker compose up -d` starts the local
+PostgreSQL instance used by the service and integration tests.

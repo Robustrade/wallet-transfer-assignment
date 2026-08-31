@@ -36,7 +36,7 @@ Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe
 
 ## Solution: Wallet Transfer Service
 
-This submission implements a Go HTTP service with SQLite persistence. The required
+This submission implements a Go HTTP service with PostgreSQL persistence. The required
 endpoint is `POST /transfers`; details of its transaction, idempotency, and concurrency
 strategy are in [DESIGN.md](DESIGN.md).
 
@@ -48,8 +48,14 @@ Requires Go 1.24 or newer:
 go run ./cmd/server
 ```
 
-The service listens on `http://localhost:8080` and uses `wallets.db` by default. Set
-`DATABASE_URL` to a SQLite file or DSN to select another database. Wallets are seeded
+Start PostgreSQL first:
+
+```sh
+docker compose up -d
+```
+
+The service listens on `http://localhost:8080` and defaults to the database started by
+Compose. Set `DATABASE_URL` to select a different PostgreSQL database. Wallets are seeded
 through the repository for this deliberately focused assignment.
 
 ### Example
@@ -69,4 +75,10 @@ go test ./...
 ```
 
 Tests cover transfers, idempotent replay and conflicts, insufficient funds,
-double-entry creation, and competing debits.
+double-entry creation, and competing debits. They are PostgreSQL integration tests; the
+Run them against the Compose database with the command below (PowerShell syntax):
+
+```powershell
+$env:TEST_DATABASE_URL = "postgres://wallet:wallet@localhost:5433/wallets?sslmode=disable"
+go test ./...
+```

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -13,9 +14,9 @@ import (
 func main() {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		dsn = "wallets.db"
+		dsn = "postgres://wallet:wallet@localhost:5433/wallets?sslmode=disable"
 	}
-	repo, err := repository.OpenSQLite(dsn)
+	repo, err := repository.OpenPostgres(context.Background(), dsn)
 	if err != nil {
 		log.Fatal(err)
 	}
