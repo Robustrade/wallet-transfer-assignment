@@ -5,3 +5,10 @@ build/
 .tmp/
 .env
 .env.*
+
+# Local build output and the default SQLite database file.
+/walletd
+*.db
+*.db-shm
+*.db-wal
+cover.out

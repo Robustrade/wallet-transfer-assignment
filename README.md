@@ -1,35 +1,133 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+A small HTTP service for wallet-to-wallet transfers with exactly-once request
+handling, a double-entry ledger, and concurrency safety enforced by the
+database.
 
-## Included
+The engineering rationale — schema, locking order, idempotency, failure modes
+and tradeoffs — is in [`docs/design.md`](docs/design.md). This file covers how
+to run and use it.
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+## Layout
 
-## Intended use
+```
+cmd/walletd            entrypoint: config, migrations, HTTP server
+internal/domain        entities, state machine, validation rules
+internal/service       business logic, transaction boundaries, workflow
+internal/repository    SQL; no business decisions
+internal/httpapi       routing, request and response mapping, error codes
+internal/database      connection, migrations, the few dialect differences
+internal/dbtest        migrated database for tests, one per backend
+```
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+## Running
 
-## Notes
+With PostgreSQL, which is the intended target:
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+```sh
+docker compose up --build
+```
 
-## How to Submit Assignment
+Or locally against SQLite, which needs nothing installed:
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+```sh
+go run ./cmd/walletd
+```
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+Configuration is two environment variables:
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `DATABASE_URL` | `sqlite://wallet.db` | `postgres://...` selects PostgreSQL |
+| `PORT` | `8080` | |
+
+The schema is applied at startup.
+
+## API
+
+Amounts are integers in minor units (cents). There is no floating point
+anywhere in the money path.
+
+```sh
+curl -sX POST localhost:8080/wallets -d '{"id":"wallet_1","balance":1000}'
+curl -sX POST localhost:8080/wallets -d '{"id":"wallet_2","balance":0}'
+
+curl -isX POST localhost:8080/transfers -d '{
+  "idempotencyKey": "abc123",
+  "fromWalletId": "wallet_1",
+  "toWalletId": "wallet_2",
+  "amount": 100
+}'
+```
+
+```json
+{
+  "id": "tr_9f1c...",
+  "fromWalletId": "wallet_1",
+  "toWalletId": "wallet_2",
+  "amount": 100,
+  "status": "PROCESSED",
+  "createdAt": "2026-09-03T09:12:44.481Z",
+  "updatedAt": "2026-09-03T09:12:44.492Z",
+  "entries": [
+    { "id": "le_3a...", "walletId": "wallet_1", "type": "DEBIT",  "amount": 100 },
+    { "id": "le_7b...", "walletId": "wallet_2", "type": "CREDIT", "amount": 100 }
+  ]
+}
+```
+
+Sending that request again returns the identical body with an
+`Idempotent-Replay: true` header, and moves no further money.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /transfers` | Create a transfer, exactly once per `idempotencyKey` |
+| `GET /transfers/{id}` | Read a transfer and its ledger entries |
+| `POST /wallets` | Open a wallet with a starting balance |
+| `GET /wallets/{id}` | Read a wallet balance |
+| `GET /healthz` | Liveness |
+
+Errors share one shape and a stable code:
+
+```json
+{ "error": { "code": "INSUFFICIENT_FUNDS", "message": "transfer could not be settled", "transferId": "tr_9f1c..." } }
+```
+
+| Code | Status |
+| --- | --- |
+| `INVALID_REQUEST` | 400 |
+| `WALLET_NOT_FOUND`, `TRANSFER_NOT_FOUND` | 404 |
+| `WALLET_ALREADY_EXISTS`, `IDEMPOTENCY_KEY_CONFLICT`, `CONCURRENT_REQUEST` | 409 |
+| `INSUFFICIENT_FUNDS` | 422 |
+| `INTERNAL_ERROR` | 500 |
+
+## Testing
+
+```sh
+make test          # SQLite only; needs no services. This is what CI runs.
+make lint
+make fmt-check
+```
+
+To also exercise PostgreSQL, which is where the row-level locking is real:
+
+```sh
+docker compose up -d postgres
+make test-postgres
+```
+
+Every test runs once per available backend. PostgreSQL is skipped, with a log
+line, when `TEST_DATABASE_URL` is unset.
+
+The suite covers successful transfers, insufficient funds, unknown wallets,
+invalid amounts, idempotent replay, replay across a service restart, keys
+reused with a different payload, transfers interrupted between commits, and the
+schema constraints themselves. The concurrency tests reproduce the races: many
+callers sharing one idempotency key, concurrent debits that together exceed a
+balance, and opposing transfers that would deadlock under a naive locking
+order.
+
+## Original assignment
+
+[`ASSIGNMENT.md`](ASSIGNMENT.md) and [`evaluation_guide.md`](evaluation_guide.md)
+are the brief this repository answers.
