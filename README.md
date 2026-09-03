@@ -33,3 +33,43 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+---
+
+## Solution: Wallet Transfer Service (Go)
+
+See [`DESIGN.md`](./DESIGN.md) for the schema, idempotency strategy, and
+concurrency strategy.
+
+### Run locally
+
+```bash
+make up       # start Postgres via docker-compose
+make migrate  # apply schema migrations
+make seed     # seed wallet_1, wallet_2, wallet_3 for trying the API
+make run      # start the server on :8080
+```
+
+### Test
+
+```bash
+make test     # starts Postgres, migrates, then `go test ./... -race -cover`
+```
+
+Tests in `internal/service` are integration tests against a real Postgres
+instance — the locking and idempotency strategy is exactly what needs
+exercising against a real database, not a mock.
+
+### CI repository variables
+
+For this Go solution, set:
+
+- `LINT_CMD=golangci-lint run ./...`
+- `FORMAT_CHECK_CMD=test -z "$(gofmt -l .)"`
+- `TEST_CMD=make test`
+
+`make test` needs a reachable Postgres (it runs `docker compose up`). If the
+CI runner doesn't support docker-compose, add a `postgres:16-alpine`
+service container to `ci.yml` and point `TEST_CMD` at
+`go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.1 -database "$DATABASE_URL" -path migrations up && go test ./... -race -cover`
+instead.
