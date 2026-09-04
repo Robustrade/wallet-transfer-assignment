@@ -1,0 +1,211 @@
+openapi: 3.0.3
+info:
+  title: Wallet Transfer Service API
+  description: High-reliability transactional wallet-to-wallet transfer API with idempotency and double-entry ledger.
+  version: 1.0.0
+paths:
+  /transfers:
+    post:
+      summary: Create Wallet Transfer
+      description: Atomically transfers funds between source and destination wallets with exactly-once idempotency guarantees.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransferRequest'
+      responses:
+        '201':
+          description: Transfer executed successfully or cached response returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResponse'
+        '400':
+          description: Invalid request syntax, invalid UUID, or same wallet transfer attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Source or destination wallet not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Idempotency key reused with a different request payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Insufficient wallet balance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /transfers/{id}:
+    get:
+      summary: Get Transfer Details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transfer details retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResponse'
+        '404':
+          description: Transfer not found.
+  /wallets/{id}/balance:
+    get:
+      summary: Get Wallet Balance
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Wallet balance retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletBalanceResponse'
+  /wallets/{id}/transactions:
+    get:
+      summary: Get Wallet Ledger Transactions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Ledger transactions for wallet retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletTransactionsResponse'
+  /health/live:
+    get:
+      summary: Liveness Probe
+      responses:
+        '200':
+          description: Service process is running.
+  /health/ready:
+    get:
+      summary: Readiness Probe
+      responses:
+        '200':
+          description: Database connectivity verified.
+        '503':
+          description: Database connection unavailable.
+
+components:
+  schemas:
+    CreateTransferRequest:
+      type: object
+      required:
+        - fromWalletId
+        - toWalletId
+        - amount
+      properties:
+        idempotencyKey:
+          type: string
+          example: tx_req_9921_abc
+        fromWalletId:
+          type: string
+          format: uuid
+          example: 11111111-1111-1111-1111-111111111111
+        toWalletId:
+          type: string
+          format: uuid
+          example: 22222222-2222-2222-2222-222222222222
+        amount:
+          type: string
+          example: "100.50"
+    TransferResponse:
+      type: object
+      properties:
+        transferId:
+          type: string
+          format: uuid
+        idempotencyKey:
+          type: string
+        fromWalletId:
+          type: string
+          format: uuid
+        toWalletId:
+          type: string
+          format: uuid
+        amount:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, PROCESSED, FAILED]
+        createdAt:
+          type: string
+          format: date-time
+        processedAt:
+          type: string
+          format: date-time
+    WalletBalanceResponse:
+      type: object
+      properties:
+        walletId:
+          type: string
+          format: uuid
+        balance:
+          type: string
+        currency:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+    WalletTransactionsResponse:
+      type: object
+      properties:
+        walletId:
+          type: string
+          format: uuid
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              entryId:
+                type: string
+                format: uuid
+              transferId:
+                type: string
+                format: uuid
+              type:
+                type: string
+                enum: [DEBIT, CREDIT]
+              amount:
+                type: string
+              createdAt:
+                type: string
+                format: date-time
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
