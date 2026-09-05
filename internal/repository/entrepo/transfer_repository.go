@@ -64,7 +64,8 @@ func (r *TransferRepository) Create(
 		var pgErr *pgconn.PgError
 
 		if errors.As(err, &pgErr) &&
-			pgErr.Code == "23505" {
+			pgErr.Code == "23505" &&
+			pgErr.ConstraintName == "transfer_idempotency_key" {
 			return repository.ErrAlreadyExists
 		}
 
@@ -110,6 +111,13 @@ func (r *TransferRepository) UpdateStatus(
 	}
 
 	if affected == 0 {
+		exists, err := r.client.Transfer.Query().Where(transfer.IDEQ(id)).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return repository.ErrNotFound
+		}
 		return domain.ErrInvalidTransferState
 	}
 

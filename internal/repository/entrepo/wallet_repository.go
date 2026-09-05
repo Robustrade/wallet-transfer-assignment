@@ -84,6 +84,13 @@ func (r *WalletRepository) Debit(
 	}
 
 	if affected == 0 {
+		exists, err := r.client.Wallet.Query().Where(wallet.IDEQ(id)).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return repository.ErrNotFound
+		}
 		return domain.ErrInsufficientFunds
 	}
 
