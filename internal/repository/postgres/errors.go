@@ -3,6 +3,7 @@ package postgres
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -48,7 +49,13 @@ func translateError(err error) error {
 		return fmt.Errorf("%w: %s", domain.ErrInvalidStateTransition, pgErr.ConstraintName)
 
 	case codeForeignKeyViolation:
-		return fmt.Errorf("%w: %s", domain.ErrWalletNotFound, pgErr.ConstraintName)
+		if strings.Contains(pgErr.ConstraintName, "transfer") {
+			return fmt.Errorf("%w: %s", domain.ErrTransferNotFound, pgErr.ConstraintName)
+		}
+		if strings.Contains(pgErr.ConstraintName, "wallet") {
+			return fmt.Errorf("%w: %s", domain.ErrWalletNotFound, pgErr.ConstraintName)
+		}
+		return fmt.Errorf("%w: %s", domain.ErrConflict, pgErr.ConstraintName)
 
 	case codeDeadlockDetected, codeSerializationFailure, codeLockNotAvailable:
 		return fmt.Errorf("%w: %s", domain.ErrConflict, pgErr.Message)

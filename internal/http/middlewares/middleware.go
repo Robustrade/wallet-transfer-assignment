@@ -75,7 +75,7 @@ func Timeout(d time.Duration) gin.HandlerFunc {
 }
 
 func Recovery() gin.HandlerFunc {
-	return gin.CustomRecoveryWithWriter(nil, func(c *gin.Context, recovered any) {
+	return gin.CustomRecovery(func(c *gin.Context, recovered any) {
 		slog.Error("panic recovered",
 			"requestId", RequestID(c),
 			"panic", recovered,

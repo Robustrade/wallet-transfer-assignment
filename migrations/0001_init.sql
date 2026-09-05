@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS wallets (
     id         TEXT        PRIMARY KEY,
     currency   TEXT        NOT NULL,
@@ -59,5 +57,3 @@ CREATE TABLE IF NOT EXISTS idempotency_records (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idempotency_records_transfer_idx ON idempotency_records (transfer_id);
-
-COMMIT;
