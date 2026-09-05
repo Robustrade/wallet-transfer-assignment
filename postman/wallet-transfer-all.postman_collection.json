@@ -1,0 +1,111 @@
+{
+  "info": {
+    "name": "Wallet Transfer - All APIs",
+    "description": "Complete wallet and transaction API workflow.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "fromWalletId", "value": "" },
+    { "key": "toWalletId", "value": "" },
+    { "key": "transferId", "value": "" },
+    { "key": "idempotencyKey", "value": "postman-transfer-4001" }
+  ],
+  "item": [
+    {
+      "name": "1. Create Source Wallet",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Alice Wallet\",\n  \"initialBalance\": 1000,\n  \"currency\": \"USD\"\n}" },
+        "url": "{{baseUrl}}/api/v1/wallets"
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+        "pm.test('wallet name returned', function () { pm.expect(pm.response.json().name).to.eql('Alice Wallet'); });",
+        "pm.collectionVariables.set('fromWalletId', pm.response.json().id);"
+      ] } }]
+    },
+    {
+      "name": "2. Create Destination Wallet",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bob Wallet\",\n  \"initialBalance\": 0,\n  \"currency\": \"USD\"\n}" },
+        "url": "{{baseUrl}}/api/v1/wallets"
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+        "pm.collectionVariables.set('toWalletId', pm.response.json().id);"
+      ] } }]
+    },
+    {
+      "name": "3. List All Wallets",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/wallets" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+        "pm.test('wallet list returned', function () { pm.expect(pm.response.json().wallets).to.be.an('array'); });"
+      ] } }]
+    },
+    {
+      "name": "4. Get Wallet Balance",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/wallets/{{fromWalletId}}/balance" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+        "pm.test('balance and timestamps returned', function () { var body = pm.response.json(); pm.expect(body.balance).to.be.a('number'); pm.expect(body.createdAt).to.be.a('string'); pm.expect(body.updatedAt).to.be.a('string'); });"
+      ] } }]
+    },
+    {
+      "name": "5. Update Wallet Balance",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"balance\": 1500\n}" },
+        "url": "{{baseUrl}}/api/v1/wallets/{{fromWalletId}}/balance"
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+        "pm.test('balance updated', function () { pm.expect(pm.response.json().balance).to.eql(1500); });"
+      ] } }]
+    },
+    {
+      "name": "6. Transfer Wallet Balance",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"idempotencyKey\": \"{{idempotencyKey}}\",\n  \"fromWalletId\": \"{{fromWalletId}}\",\n  \"toWalletId\": \"{{toWalletId}}\",\n  \"amount\": 100\n}" },
+        "url": "{{baseUrl}}/api/v1/transfers"
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+        "pm.test('processed with timestamps', function () { var body = pm.response.json(); pm.expect(body.status).to.eql('PROCESSED'); pm.expect(body.createdAt).to.be.a('string'); pm.expect(body.updatedAt).to.be.a('string'); });",
+        "pm.collectionVariables.set('transferId', pm.response.json().id);"
+      ] } }]
+    },
+    {
+      "name": "7. Replay Transfer (Idempotency)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"idempotencyKey\": \"{{idempotencyKey}}\",\n  \"fromWalletId\": \"{{fromWalletId}}\",\n  \"toWalletId\": \"{{toWalletId}}\",\n  \"amount\": 100\n}" },
+        "url": "{{baseUrl}}/api/v1/transfers"
+      }
+    },
+    {
+      "name": "8. Get Transfer Detail",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/transfers/{{transferId}}" }
+    },
+    {
+      "name": "9. List Wallet History",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/wallets/{{fromWalletId}}/transactions" }
+    },
+    {
+      "name": "10. Wallet Balance History",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/wallets/{{fromWalletId}}/balance/history" }
+    },
+    {
+      "name": "11. Health Check",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+    }
+  ]
+}
