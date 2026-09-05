@@ -1,0 +1,319 @@
+openapi: 3.0.3
+info:
+  title: Wallet Transfer Service
+  version: "1.0.0"
+  description: |
+    Wallet-to-wallet transfers with exactly-once semantics, double-entry ledger recording,
+    and safe concurrent execution.
+
+    **Amounts are integer minor units** (paise/cents). A transfer of `2500` in an INR wallet
+    moves twenty-five rupees. Floating point values are rejected.
+
+    **Idempotency.** `POST /transfers` requires an `idempotencyKey`. Sending the same key with
+    the same payload returns the original result with `200` and `Idempotent-Replay: true`;
+    money moves exactly once no matter how many times the request is retried. Sending the same
+    key with a *different* payload is a `409`.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+paths:
+  /transfers:
+    post:
+      summary: Create a transfer
+      description: |
+        Moves `amount` from `fromWalletId` to `toWalletId` atomically, writing one DEBIT and one
+        CREDIT ledger entry. Safe to retry: the `idempotencyKey` guarantees the transfer is
+        applied exactly once.
+      operationId: createTransfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransferRequest'
+            examples:
+              standard:
+                summary: A typical transfer
+                value:
+                  idempotencyKey: "3f8c1b6e-2b7a-4f1f-9a2e-6b0d5c7e1a44"
+                  fromWalletId: "wallet_1"
+                  toWalletId: "wallet_2"
+                  amount: 2500
+      responses:
+        '201':
+          description: The transfer was created and committed.
+          headers:
+            Idempotent-Replay:
+              description: Always `false` on a freshly created transfer.
+              schema: { type: string, enum: ["false"] }
+            X-Request-ID:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '200':
+          description: |
+            This idempotency key was already processed. The original result is returned
+            unchanged and no further money moved.
+          headers:
+            Idempotent-Replay:
+              description: Always `true` on a replay.
+              schema: { type: string, enum: ["true"] }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '400':
+          description: |
+            The request is malformed, the amount or wallet ids are invalid, or the body exceeds
+            the 64 KiB limit.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: One of the wallets does not exist.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: |
+            Either the idempotency key was first used for a different request
+            (`IDEMPOTENCY_KEY_CONFLICT`, which retrying will never resolve), or the transfer hit
+            transient database contention — a deadlock, serialization failure, or lock timeout
+            (`RETRYABLE_CONFLICT`). Nothing was written in either case; a `RETRYABLE_CONFLICT`
+            is safe to retry with the same idempotency key.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: |
+            The request is well formed but cannot be applied: insufficient funds, or the two
+            wallets hold different currencies.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                insufficientFunds:
+                  value:
+                    error:
+                      code: INSUFFICIENT_FUNDS
+                      message: the source wallet does not have sufficient funds for this transfer
+
+  /transfers/{id}:
+    get:
+      summary: Fetch a transfer with its ledger entries
+      operationId: getTransfer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The transfer and both of its ledger entries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransferDetail' }
+        '400':
+          description: The id is not a UUID.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: No such transfer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /wallets/{id}:
+    get:
+      summary: Fetch a wallet balance
+      operationId: getWallet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The wallet's current balance.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wallet' }
+        '404':
+          description: No such wallet.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /wallets/{id}/transfers:
+    get:
+      summary: List a wallet's transfer history
+      description: |
+        Transfers touching this wallet on either side, newest first. Pagination is keyset-based:
+        pass the `nextCursor` from a response back as `cursor` to fetch the following page.
+      operationId: getWalletHistory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          description: Page size. Defaults to 20, capped at 100.
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - name: cursor
+          in: query
+          description: The `nextCursor` from a previous page.
+          schema: { type: string }
+      responses:
+        '200':
+          description: A page of transfer history.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/History' }
+        '404':
+          description: No such wallet.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /healthz:
+    get:
+      summary: Liveness probe
+      description: Reports that the process is running. Deliberately does not touch the database.
+      operationId: healthz
+      responses:
+        '200':
+          description: The process is alive.
+
+  /readyz:
+    get:
+      summary: Readiness probe
+      description: Reports whether the service can serve traffic, which requires the database.
+      operationId: readyz
+      responses:
+        '200':
+          description: Ready to serve.
+        '503':
+          description: The database is unreachable.
+
+  /openapi.yaml:
+    get:
+      summary: This specification
+      operationId: openapiSpec
+      responses:
+        '200':
+          description: The OpenAPI document.
+
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      operationId: metrics
+      responses:
+        '200':
+          description: Metrics in the Prometheus text exposition format.
+
+components:
+  schemas:
+    CreateTransferRequest:
+      type: object
+      required: [idempotencyKey, fromWalletId, toWalletId, amount]
+      properties:
+        idempotencyKey:
+          type: string
+          maxLength: 255
+          description: |
+            Client-generated key making this request retry-safe. Reusing it with an identical
+            payload replays the original result; reusing it with a different payload is a 409.
+        fromWalletId: { type: string, maxLength: 64 }
+        toWalletId:
+          type: string
+          maxLength: 64
+          description: Must differ from `fromWalletId`.
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Minor units. Must be a positive integer.
+
+    Transfer:
+      type: object
+      properties:
+        transferId: { type: string, format: uuid }
+        status: { type: string, enum: [PENDING, PROCESSED, FAILED] }
+        fromWalletId: { type: string }
+        toWalletId: { type: string }
+        amount: { type: integer, format: int64 }
+        currency: { type: string, example: INR }
+        createdAt: { type: string, format: date-time }
+
+    TransferDetail:
+      allOf:
+        - $ref: '#/components/schemas/Transfer'
+        - type: object
+          properties:
+            failureReason:
+              type: string
+              nullable: true
+              description: Present only on a FAILED transfer.
+            ledgerEntries:
+              type: array
+              description: Exactly two entries — one DEBIT and one CREDIT — that always balance.
+              items: { $ref: '#/components/schemas/LedgerEntry' }
+
+    LedgerEntry:
+      type: object
+      properties:
+        entryId: { type: integer, format: int64 }
+        walletId: { type: string }
+        type: { type: string, enum: [DEBIT, CREDIT] }
+        amount: { type: integer, format: int64 }
+        currency: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    Wallet:
+      type: object
+      properties:
+        walletId: { type: string }
+        currency: { type: string }
+        balance: { type: integer, format: int64, description: Minor units. Never negative. }
+        updatedAt: { type: string, format: date-time }
+
+    History:
+      type: object
+      properties:
+        walletId: { type: string }
+        transfers:
+          type: array
+          items: { $ref: '#/components/schemas/Transfer' }
+        nextCursor:
+          type: string
+          description: Absent on the last page.
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum:
+                - VALIDATION_ERROR
+                - WALLET_NOT_FOUND
+                - TRANSFER_NOT_FOUND
+                - INSUFFICIENT_FUNDS
+                - CURRENCY_MISMATCH
+                - IDEMPOTENCY_KEY_CONFLICT
+                - CONFLICT
+                - RETRYABLE_CONFLICT
+                - REQUEST_TIMEOUT
+                - REQUEST_CANCELED
+                - INTERNAL_ERROR
+                - NOT_FOUND
+            message: { type: string }
+            field:
+              type: string
+              description: The offending field, on validation errors.
