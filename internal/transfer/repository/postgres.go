@@ -82,6 +82,14 @@ func (r *Repository) Create(ctx context.Context, request domain.CreateRequest) (
 	if _, err = tx.ExecContext(ctx, `INSERT INTO ledger_entries (transfer_id,wallet_id,entry_type,amount) VALUES ($1,$2,'DEBIT',$3),($1,$4,'CREDIT',$3)`, transferID, request.FromWalletID, request.Amount, request.ToWalletID); err != nil {
 		return domain.Transfer{}, err
 	}
+	var entryCount int
+	var debitTotal, creditTotal int64
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(amount) FILTER (WHERE entry_type = 'DEBIT'), 0), COALESCE(SUM(amount) FILTER (WHERE entry_type = 'CREDIT'), 0) FROM ledger_entries WHERE transfer_id = $1`, transferID).Scan(&entryCount, &debitTotal, &creditTotal); err != nil {
+		return domain.Transfer{}, err
+	}
+	if entryCount != 2 || debitTotal != creditTotal || debitTotal != request.Amount {
+		return domain.Transfer{}, domain.ErrLedgerUnbalanced
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE transfers SET status=$1,updated_at=NOW() WHERE id=$2`, domain.Processed, transferID); err != nil {
 		return domain.Transfer{}, err
 	}
@@ -121,7 +129,7 @@ func (r *Repository) Get(ctx context.Context, id string) (domain.Transfer, error
 	var reason sql.NullString
 	err := r.db.QueryRowContext(ctx, `SELECT id,idempotency_key,from_wallet_id,to_wallet_id,amount,status,failure_reason,created_at,updated_at FROM transfers WHERE id=$1`, id).Scan(&transfer.ID, &transfer.IdempotencyKey, &transfer.FromWalletID, &transfer.ToWalletID, &transfer.Amount, &transfer.Status, &reason, &transfer.CreatedAt, &transfer.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return domain.Transfer{}, domain.ErrWalletNotFound
+		return domain.Transfer{}, domain.ErrTransferNotFound
 	}
 	if err != nil {
 		return domain.Transfer{}, fmt.Errorf("get transfer: %w", err)
@@ -168,6 +176,7 @@ func replayError(t domain.Transfer) error {
 	return nil
 }
 func requestHash(r domain.CreateRequest) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", r.FromWalletID, r.ToWalletID, r.Amount)))
+	canonical := fmt.Appendf(nil, "%s|%s|%d", r.FromWalletID, r.ToWalletID, r.Amount)
+	h := sha256.Sum256(canonical)
 	return hex.EncodeToString(h[:])
 }

@@ -45,7 +45,7 @@ func (h *Handler) Get(c *gin.Context) {
 	transfer, err := h.service.Get(c, c.Param("id"))
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, domain.ErrInvalidRequest) || errors.Is(err, domain.ErrWalletNotFound) {
+		if errors.Is(err, domain.ErrInvalidRequest) || errors.Is(err, domain.ErrTransferNotFound) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": err.Error()})

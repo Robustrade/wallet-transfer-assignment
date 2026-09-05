@@ -17,6 +17,8 @@ var (
 	ErrInvalidRequest    = errors.New("invalid transfer request")
 	ErrInsufficientFunds = errors.New("insufficient funds")
 	ErrWalletNotFound    = errors.New("wallet not found")
+	ErrTransferNotFound  = errors.New("transfer not found")
+	ErrLedgerUnbalanced  = errors.New("transfer ledger is unbalanced")
 	ErrIdempotencyReuse  = errors.New("idempotency key was already used with a different request")
 )
 
@@ -43,4 +45,8 @@ func (r CreateRequest) Validate() error {
 		return ErrInvalidRequest
 	}
 	return nil
+}
+
+func (status Status) CanTransitionTo(next Status) bool {
+	return (status == Pending && (next == Processed || next == Failed)) || status == next
 }
