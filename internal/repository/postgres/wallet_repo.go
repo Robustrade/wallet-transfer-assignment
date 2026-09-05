@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"wallet-transfer/internal/domain"
@@ -12,6 +14,24 @@ type WalletRepository struct {
 }
 
 func NewWalletRepository(tx *TxManager) *WalletRepository { return &WalletRepository{tx: tx} }
+
+func (r *WalletRepository) Get(ctx context.Context, id string) (domain.Wallet, error) {
+	const query = `
+		SELECT id, currency, balance, created_at, updated_at
+		FROM wallets
+		WHERE id = $1`
+
+	var w domain.Wallet
+	err := r.tx.executorFrom(ctx).QueryRowContext(ctx, query, id).
+		Scan(&w.ID, &w.Currency, &w.Balance, &w.CreatedAt, &w.UpdatedAt)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return domain.Wallet{}, fmt.Errorf("%w: %s", domain.ErrWalletNotFound, id)
+	case err != nil:
+		return domain.Wallet{}, fmt.Errorf("get wallet %s: %w", id, translateError(err))
+	}
+	return w, nil
+}
 
 func (r *WalletRepository) LockPair(ctx context.Context, firstID, secondID string) (domain.Wallet, domain.Wallet, error) {
 	const query = `

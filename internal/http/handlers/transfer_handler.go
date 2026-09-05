@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"wallet-transfer/internal/domain"
 	"wallet-transfer/internal/service"
@@ -17,6 +18,7 @@ const ReplayHeader = "Idempotent-Replay"
 
 type TransferService interface {
 	Transfer(ctx context.Context, req domain.TransferRequest) (service.TransferOutcome, error)
+	Get(ctx context.Context, id uuid.UUID) (service.TransferDetail, error)
 }
 
 type TransferHandler struct {
@@ -68,6 +70,22 @@ func (h *TransferHandler) Create(c *gin.Context) {
 
 	c.Header(ReplayHeader, strconv.FormatBool(outcome.Replayed))
 	c.JSON(status, transferResponseFromResult(outcome.Result))
+}
+
+func (h *TransferHandler) Get(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		RespondError(c, &domain.ValidationError{Field: "id", Message: "must be a valid UUID"})
+		return
+	}
+
+	detail, err := h.transfers.Get(c.Request.Context(), id)
+	if err != nil {
+		RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, newTransferDetailResponse(detail))
 }
 
 func bindingError(err error) error {

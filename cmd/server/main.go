@@ -40,7 +40,8 @@ func main() {
 	idempotency := postgres.NewIdempotencyRepository(txManager)
 
 	transferService := service.NewTransferService(txManager, wallets, transfers, ledger, idempotency)
-	router := apphttp.NewRouter(transferService)
+	walletService := service.NewWalletService(wallets, transfers)
+	router := apphttp.NewRouter(transferService, walletService)
 
 	slog.Info("server listening", "addr", cfg.HTTPAddr)
 	if err := http.ListenAndServe(cfg.HTTPAddr, router); err != nil {

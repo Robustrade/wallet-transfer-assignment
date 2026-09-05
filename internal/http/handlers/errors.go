@@ -16,6 +16,7 @@ type errorCode string
 const (
 	CodeValidation        errorCode = "VALIDATION_ERROR"
 	CodeWalletNotFound    errorCode = "WALLET_NOT_FOUND"
+	CodeTransferNotFound  errorCode = "TRANSFER_NOT_FOUND"
 	CodeInsufficient      errorCode = "INSUFFICIENT_FUNDS"
 	CodeCurrencyMismatch  errorCode = "CURRENCY_MISMATCH"
 	CodeKeyConflict       errorCode = "IDEMPOTENCY_KEY_CONFLICT"
@@ -60,6 +61,7 @@ type errorRule struct {
 var errorRules = []errorRule{
 	{domain.ErrValidation, http.StatusBadRequest, CodeValidation, ""},
 	{domain.ErrWalletNotFound, http.StatusNotFound, CodeWalletNotFound, ""},
+	{domain.ErrTransferNotFound, http.StatusNotFound, CodeTransferNotFound, ""},
 	{domain.ErrIdempotencyKeyConflict, http.StatusConflict, CodeKeyConflict, ""},
 	{domain.ErrIdempotencyKeyAlreadyUsed, http.StatusConflict, CodeConflict, "a concurrent request is using this idempotency key; retry"},
 	{domain.ErrInvalidStateTransition, http.StatusConflict, CodeConflict, ""},

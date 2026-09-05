@@ -27,6 +27,11 @@ type TransferOutcome struct {
 	Replayed bool
 }
 
+type TransferDetail struct {
+	Transfer domain.Transfer
+	Entries  []domain.LedgerEntry
+}
+
 type TransferService struct {
 	tx          TxManager
 	wallets     WalletRepository
@@ -51,6 +56,20 @@ func NewTransferService(
 		idempotency: idempotency,
 		newID:       uuid.New,
 	}
+}
+
+func (s *TransferService) Get(ctx context.Context, id uuid.UUID) (TransferDetail, error) {
+	t, err := s.transfers.Get(ctx, id)
+	if err != nil {
+		return TransferDetail{}, err
+	}
+
+	entries, err := s.ledger.ListByTransfer(ctx, id)
+	if err != nil {
+		return TransferDetail{}, err
+	}
+
+	return TransferDetail{Transfer: t, Entries: entries}, nil
 }
 
 func (s *TransferService) Transfer(ctx context.Context, req domain.TransferRequest) (TransferOutcome, error) {

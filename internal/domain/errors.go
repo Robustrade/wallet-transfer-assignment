@@ -5,6 +5,7 @@ import "errors"
 var (
 	ErrValidation                = errors.New("validation failed")
 	ErrWalletNotFound            = errors.New("wallet not found")
+	ErrTransferNotFound          = errors.New("transfer not found")
 	ErrInsufficientFunds         = errors.New("insufficient funds")
 	ErrCurrencyMismatch          = errors.New("currency mismatch")
 	ErrIdempotencyKeyConflict    = errors.New("idempotency key reused with a different payload")
