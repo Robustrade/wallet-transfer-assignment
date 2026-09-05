@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,8 +13,10 @@ import (
 	"wallet-transfer/internal/service"
 )
 
+const ReplayHeader = "Idempotent-Replay"
+
 type TransferService interface {
-	Transfer(ctx context.Context, req domain.TransferRequest) (service.TransferResult, error)
+	Transfer(ctx context.Context, req domain.TransferRequest) (service.TransferOutcome, error)
 }
 
 type TransferHandler struct {
@@ -34,7 +37,7 @@ func (h *TransferHandler) Create(c *gin.Context) {
 	}
 
 	start := time.Now()
-	result, err := h.transfers.Transfer(c.Request.Context(), body.toDomain())
+	outcome, err := h.transfers.Transfer(c.Request.Context(), body.toDomain())
 	duration := time.Since(start)
 
 	if err != nil {
@@ -48,16 +51,23 @@ func (h *TransferHandler) Create(c *gin.Context) {
 		return
 	}
 
+	status := http.StatusCreated
+	if outcome.Replayed {
+		status = http.StatusOK
+	}
+
 	slog.Info("transfer processed",
-		"transferId", result.TransferID.String(),
-		"fromWallet", result.FromWalletID,
-		"toWallet", result.ToWalletID,
-		"amount", int64(result.Amount),
-		"currency", result.Currency,
+		"transferId", outcome.Result.TransferID.String(),
+		"fromWallet", outcome.Result.FromWalletID,
+		"toWallet", outcome.Result.ToWalletID,
+		"amount", int64(outcome.Result.Amount),
+		"currency", outcome.Result.Currency,
+		"replayed", outcome.Replayed,
 		"durationMs", duration.Milliseconds(),
 	)
 
-	c.JSON(http.StatusCreated, transferResponseFromResult(result))
+	c.Header(ReplayHeader, strconv.FormatBool(outcome.Replayed))
+	c.JSON(status, transferResponseFromResult(outcome.Result))
 }
 
 func bindingError(err error) error {

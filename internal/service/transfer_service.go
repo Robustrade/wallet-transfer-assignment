@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -19,6 +20,11 @@ type TransferResult struct {
 	Amount       domain.Amount         `json:"amount"`
 	Currency     string                `json:"currency"`
 	CreatedAt    time.Time             `json:"createdAt"`
+}
+
+type TransferOutcome struct {
+	Result   TransferResult
+	Replayed bool
 }
 
 type TransferService struct {
@@ -47,44 +53,62 @@ func NewTransferService(
 	}
 }
 
-func (s *TransferService) Transfer(ctx context.Context, req domain.TransferRequest) (TransferResult, error) {
+func (s *TransferService) Transfer(ctx context.Context, req domain.TransferRequest) (TransferOutcome, error) {
 	req = req.Normalize()
 	if err := req.Validate(); err != nil {
-		return TransferResult{}, err
+		return TransferOutcome{}, err
 	}
 
-	var result TransferResult
+	if outcome, found, err := s.replay(ctx, req); err != nil || found {
+		return outcome, err
+	}
+
+	var outcome TransferOutcome
 	err := s.tx.WithinTx(ctx, func(ctx context.Context) error {
 		var err error
-		result, err = s.executeTransfer(ctx, req)
+		outcome, err = s.executeTransfer(ctx, req)
 		return err
 	})
-	if err != nil {
-		return TransferResult{}, err
+	if errors.Is(err, domain.ErrIdempotencyKeyAlreadyUsed) {
+		replayed, found, replayErr := s.replay(ctx, req)
+		if replayErr != nil {
+			return TransferOutcome{}, replayErr
+		}
+		if found {
+			return replayed, nil
+		}
+		return TransferOutcome{}, err
 	}
-	return result, nil
+	if err != nil {
+		return TransferOutcome{}, err
+	}
+	return outcome, nil
 }
 
-func (s *TransferService) executeTransfer(ctx context.Context, req domain.TransferRequest) (TransferResult, error) {
+func (s *TransferService) executeTransfer(ctx context.Context, req domain.TransferRequest) (TransferOutcome, error) {
 	source, destination, err := s.wallets.LockPair(ctx, req.FromWalletID, req.ToWalletID)
 	if err != nil {
-		return TransferResult{}, err
+		return TransferOutcome{}, err
+	}
+
+	if outcome, found, err := s.replay(ctx, req); err != nil || found {
+		return outcome, err
 	}
 
 	if source.Currency != destination.Currency {
-		return TransferResult{}, fmt.Errorf("%w: %s cannot be transferred to a %s wallet", domain.ErrCurrencyMismatch, source.Currency, destination.Currency)
+		return TransferOutcome{}, fmt.Errorf("%w: %s cannot be transferred to a %s wallet", domain.ErrCurrencyMismatch, source.Currency, destination.Currency)
 	}
 
 	transfer, err := s.recordTransfer(ctx, req, source, destination)
 	if err != nil {
-		return TransferResult{}, err
+		return TransferOutcome{}, err
 	}
 
 	result := resultFrom(transfer)
 	if err := s.claimKey(ctx, req, result); err != nil {
-		return TransferResult{}, err
+		return TransferOutcome{}, err
 	}
-	return result, nil
+	return TransferOutcome{Result: result}, nil
 }
 
 func (s *TransferService) recordTransfer(
@@ -143,6 +167,26 @@ func (s *TransferService) claimKey(ctx context.Context, req domain.TransferReque
 		TransferID:   result.TransferID,
 		ResponseBody: body,
 	})
+}
+
+func (s *TransferService) replay(ctx context.Context, req domain.TransferRequest) (TransferOutcome, bool, error) {
+	record, err := s.idempotency.Get(ctx, req.IdempotencyKey)
+	if errors.Is(err, domain.ErrIdempotencyRecordNotFound) {
+		return TransferOutcome{}, false, nil
+	}
+	if err != nil {
+		return TransferOutcome{}, false, err
+	}
+
+	if record.Fingerprint != req.Fingerprint() {
+		return TransferOutcome{}, false, fmt.Errorf("%w: key %q was first used for a different transfer", domain.ErrIdempotencyKeyConflict, req.IdempotencyKey)
+	}
+
+	var result TransferResult
+	if err := json.Unmarshal(record.ResponseBody, &result); err != nil {
+		return TransferOutcome{}, false, fmt.Errorf("decode stored response for key %q: %w", req.IdempotencyKey, err)
+	}
+	return TransferOutcome{Result: result, Replayed: true}, true, nil
 }
 
 func resultFrom(t *domain.Transfer) TransferResult {

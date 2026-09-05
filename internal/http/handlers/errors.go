@@ -18,6 +18,7 @@ const (
 	CodeWalletNotFound    errorCode = "WALLET_NOT_FOUND"
 	CodeInsufficient      errorCode = "INSUFFICIENT_FUNDS"
 	CodeCurrencyMismatch  errorCode = "CURRENCY_MISMATCH"
+	CodeKeyConflict       errorCode = "IDEMPOTENCY_KEY_CONFLICT"
 	CodeConflict          errorCode = "CONFLICT"
 	CodeRetryableConflict errorCode = "RETRYABLE_CONFLICT"
 	CodeTimeout           errorCode = "REQUEST_TIMEOUT"
@@ -59,6 +60,7 @@ type errorRule struct {
 var errorRules = []errorRule{
 	{domain.ErrValidation, http.StatusBadRequest, CodeValidation, ""},
 	{domain.ErrWalletNotFound, http.StatusNotFound, CodeWalletNotFound, ""},
+	{domain.ErrIdempotencyKeyConflict, http.StatusConflict, CodeKeyConflict, ""},
 	{domain.ErrIdempotencyKeyAlreadyUsed, http.StatusConflict, CodeConflict, "a concurrent request is using this idempotency key; retry"},
 	{domain.ErrInvalidStateTransition, http.StatusConflict, CodeConflict, ""},
 	{domain.ErrConflict, http.StatusConflict, CodeRetryableConflict, "the transfer conflicted with a concurrent one; retry the same request"},

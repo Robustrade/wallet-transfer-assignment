@@ -7,6 +7,7 @@ var (
 	ErrWalletNotFound            = errors.New("wallet not found")
 	ErrInsufficientFunds         = errors.New("insufficient funds")
 	ErrCurrencyMismatch          = errors.New("currency mismatch")
+	ErrIdempotencyKeyConflict    = errors.New("idempotency key reused with a different payload")
 	ErrIdempotencyRecordNotFound = errors.New("no idempotency record")
 	ErrIdempotencyKeyAlreadyUsed = errors.New("idempotency key already claimed")
 	ErrConflict                  = errors.New("conflicting concurrent operation, retry")
