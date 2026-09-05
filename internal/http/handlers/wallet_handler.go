@@ -33,7 +33,15 @@ func (h *WalletHandler) Get(c *gin.Context) {
 }
 
 func (h *WalletHandler) GetHistory(c *gin.Context) {
-	limit, _ := strconv.Atoi(c.Query("limit"))
+	limit := 0
+	if raw := c.Query("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			RespondError(c, &domain.ValidationError{Field: "limit", Message: "must be a non-negative integer"})
+			return
+		}
+		limit = parsed
+	}
 	transfers, err := h.wallets.History(c.Request.Context(), c.Param("id"), limit)
 	if err != nil {
 		RespondError(c, err)

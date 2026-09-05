@@ -11,20 +11,20 @@ import (
 	"wallet-transfer/internal/domain"
 )
 
-type errorCode string
+type ErrorCode string
 
 const (
-	CodeValidation        errorCode = "VALIDATION_ERROR"
-	CodeWalletNotFound    errorCode = "WALLET_NOT_FOUND"
-	CodeTransferNotFound  errorCode = "TRANSFER_NOT_FOUND"
-	CodeInsufficient      errorCode = "INSUFFICIENT_FUNDS"
-	CodeCurrencyMismatch  errorCode = "CURRENCY_MISMATCH"
-	CodeKeyConflict       errorCode = "IDEMPOTENCY_KEY_CONFLICT"
-	CodeConflict          errorCode = "CONFLICT"
-	CodeRetryableConflict errorCode = "RETRYABLE_CONFLICT"
-	CodeTimeout           errorCode = "REQUEST_TIMEOUT"
-	CodeCanceled          errorCode = "REQUEST_CANCELED"
-	CodeInternal          errorCode = "INTERNAL_ERROR"
+	CodeValidation        ErrorCode = "VALIDATION_ERROR"
+	CodeWalletNotFound    ErrorCode = "WALLET_NOT_FOUND"
+	CodeTransferNotFound  ErrorCode = "TRANSFER_NOT_FOUND"
+	CodeInsufficient      ErrorCode = "INSUFFICIENT_FUNDS"
+	CodeCurrencyMismatch  ErrorCode = "CURRENCY_MISMATCH"
+	CodeKeyConflict       ErrorCode = "IDEMPOTENCY_KEY_CONFLICT"
+	CodeConflict          ErrorCode = "CONFLICT"
+	CodeRetryableConflict ErrorCode = "RETRYABLE_CONFLICT"
+	CodeTimeout           ErrorCode = "REQUEST_TIMEOUT"
+	CodeCanceled          ErrorCode = "REQUEST_CANCELED"
+	CodeInternal          ErrorCode = "INTERNAL_ERROR"
 )
 
 type ErrorBody struct {
@@ -32,7 +32,7 @@ type ErrorBody struct {
 }
 
 type ErrorDetail struct {
-	Code    errorCode `json:"code"`
+	Code    ErrorCode `json:"code"`
 	Message string    `json:"message"`
 	Field   string    `json:"field,omitempty"`
 }
@@ -54,7 +54,7 @@ func RespondError(c *gin.Context, err error) {
 type errorRule struct {
 	target  error
 	status  int
-	code    errorCode
+	code    ErrorCode
 	message string
 }
 

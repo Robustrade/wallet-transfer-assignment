@@ -109,3 +109,10 @@ func applyMigration(ctx context.Context, db *sql.DB, dir, file string) (bool, er
 	}
 	return true, tx.Commit()
 }
+
+type Health struct{ db *sql.DB }
+
+func NewHealth(db *sql.DB) *Health { return &Health{db: db} }
+
+func (h *Health) Ping(ctx context.Context) error { return h.db.PingContext(ctx) }
+

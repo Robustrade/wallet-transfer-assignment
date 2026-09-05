@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -11,6 +12,8 @@ import (
 	"github.com/google/uuid"
 
 	"wallet-transfer/internal/domain"
+	"wallet-transfer/internal/http/middlewares"
+	"wallet-transfer/internal/metrics"
 	"wallet-transfer/internal/service"
 )
 
@@ -23,11 +26,13 @@ type TransferService interface {
 
 type TransferHandler struct {
 	transfers TransferService
+	metrics   *metrics.Metrics
 }
 
-func NewTransferHandler(transfers TransferService) *TransferHandler {
+func NewTransferHandler(transfers TransferService, m *metrics.Metrics) *TransferHandler {
 	return &TransferHandler{
 		transfers: transfers,
+		metrics:   m,
 	}
 }
 
@@ -43,7 +48,9 @@ func (h *TransferHandler) Create(c *gin.Context) {
 	duration := time.Since(start)
 
 	if err != nil {
+		h.metrics.ObserveTransfer(outcomeFor(err), duration)
 		slog.Warn("transfer rejected",
+			"requestId", middlewares.RequestID(c),
 			"fromWallet", body.FromWalletID,
 			"toWallet", body.ToWalletID,
 			"error", err,
@@ -54,11 +61,15 @@ func (h *TransferHandler) Create(c *gin.Context) {
 	}
 
 	status := http.StatusCreated
+	metricOutcome := metrics.OutcomeCreated
 	if outcome.Replayed {
 		status = http.StatusOK
+		metricOutcome = metrics.OutcomeReplayed
 	}
+	h.metrics.ObserveTransfer(metricOutcome, duration)
 
 	slog.Info("transfer processed",
+		"requestId", middlewares.RequestID(c),
 		"transferId", outcome.Result.TransferID.String(),
 		"fromWallet", outcome.Result.FromWalletID,
 		"toWallet", outcome.Result.ToWalletID,
@@ -75,7 +86,7 @@ func (h *TransferHandler) Create(c *gin.Context) {
 func (h *TransferHandler) Get(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		RespondError(c, &domain.ValidationError{Field: "id", Message: "must be a valid UUID"})
+		RespondError(c, &domain.ValidationError{Field: "id", Message: "must be a UUID"})
 		return
 	}
 
@@ -92,5 +103,18 @@ func bindingError(err error) error {
 	return &domain.ValidationError{
 		Field:   "body",
 		Message: "request body is malformed or missing required fields: " + err.Error(),
+	}
+}
+
+func outcomeFor(err error) string {
+	switch {
+	case errors.Is(err, domain.ErrValidation),
+		errors.Is(err, domain.ErrInsufficientFunds),
+		errors.Is(err, domain.ErrCurrencyMismatch),
+		errors.Is(err, domain.ErrWalletNotFound),
+		errors.Is(err, domain.ErrIdempotencyKeyConflict):
+		return metrics.OutcomeRejected
+	default:
+		return metrics.OutcomeFailed
 	}
 }
