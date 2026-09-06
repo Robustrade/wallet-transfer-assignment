@@ -64,8 +64,15 @@ func (t *transferService) CreateTransfer(ctx context.Context, req domain.CreateT
 			return nil, err
 		}
 
-		err = tx.Commit()
-		if err != nil {
+		if transfer.FromWalletId != req.FromWalletId || transfer.ToWalletId != req.ToWalletId || transfer.Amount != req.Amount {
+			return nil, ErrInvalidRequest
+		}
+
+		if transfer.Status == domain.TransferFailed {
+			return nil, ErrInsufficientFunds
+		}
+
+		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
 
@@ -93,6 +100,7 @@ func (t *transferService) CreateTransfer(ctx context.Context, req domain.CreateT
 		Amount:         req.Amount,
 		Status:         domain.TransferPending,
 		CreatedAt:      now,
+		UpdatedAt:      now,
 	})
 	if err != nil {
 		if isWalletForeignKeyError(err) {
@@ -194,44 +202,43 @@ func (t *transferService) CreateTransfer(ctx context.Context, req domain.CreateT
 func (t *transferService) lockWallets(ctx context.Context, tx *sql.Tx, fromWalletId, toWalletId string) (*domain.Wallet, *domain.Wallet, error) {
 	var fromWallet *domain.Wallet
 	var toWallet *domain.Wallet
-	var err error
 
 	if fromWalletId < toWalletId {
-		fromWallet, err = t.walletRepo.GetWalletForUpdate(ctx, tx, fromWalletId)
+		wallet, err := t.walletRepo.GetWalletForUpdate(ctx, tx, fromWalletId)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, repository.ErrWalletNotFound) {
 				return nil, nil, ErrWalletNotFound
 			}
-
 			return nil, nil, err
 		}
+		fromWallet = wallet
 
-		toWallet, err = t.walletRepo.GetWalletForUpdate(ctx, tx, toWalletId)
+		wallet, err = t.walletRepo.GetWalletForUpdate(ctx, tx, toWalletId)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, repository.ErrWalletNotFound) {
 				return nil, nil, ErrWalletNotFound
 			}
-
 			return nil, nil, err
 		}
+		toWallet = wallet
 	} else {
-		toWallet, err = t.walletRepo.GetWalletForUpdate(ctx, tx, toWalletId)
+		wallet, err := t.walletRepo.GetWalletForUpdate(ctx, tx, toWalletId)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, repository.ErrWalletNotFound) {
 				return nil, nil, ErrWalletNotFound
 			}
-
 			return nil, nil, err
 		}
+		toWallet = wallet
 
-		fromWallet, err = t.walletRepo.GetWalletForUpdate(ctx, tx, fromWalletId)
+		wallet, err = t.walletRepo.GetWalletForUpdate(ctx, tx, fromWalletId)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, repository.ErrWalletNotFound) {
 				return nil, nil, ErrWalletNotFound
 			}
-
 			return nil, nil, err
 		}
+		fromWallet = wallet
 	}
 
 	return fromWallet, toWallet, nil

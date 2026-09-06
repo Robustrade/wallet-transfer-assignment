@@ -15,7 +15,7 @@ type WalletRepository interface {
 type TransferRepository interface {
 	Create(ctx context.Context, tx *sql.Tx, transfer *domain.Transfer) error
 	GetById(ctx context.Context, tx *sql.Tx, transferId string) (*domain.Transfer, error)
-	UpdateStatus(ctx context.Context, tx *sql.Tx, trasferId string, status domain.TransferStatus) error
+	UpdateStatus(ctx context.Context, tx *sql.Tx, transferId string, status domain.TransferStatus) error
 }
 
 type LedgerRepository interface {

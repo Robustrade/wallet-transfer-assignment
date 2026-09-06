@@ -16,7 +16,7 @@ func NewTransferHandler(transferService service.TransferService) *TransferHandle
 	return &TransferHandler{transferService: transferService}
 }
 
-func (h *TransferHandler) CreateTransfer(w http.ResponseWriter, r http.Request) {
+func (h *TransferHandler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 	var req domain.CreateTransferRequest
 
 	err := json.NewDecoder(r.Body).Decode(&req)

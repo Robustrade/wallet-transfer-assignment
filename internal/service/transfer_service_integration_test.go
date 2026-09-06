@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"wallet-transfer-assignment/internal/domain"
 	"wallet-transfer-assignment/internal/repository"
+	testutil "wallet-transfer-assignment/internal/test_util"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -31,7 +33,18 @@ func setupIntegrationTest(t *testing.T) *integrationTestSuite {
 		t.Skip("integration test disabled")
 	}
 
-	db, err := repository.NewPostgresDB("postgres://postgres:postgres@localhost:5432/wallet_transfer?sslmode=disable")
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL is not set")
+	}
+
+	db, err := repository.NewPostgresDB(databaseURL)
+	require.NoError(t, err)
+
+	migrationsPath, err := filepath.Abs(filepath.Join("..", "..", "migrations"))
+	require.NoError(t, err)
+
+	err = testutil.RunMigrations(databaseURL, migrationsPath)
 	require.NoError(t, err)
 
 	walletRepo := repository.NewWalletRepository()
