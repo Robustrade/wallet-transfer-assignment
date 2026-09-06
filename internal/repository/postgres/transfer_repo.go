@@ -78,25 +78,4 @@ func (r *TransferRepository) GetTransferByID(ctx context.Context, id uuid.UUID) 
 	return &tr, nil
 }
 
-func (r *TransferRepository) UpdateTransferStatus(ctx context.Context, tx pgx.Tx, tr *domain.Transfer) error {
-	query := `
-		UPDATE transfers
-		SET status = $1, error_code = $2, error_message = $3, updated_at = $4, processed_at = $5
-		WHERE id = $6
-	`
-	res, err := tx.Exec(ctx, query,
-		tr.Status,
-		tr.ErrorCode,
-		tr.ErrorMessage,
-		tr.UpdatedAt,
-		tr.ProcessedAt,
-		tr.ID,
-	)
-	if err != nil {
-		return domain.ErrInternal(fmt.Errorf("failed updating transfer status: %w", err))
-	}
-	if res.RowsAffected() == 0 {
-		return domain.ErrTransferNotFound(tr.ID.String())
-	}
-	return nil
-}
+11

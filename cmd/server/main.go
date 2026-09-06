@@ -62,11 +62,12 @@ func main() {
 	router := handler.NewRouter(transferHandler, walletHandler, healthHandler)
 
 	srv := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      router,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
-		IdleTimeout:  cfg.IdleTimeout,
+		Addr:              ":" + cfg.Port,
+		Handler:           router,
+		ReadTimeout:       cfg.ReadTimeout,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
 	}
 
 	// Start HTTP server in a separate goroutine
