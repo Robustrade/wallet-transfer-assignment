@@ -1,6 +1,6 @@
 # Evaluator Rubric & Reviewer Checklist
 
-This document maps the project implementation against the criteria outlined in [evaluation_guide.md](file:///c:/Users/k97ro/OneDrive/Desktop/wallet-transfer-assignment/evaluation_guide.md) and [.github/copilot-instructions.md](file:///c:/Users/k97ro/OneDrive/Desktop/wallet-transfer-assignment/.github/copilot-instructions.md).
+This document maps the project implementation against the criteria outlined in [evaluation_guide.md](../evaluation_guide.md) and [.github/copilot-instructions.md](../.github/copilot-instructions.md).
 
 ## 1. Database Schema Design
 - **Primary & Foreign Keys**: Standard UUID primary keys and cascading/restrict foreign key constraints enforce referential integrity across `wallets`, `transfers`, `ledger_entries`, and `idempotency_records`.

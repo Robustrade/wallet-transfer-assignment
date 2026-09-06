@@ -212,6 +212,7 @@ CREATE INDEX idx_transfers_to_wallet ON transfers(to_wallet_id);
 CREATE INDEX idx_transfers_idempotency_key ON transfers(idempotency_key) WHERE idempotency_key IS NOT NULL;
 CREATE INDEX idx_ledger_entries_wallet_id ON ledger_entries(wallet_id);
 CREATE INDEX idx_ledger_entries_transfer_id ON ledger_entries(transfer_id);
+CREATE UNIQUE INDEX ux_ledger_entries_transfer_type ON ledger_entries(transfer_id, type);
 ```
 
 ---

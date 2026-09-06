@@ -100,6 +100,7 @@ func (s *TransferService) CreateTransfer(ctx context.Context, input *CreateTrans
 
 	var responsePayload *TransferResponse
 	var cachedResp *CachedResponse
+	var postCommitErr error
 
 	// Execute atomic transaction
 	txErr := s.transactor.ExecTx(ctx, func(tx pgx.Tx) error {
@@ -137,21 +138,22 @@ func (s *TransferService) CreateTransfer(ctx context.Context, input *CreateTrans
 
 		// 4. Verify balance adequacy
 		if err := fromWallet.Debit(amount); err != nil {
+			insufficientErr := domain.ErrInsufficientFunds()
 			// Mark transfer as failed
-			_ = transfer.MarkFailed(domain.ErrCodeInsufficientFunds, "insufficient wallet balance")
+			_ = transfer.MarkFailed(insufficientErr.Code, insufficientErr.Message)
 			if createErr := s.transferRepo.CreateTransfer(ctx, tx, transfer); createErr != nil {
 				return createErr
 			}
 
 			// Store idempotency record for failed attempt if key present
 			if idempotencyKeyStr != "" {
-				errResp := domain.AppError{Code: domain.ErrCodeInsufficientFunds, Message: "insufficient wallet balance"}
+				errResp := domain.AppError{Code: insufficientErr.Code, Message: insufficientErr.Message}
 				errBytes, _ := json.Marshal(map[string]interface{}{"error": errResp})
 				idemRec := &domain.IdempotencyRecord{
 					Key:          idempotencyKeyStr,
 					RequestHash:  reqHash,
 					TransferID:   &transferID,
-					ResponseCode: http.StatusUnprocessableEntity,
+					ResponseCode: insufficientErr.HTTPStatus,
 					ResponseBody: errBytes,
 				}
 				if saveErr := s.idempotencyRepo.SaveIdempotencyRecord(ctx, tx, idemRec); saveErr != nil {
@@ -159,7 +161,8 @@ func (s *TransferService) CreateTransfer(ctx context.Context, input *CreateTrans
 				}
 			}
 
-			return err
+			postCommitErr = insufficientErr
+			return nil
 		}
 
 		// 5. Credit destination wallet
@@ -235,6 +238,10 @@ func (s *TransferService) CreateTransfer(ctx context.Context, input *CreateTrans
 
 	if txErr != nil {
 		return nil, nil, txErr
+	}
+
+	if postCommitErr != nil {
+		return nil, nil, postCommitErr
 	}
 
 	return responsePayload, cachedResp, nil

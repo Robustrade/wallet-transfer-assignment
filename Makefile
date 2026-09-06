@@ -1,7 +1,9 @@
-.PHONY: all build run test test-unit test-integration test-race fmt lint docker-up docker-down clean
+.PHONY: all build run test test-unit test-integration test-race fmt lint docker-up docker-down migrate-up migrate-down clean
 
 APP_NAME := wallet-transfer-service
 MAIN_PATH := ./cmd/server
+DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/wallet_db?sslmode=disable
+MIGRATE := go run github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.1
 
 all: fmt lint test build
 
@@ -34,5 +36,12 @@ docker-up:
 docker-down:
 	docker compose down -v
 
+migrate-up:
+	$(MIGRATE) -path migrations -database "$(DATABASE_URL)" up
+
+migrate-down:
+	$(MIGRATE) -path migrations -database "$(DATABASE_URL)" down -all
+
 clean:
 	rm -rf bin/
+

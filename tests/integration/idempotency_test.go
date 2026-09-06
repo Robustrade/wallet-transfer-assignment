@@ -2,6 +2,7 @@ package integration
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -63,7 +64,7 @@ func TestIdempotency_DuplicateRequestReturnsOriginalResponse(t *testing.T) {
 	assert.Equal(t, resp1.Amount, resp2.Amount)
 
 	// Verify balance was only deducted ONCE ($500 - $100 = $400)
-	updatedW1, err := ts.WalletService.GetWalletBalance(nil, w1.ID)
+	updatedW1, err := ts.WalletService.GetWalletBalance(context.Background(), w1.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "400.00", updatedW1.Balance.String())
 }

@@ -58,7 +58,8 @@ func SetupTestSuite(t *testing.T) *TestSuite {
 	}
 
 	// Run migrations down and up for clean test environment
-	_ = db.RunMigrations(dbURL, migrationsPath)
+	err = db.RunMigrations(dbURL, migrationsPath)
+	require.NoError(t, err, "failed running database migrations for integration test setup")
 
 	transactor := postgres.NewTransactor(db.Pool)
 	walletRepo := postgres.NewWalletRepository(db.Pool)
