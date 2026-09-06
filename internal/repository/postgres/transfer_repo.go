@@ -77,5 +77,3 @@ func (r *TransferRepository) GetTransferByID(ctx context.Context, id uuid.UUID) 
 	tr.Amount = domain.NewMoney(amountDec)
 	return &tr, nil
 }
-
-11
