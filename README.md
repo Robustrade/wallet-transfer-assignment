@@ -35,6 +35,17 @@ cmd/server                      process wiring, graceful shutdown
 
 ## Run
 
+### One command
+
+```bash
+./bin/app_startup.sh          # build, migrate, start, seed, smoke-test every endpoint
+./bin/app_startup.sh --stop   # stop it again
+```
+
+It writes a full transcript to `logs/app_startup_<timestamp>.log` and creates a
+local `.env` from `.env.example` on first run. Needs PostgreSQL reachable
+(`make db-up`).
+
 ### Against PostgreSQL
 
 ```bash

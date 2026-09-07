@@ -83,10 +83,10 @@ db-up:
 db-down:
 	docker compose down -v
 
-## seed: load development wallet fixtures
+## seed: load development wallet fixtures (no psql required)
 .PHONY: seed
 seed:
-	psql "$(DATABASE_URL)" -f scripts/seed_dev.sql
+	go run ./cmd/seeddev
 
 ## migrate-up: apply all migrations with the golang-migrate CLI
 .PHONY: migrate-up

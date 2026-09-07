@@ -2,7 +2,8 @@
 coverage/
 dist/
 build/
-bin/
+bin/*
+!bin/*.sh
 .tmp/
 .env
 .env.*
@@ -12,3 +13,7 @@ bin/
 *.test
 *.out
 vendor/
+
+# app_startup.sh runtime artefacts
+.run/
+logs/
