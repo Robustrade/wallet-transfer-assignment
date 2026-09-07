@@ -19,8 +19,9 @@
 #
 # Configuration is resolved in this order (first match wins):
 #   1. WALLET_DATABASE_URL / WALLET_HTTP_ADDR / WALLET_LOG_LEVEL   (explicit overrides)
-#   2. a local .env file (created from .env.example on first run)
-#   3. built-in defaults
+#   2. .env.local  (gitignored personal overrides)
+#   3. .env        (committed local-dev defaults)
+#   4. built-in defaults
 # A bare, unrelated DATABASE_URL already in your shell is deliberately ignored.
 #
 #   KEEP_RUNNING   default 1 (0 = shut the server down once tests pass)
@@ -36,17 +37,15 @@ cd "$ROOT_DIR"
 
 DEFAULT_DATABASE_URL="postgres://wallet:wallet@localhost:5432/wallet_transfer?sslmode=disable"
 
-# create .env from the example on first run, then load it
-if [[ ! -f .env && -f .env.example ]]; then
-  cp .env.example .env
-  printf 'created .env from .env.example\n'
-fi
-if [[ -f .env ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source ./.env
-  set +a
-fi
+# load .env (committed defaults) then .env.local (personal overrides)
+for envfile in .env .env.local; do
+  if [[ -f "$envfile" ]]; then
+    set -a
+    # shellcheck disable=SC1090,SC1091
+    source "./$envfile"
+    set +a
+  fi
+done
 
 export DATABASE_URL="${WALLET_DATABASE_URL:-${DATABASE_URL:-$DEFAULT_DATABASE_URL}}"
 export HTTP_ADDR="${WALLET_HTTP_ADDR:-${HTTP_ADDR:-:8080}}"

@@ -42,9 +42,9 @@ cmd/server                      process wiring, graceful shutdown
 ./bin/app_startup.sh --stop   # stop it again
 ```
 
-It writes a full transcript to `logs/app_startup_<timestamp>.log` and creates a
-local `.env` from `.env.example` on first run. Needs PostgreSQL reachable
-(`make db-up`).
+It writes a full transcript to `logs/app_startup_<timestamp>.log` and reads
+config from [`.env`](./.env) (local-dev defaults; override with `.env.local` or
+the environment). Needs PostgreSQL reachable (`make db-up`).
 
 ### Against PostgreSQL
 
