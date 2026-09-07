@@ -2,6 +2,13 @@
 coverage/
 dist/
 build/
+bin/
 .tmp/
 .env
 .env.*
+!.env.example
+
+# Go
+*.test
+*.out
+vendor/

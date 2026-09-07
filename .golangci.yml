@@ -1,0 +1,29 @@
+# golangci-lint configuration (v1.64.x, as pinned in .github/workflows/ci.yml).
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gofmt
+    - goimports
+    - revive
+    - misspell
+    - unconvert
+    - bodyclose
+    - noctx
+
+issues:
+  exclude-rules:
+    # Test files: response-body hygiene and request context are not the point.
+    - path: _test\.go
+      linters:
+        - bodyclose
+        - noctx
+  max-issues-per-linter: 0
+  max-same-issues: 0
