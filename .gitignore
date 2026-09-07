@@ -1,7 +1,4 @@
-.DS_Store
-coverage/
-dist/
-build/
-.tmp/
-.env
-.env.*
+*.exe
+*.test
+*.out
+.vscode/
