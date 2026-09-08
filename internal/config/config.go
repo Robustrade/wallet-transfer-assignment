@@ -51,11 +51,10 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-// validate checks that required values are present. DATABASE_URL is required
-// unless the in-memory repository is selected (REPO=memory).
+// validate checks that required values are present.
 func (c Config) validate() error {
-	if c.DatabaseURL == "" && !strings.EqualFold(os.Getenv("REPO"), "memory") {
-		return fmt.Errorf("config: DATABASE_URL is required (or set REPO=memory)")
+	if c.DatabaseURL == "" {
+		return fmt.Errorf("config: DATABASE_URL is required")
 	}
 	return nil
 }

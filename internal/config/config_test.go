@@ -26,19 +26,9 @@ func TestLoad_Defaults(t *testing.T) {
 
 func TestLoad_RequiresDatabaseURL(t *testing.T) {
 	t.Setenv("DATABASE_URL", "")
-	t.Setenv("REPO", "")
 
 	if _, err := config.Load(); err == nil {
-		t.Fatal("expected an error when DATABASE_URL is unset and REPO != memory")
-	}
-}
-
-func TestLoad_MemoryRepoSkipsDatabaseURL(t *testing.T) {
-	t.Setenv("DATABASE_URL", "")
-	t.Setenv("REPO", "memory")
-
-	if _, err := config.Load(); err != nil {
-		t.Fatalf("unexpected error with REPO=memory: %v", err)
+		t.Fatal("expected an error when DATABASE_URL is unset")
 	}
 }
 

@@ -20,18 +20,20 @@ cmd/server                      process wiring, graceful shutdown
         ▲
         └── internal/repository  persistence (implements service ports)
               ├── postgres        pgx; SELECT ... FOR UPDATE; embedded migrations
-              └── memory          in-process; snapshot/rollback; tests + REPO=memory
+              └── memory          in-process fake — used only by service/e2e tests
 ```
 
 - `internal/domain` imports nothing else — trivially unit-testable.
-- `internal/service` defines the persistence interfaces (`ports.go`); `postgres`
-  and `memory` implement them. Only `cmd/server` sees concrete types.
+- `internal/service` defines the persistence interfaces (`ports.go`). PostgreSQL
+  is the only real implementation and owns every concurrency guarantee; the
+  in-memory adapter exists purely so the service and end-to-end tests run
+  without a database. Only `cmd/server` sees concrete types.
 - Handlers contain no business logic; repositories contain no workflow decisions.
 
 ## Requirements
 
 - Go >= 1.24
-- PostgreSQL 16 (Docker Compose file provided), or run with `REPO=memory`
+- PostgreSQL 16 (Docker Compose file provided)
 
 ## Run
 
@@ -58,12 +60,6 @@ make run          # listens on :8080
 
 # 3. (optional) load demo wallets wallet_1 / wallet_2 / wallet_3
 make seed
-```
-
-### Without a database
-
-```bash
-make run-memory   # in-memory repository, seeded with demo wallets
 ```
 
 ## API

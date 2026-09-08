@@ -30,11 +30,6 @@ build:
 run:
 	go run ./cmd/server
 
-## run-memory: run the server with the in-memory repository (no database)
-.PHONY: run-memory
-run-memory:
-	REPO=memory go run ./cmd/server
-
 ## fmt: format all Go code
 .PHONY: fmt
 fmt:

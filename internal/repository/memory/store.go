@@ -1,7 +1,10 @@
-// Package memory is an in-memory implementation of the service persistence
-// ports. It is used for fast hermetic tests (no database required) and for a
-// local "REPO=memory" run mode. A single mutex plus copy-on-write snapshots
-// give it transaction semantics equivalent to SERIALIZABLE.
+// Package memory is an in-memory test fake for the service persistence ports.
+// It exists solely so the service and end-to-end tests can run without a
+// database; it is not wired into the running server. PostgreSQL is the only
+// real implementation and owns every concurrency guarantee.
+//
+// A single mutex plus copy-on-write snapshots give WithinTx semantics
+// equivalent to SERIALIZABLE, which is enough to exercise the service workflow.
 package memory
 
 import (

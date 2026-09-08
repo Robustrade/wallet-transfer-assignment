@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -16,7 +15,6 @@ import (
 	httphandler "github.com/gaurav2204bits-collab/wallet-transfer-assignment/internal/handler/http"
 	"github.com/gaurav2204bits-collab/wallet-transfer-assignment/internal/platform/id"
 	"github.com/gaurav2204bits-collab/wallet-transfer-assignment/internal/platform/logger"
-	"github.com/gaurav2204bits-collab/wallet-transfer-assignment/internal/repository/memory"
 	"github.com/gaurav2204bits-collab/wallet-transfer-assignment/internal/repository/migrations"
 	"github.com/gaurav2204bits-collab/wallet-transfer-assignment/internal/repository/postgres"
 	"github.com/gaurav2204bits-collab/wallet-transfer-assignment/internal/service"
@@ -40,19 +38,32 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	repos, txm, pinger, cleanup, err := buildRepositories(ctx, cfg, log)
+	db, err := postgres.Connect(ctx, cfg.DatabaseURL, cfg.DBMaxConns, cfg.DBConnTimeout)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	defer db.Close()
 
-	transferSvc := service.NewTransferService(repos, txm, id.NewGenerator("txn", 16), log)
+	if cfg.AutoMigrate {
+		if err := postgres.NewMigrator(db, migrations.FS).Up(ctx); err != nil {
+			return err
+		}
+		log.Info("database migrations applied")
+	}
+
+	repos := service.Repositories{
+		Wallets:     postgres.NewWalletRepository(db),
+		Transfers:   postgres.NewTransferRepository(db),
+		Ledger:      postgres.NewLedgerRepository(db),
+		Idempotency: postgres.NewIdempotencyRepository(db),
+	}
+	transferSvc := service.NewTransferService(repos, db, id.NewGenerator("txn", 16), log)
 	walletSvc := service.NewWalletService(repos.Wallets)
 
 	router := httphandler.NewRouter(httphandler.Deps{
 		Transfers: transferSvc,
 		Wallets:   walletSvc,
-		DB:        pinger,
+		DB:        db,
 		Logger:    log,
 	})
 
@@ -80,54 +91,4 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
-}
-
-// buildRepositories selects the persistence backend. REPO=memory runs entirely
-// in process (no database) and is handy for local smoke testing; the default is
-// PostgreSQL.
-func buildRepositories(ctx context.Context, cfg config.Config, log *slog.Logger) (
-	repos service.Repositories,
-	txm service.TxManager,
-	pinger httphandler.Pinger,
-	cleanup func(),
-	err error,
-) {
-	if strings.EqualFold(os.Getenv("REPO"), "memory") {
-		log.Warn("using in-memory repository — data is not persisted")
-		store := memory.New()
-		seedMemory(store)
-		noCleanup := func() { /* in-memory store holds no external resources */ }
-		return service.Repositories{
-			Wallets:     store,
-			Transfers:   store,
-			Ledger:      store,
-			Idempotency: store,
-		}, store, nil, noCleanup, nil
-	}
-
-	db, err := postgres.Connect(ctx, cfg.DatabaseURL, cfg.DBMaxConns, cfg.DBConnTimeout)
-	if err != nil {
-		return service.Repositories{}, nil, nil, nil, err
-	}
-
-	if cfg.AutoMigrate {
-		if migErr := postgres.NewMigrator(db, migrations.FS).Up(ctx); migErr != nil {
-			db.Close()
-			return service.Repositories{}, nil, nil, nil, migErr
-		}
-		log.Info("database migrations applied")
-	}
-
-	return service.Repositories{
-		Wallets:     postgres.NewWalletRepository(db),
-		Transfers:   postgres.NewTransferRepository(db),
-		Ledger:      postgres.NewLedgerRepository(db),
-		Idempotency: postgres.NewIdempotencyRepository(db),
-	}, db, db, db.Close, nil
-}
-
-func seedMemory(store *memory.Store) {
-	store.SeedWallet("wallet_1", 100_000, "USD")
-	store.SeedWallet("wallet_2", 0, "USD")
-	store.SeedWallet("wallet_3", 50_000, "USD")
 }
