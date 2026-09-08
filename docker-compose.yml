@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/000001_create_wallets.up.sql:/docker-entrypoint-initdb.d/000001_create_wallets.sql:ro
+      - ./migrations/000002_create_transfers.up.sql:/docker-entrypoint-initdb.d/000002_create_transfers.sql:ro
+      - ./migrations/000003_create_ledger_entries.up.sql:/docker-entrypoint-initdb.d/000003_create_ledger_entries.sql:ro
+      - ./migrations/000004_create_idempotency_records.up.sql:/docker-entrypoint-initdb.d/000004_create_idempotency_records.sql:ro
+      - ./migrations/000005_create_wallet_balance_history.up.sql:/docker-entrypoint-initdb.d/000005_create_wallet_balance_history.sql:ro
+
+volumes:
+  postgres_data:
