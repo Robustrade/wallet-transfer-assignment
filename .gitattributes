@@ -1,0 +1,3 @@
+# Generated code - collapse in GitHub PR reviews and exclude from language stats
+internal/mocks/** linguist-generated=true
+internal/repository/db/** linguist-generated=true

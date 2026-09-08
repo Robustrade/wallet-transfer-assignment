@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	github.com/go-chi/chi/v5 v5.3.2
+	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/pressly/goose/v3 v3.24.1
 	github.com/stretchr/testify v1.10.0

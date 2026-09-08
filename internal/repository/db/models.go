@@ -8,6 +8,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type LedgerEntry struct {
+	ID         string             `json:"id"`
+	TransferID string             `json:"transfer_id"`
+	WalletID   string             `json:"wallet_id"`
+	Type       string             `json:"type"`
+	Amount     int64              `json:"amount"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+type Transfer struct {
+	ID             string             `json:"id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	FromWalletID   string             `json:"from_wallet_id"`
+	ToWalletID     string             `json:"to_wallet_id"`
+	Amount         int64              `json:"amount"`
+	Status         string             `json:"status"`
+	ErrorReason    pgtype.Text        `json:"error_reason"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Wallet struct {
 	ID        string             `json:"id"`
 	Balance   int64              `json:"balance"`

@@ -1,4 +1,4 @@
-.PHONY: help dev-up dev-down migrate-up migrate-down migrate-status sqlc mock test fmt
+.PHONY: help dev-up dev-down migrate-up migrate-down migrate-status sqlc mock build run test fmt
 
 help: ## Display available targets
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -33,6 +33,15 @@ sqlc: ## Generate type-safe Go code from SQL queries
 
 mock: ## Generate mocks using mockgen
 	mockgen -source=internal/repository/wallet_repo.go -destination=internal/mocks/mock_wallet_repo.go -package=mocks
+	mockgen -source=internal/repository/transfer_repo.go -destination=internal/mocks/mock_transfer_repo.go -package=mocks
+	mockgen -source=internal/repository/ledger_repo.go -destination=internal/mocks/mock_ledger_repo.go -package=mocks
+	mockgen -source=internal/repository/transactor.go -destination=internal/mocks/mock_transactor.go -package=mocks
+
+build: ## Build the API server binary
+	go build -o bin/api cmd/api/main.go
+
+run: ## Run the API server
+	go run cmd/api/main.go
 
 test: ## Run unit and integration tests
 	go test -v ./...

@@ -9,8 +9,14 @@ import (
 )
 
 type Querier interface {
+	CreateLedgerEntry(ctx context.Context, arg CreateLedgerEntryParams) (LedgerEntry, error)
+	CreateTransfer(ctx context.Context, arg CreateTransferParams) (Transfer, error)
 	CreateWallet(ctx context.Context, arg CreateWalletParams) (Wallet, error)
+	GetLedgerEntriesByTransferID(ctx context.Context, transferID string) ([]LedgerEntry, error)
+	GetTransfer(ctx context.Context, id string) (Transfer, error)
 	GetWallet(ctx context.Context, id string) (Wallet, error)
+	GetWalletsForUpdate(ctx context.Context, arg GetWalletsForUpdateParams) ([]Wallet, error)
+	UpdateWalletBalance(ctx context.Context, arg UpdateWalletBalanceParams) error
 }
 
 var _ Querier = (*Queries)(nil)

@@ -7,3 +7,15 @@ RETURNING id, balance, created_at, updated_at;
 SELECT id, balance, created_at, updated_at
 FROM wallets
 WHERE id = $1;
+
+-- name: GetWalletsForUpdate :many
+SELECT id, balance, created_at, updated_at
+FROM wallets
+WHERE id IN ($1, $2)
+ORDER BY id ASC
+FOR UPDATE;
+
+-- name: UpdateWalletBalance :exec
+UPDATE wallets
+SET balance = $2, updated_at = NOW()
+WHERE id = $1;

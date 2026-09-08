@@ -70,3 +70,32 @@ func (mr *MockWalletRepositoryMockRecorder) GetWallet(ctx, id any) *gomock.Call 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetWallet", reflect.TypeOf((*MockWalletRepository)(nil).GetWallet), ctx, id)
 }
+
+// GetWalletsForUpdate mocks base method.
+func (m *MockWalletRepository) GetWalletsForUpdate(ctx context.Context, id1, id2 string) ([]domain.Wallet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetWalletsForUpdate", ctx, id1, id2)
+	ret0, _ := ret[0].([]domain.Wallet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetWalletsForUpdate indicates an expected call of GetWalletsForUpdate.
+func (mr *MockWalletRepositoryMockRecorder) GetWalletsForUpdate(ctx, id1, id2 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetWalletsForUpdate", reflect.TypeOf((*MockWalletRepository)(nil).GetWalletsForUpdate), ctx, id1, id2)
+}
+
+// UpdateWalletBalance mocks base method.
+func (m *MockWalletRepository) UpdateWalletBalance(ctx context.Context, id string, balance int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateWalletBalance", ctx, id, balance)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateWalletBalance indicates an expected call of UpdateWalletBalance.
+func (mr *MockWalletRepositoryMockRecorder) UpdateWalletBalance(ctx, id, balance any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateWalletBalance", reflect.TypeOf((*MockWalletRepository)(nil).UpdateWalletBalance), ctx, id, balance)
+}

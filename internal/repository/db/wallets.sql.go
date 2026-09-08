@@ -49,3 +49,57 @@ func (q *Queries) GetWallet(ctx context.Context, id string) (Wallet, error) {
 	)
 	return i, err
 }
+
+const getWalletsForUpdate = `-- name: GetWalletsForUpdate :many
+SELECT id, balance, created_at, updated_at
+FROM wallets
+WHERE id IN ($1, $2)
+ORDER BY id ASC
+FOR UPDATE
+`
+
+type GetWalletsForUpdateParams struct {
+	ID   string `json:"id"`
+	ID_2 string `json:"id_2"`
+}
+
+func (q *Queries) GetWalletsForUpdate(ctx context.Context, arg GetWalletsForUpdateParams) ([]Wallet, error) {
+	rows, err := q.db.Query(ctx, getWalletsForUpdate, arg.ID, arg.ID_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Wallet
+	for rows.Next() {
+		var i Wallet
+		if err := rows.Scan(
+			&i.ID,
+			&i.Balance,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateWalletBalance = `-- name: UpdateWalletBalance :exec
+UPDATE wallets
+SET balance = $2, updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateWalletBalanceParams struct {
+	ID      string `json:"id"`
+	Balance int64  `json:"balance"`
+}
+
+func (q *Queries) UpdateWalletBalance(ctx context.Context, arg UpdateWalletBalanceParams) error {
+	_, err := q.db.Exec(ctx, updateWalletBalance, arg.ID, arg.Balance)
+	return err
+}

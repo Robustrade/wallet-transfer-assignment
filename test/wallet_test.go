@@ -38,10 +38,17 @@ func setupTestServer(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 	err = migrations.Run(ctx, pool)
 	require.NoError(t, err)
 
-	repo := repository.NewWalletRepository(pool)
-	svc := service.NewWalletService(repo)
-	walletHandler := handler.NewWalletHandler(svc)
-	router := handler.NewRouter(walletHandler)
+	txManager := repository.NewTransactor(pool)
+	walletRepo := repository.NewWalletRepository(pool)
+	walletSvc := service.NewWalletService(walletRepo)
+	walletHandler := handler.NewWalletHandler(walletSvc)
+
+	transferRepo := repository.NewTransferRepository(pool)
+	ledgerRepo := repository.NewLedgerRepository(pool)
+	transferSvc := service.NewTransferService(txManager, walletRepo, transferRepo, ledgerRepo)
+	transferHandler := handler.NewTransferHandler(transferSvc)
+
+	router := handler.NewRouter(walletHandler, transferHandler)
 
 	ts := httptest.NewServer(router)
 	return ts, pool
