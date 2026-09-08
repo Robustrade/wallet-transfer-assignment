@@ -2,6 +2,19 @@
 coverage/
 dist/
 build/
+bin/*
+!bin/*.sh
 .tmp/
-.env
-.env.*
+
+# .env is committed (local dev defaults only); personal overrides are not
+.env.local
+.env.*.local
+
+# Go
+*.test
+*.out
+vendor/
+
+# app_startup.sh runtime artefacts
+.run/
+logs/
