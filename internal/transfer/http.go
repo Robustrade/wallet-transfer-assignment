@@ -13,6 +13,8 @@ type HTTPServer struct {
 	metrics *Metrics
 }
 
+const maxJSONBodyBytes int64 = 1 << 20
+
 func NewHTTPServer(service *Service) *HTTPServer {
 	return NewHTTPServerWithMetrics(service, NewMetrics())
 }
@@ -40,7 +42,13 @@ func (s *HTTPServer) createWallet(w http.ResponseWriter, request *http.Request) 
 		return
 	}
 	if err := s.service.CreateWallet(request.Context(), wallet); err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		status := http.StatusInternalServerError
+		message := "failed to create wallet"
+		if strings.Contains(err.Error(), "UNIQUE") {
+			status = http.StatusConflict
+			message = "wallet already exists"
+		}
+		writeError(w, status, message)
 		return
 	}
 	writeJSON(w, http.StatusCreated, wallet)
@@ -82,6 +90,9 @@ func (s *HTTPServer) createTransfer(w http.ResponseWriter, request *http.Request
 		}
 		if errors.Is(err, ErrIdempotencyKeyReuse) {
 			status = http.StatusConflict
+		}
+		if errors.Is(err, ErrWalletNotFound) {
+			status = http.StatusNotFound
 		}
 		writeError(w, status, err.Error())
 		return
@@ -151,6 +162,7 @@ func (s *HTTPServer) getLedgers(w http.ResponseWriter, request *http.Request) {
 }
 
 func decodeJSON(w http.ResponseWriter, request *http.Request, target any) bool {
+	request.Body = http.MaxBytesReader(w, request.Body, maxJSONBodyBytes)
 	if err := json.NewDecoder(request.Body).Decode(target); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return false

@@ -15,7 +15,7 @@ Look for:
 Questions:
 
 - Can duplicate transfers happen accidentally?
-- Can ledger rows exist without a transfer? No
+- Can ledger rows exist without a transfer?
 - Is the model easy to reason about?
 
 ## 2. Transaction and Locking Strategy
@@ -29,7 +29,7 @@ Look for:
 
 Questions:
 
-- Are concurrent debits on the same wallet safe? No. doesn't allow same wallet transfer at time
+- Are concurrent debits on the same wallet safe?
 - Is there any read-then-write race?
 - Does the code rely on application logic where the database should enforce correctness?
 

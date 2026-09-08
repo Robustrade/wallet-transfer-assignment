@@ -35,5 +35,11 @@ func main() {
 	}
 
 	log.Printf("wallet transfer service listening on %s", address)
-	log.Fatal(http.ListenAndServe(address, server.Handler()))
+	srv := &http.Server{
+		Addr:              address,
+		Handler:           server.Handler(),
+		ReadHeaderTimeout: 5 * 1e9,
+		IdleTimeout:       30 * 1e9,
+	}
+	log.Fatal(srv.ListenAndServe())
 }

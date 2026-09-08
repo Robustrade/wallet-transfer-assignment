@@ -67,6 +67,22 @@ func TestGetAllLedgers(t *testing.T) {
 	}
 }
 
+func TestCreateWalletRejectsOversizedJSONBody(t *testing.T) {
+	store := testStore(t)
+	handler := NewHTTPServer(NewService(store)).Handler()
+	body := `{"id":"oversized"}`[:len(`{"id":"oversized"}`)-1] + `,"padding":"` + strings.Repeat("x", int(maxJSONBodyBytes)) + `"}`
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/wallets", strings.NewReader(body)))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("oversized wallet status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+
+	if _, err := store.GetWallet(context.Background(), "oversized"); err == nil {
+		t.Fatal("oversized wallet request created a wallet")
+	}
+}
+
 func TestCreateTransferReplaysDuplicateRequestWithoutDuplicateSideEffects(t *testing.T) {
 	store := testStore(t)
 	seedWallets(t, store)
