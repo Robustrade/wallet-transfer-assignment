@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-format-test:
+    name: lint-format-test
+    runs-on: [actions_runner_dev_new]
+    env:
+      LINT_CMD: ${{ vars.LINT_CMD }}
+      FORMAT_CHECK_CMD: ${{ vars.FORMAT_CHECK_CMD }}
+      TEST_CMD: ${{ vars.TEST_CMD }}
+      CGO_ENABLED: ${{ vars.CGO_ENABLED }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check OS
+        run: cat /etc/os-release
+
+      - name: Install gcc
+        run: sudo apt-get update && sudo apt-get install -y gcc
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $HOME/.local/bin v1.64.8 echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Validate commands configured
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${LINT_CMD:-}" || { echo "Missing repository variable LINT_CMD"; exit 1; }
+          test -n "${FORMAT_CHECK_CMD:-}" || { echo "Missing repository variable FORMAT_CHECK_CMD"; exit 1; }
+          test -n "${TEST_CMD:-}" || { echo "Missing repository variable TEST_CMD"; exit 1; }
+
+      - name: Run lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$LINT_CMD"
+
+      - name: Run format check
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$FORMAT_CHECK_CMD"
+
+      - name: Run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$TEST_CMD"
