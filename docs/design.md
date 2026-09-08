@@ -122,20 +122,28 @@ failure is replayable).
 Inside-out, Red → Green → Refactor:
 
 1. `internal/domain` — state machine + money math, pure unit tests.
-2. `internal/service` — workflow orchestration against hand-written fakes of the
-   ports (idempotency replay, failure path, lock ordering).
-3. `internal/repository/postgres` — `//go:build integration`, real Postgres via
-   testcontainers: `FOR UPDATE` blocking, unique-constraint dedup, atomic ledger
-   pair insert.
+2. `internal/service` — workflow orchestration against the in-memory port fake
+   (`internal/repository/memory`): idempotency replay, key-reuse conflict,
+   failure path, ledger balance.
+3. `internal/repository/postgres` — `//go:build integration`, real Postgres
+   (`TEST_DATABASE_URL`): `SELECT ... FOR UPDATE` serialisation under 50
+   concurrent debits, unique-constraint dedup, atomic ledger pair. This is the
+   authoritative concurrency test.
 4. `internal/handler/http` — `httptest`, service mocked: status/body mapping.
-5. `test/e2e` — full stack; N concurrent debits of one wallet → exactly the
-   affordable number succeed, final balance correct, ledger balances.
+5. `test/e2e` — full HTTP stack over the in-memory fake; N concurrent debits of
+   one wallet → exactly the affordable number succeed, final balance correct.
 
 ## 9. Assumptions / tradeoffs
 
 - Single currency per transfer; cross-currency is out of scope.
-- Wallets are pre-created (seed migration for dev); no wallet-creation API.
+- Wallets are pre-created (`make seed` / `cmd/seeddev` for dev); no
+  wallet-creation API.
 - Stored balance (not ledger-derived) for O(1) reads; ledger reconciliation is a
   separate concern.
 - No outbox/event publishing; the transfer is fully synchronous within the
   request.
+- PostgreSQL is the only real persistence adapter and owns every concurrency
+  guarantee (per-transfer transaction, `SELECT ... FOR UPDATE`, unique
+  constraints, deadlock retry). `internal/repository/memory` is a test fake, not
+  wired into the server — it exists so the service and end-to-end tests stay
+  hermetic and run in CI without a database.
