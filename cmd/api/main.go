@@ -77,7 +77,8 @@ func run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 
 	transferRepo := repository.NewTransferRepository(pool)
 	ledgerRepo := repository.NewLedgerRepository(pool)
-	transferSvc := service.NewTransferService(txManager, walletRepo, transferRepo, ledgerRepo)
+	idempRepo := repository.NewIdempotencyRepository(pool)
+	transferSvc := service.NewTransferService(txManager, walletRepo, transferRepo, ledgerRepo, idempRepo)
 	transferHandler := handler.NewTransferHandler(transferSvc)
 
 	router := handler.NewRouter(walletHandler, transferHandler)

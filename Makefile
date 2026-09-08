@@ -35,6 +35,7 @@ mock: ## Generate mocks using mockgen
 	mockgen -source=internal/repository/wallet_repo.go -destination=internal/mocks/mock_wallet_repo.go -package=mocks
 	mockgen -source=internal/repository/transfer_repo.go -destination=internal/mocks/mock_transfer_repo.go -package=mocks
 	mockgen -source=internal/repository/ledger_repo.go -destination=internal/mocks/mock_ledger_repo.go -package=mocks
+	mockgen -source=internal/repository/idempotency_repo.go -destination=internal/mocks/mock_idempotency_repo.go -package=mocks
 	mockgen -source=internal/repository/transactor.go -destination=internal/mocks/mock_transactor.go -package=mocks
 
 build: ## Build the API server binary

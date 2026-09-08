@@ -87,6 +87,8 @@ func mapTransferError(w http.ResponseWriter, err error) {
 		writeJSONError(w, http.StatusUnprocessableEntity, "WALLET_NOT_FOUND", err.Error())
 	case errors.Is(err, domain.ErrInsufficientFunds):
 		writeJSONError(w, http.StatusUnprocessableEntity, domain.ErrReasonInsufficientFunds, err.Error())
+	case errors.Is(err, domain.ErrIdempotencyConflict):
+		writeJSONError(w, http.StatusConflict, domain.ErrReasonIdempotencyConflict, err.Error())
 	default:
 		writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 	}

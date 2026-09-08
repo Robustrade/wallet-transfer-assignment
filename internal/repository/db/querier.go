@@ -9,9 +9,11 @@ import (
 )
 
 type Querier interface {
+	CreateIdempotencyRecord(ctx context.Context, arg CreateIdempotencyRecordParams) (IdempotencyRecord, error)
 	CreateLedgerEntry(ctx context.Context, arg CreateLedgerEntryParams) (LedgerEntry, error)
 	CreateTransfer(ctx context.Context, arg CreateTransferParams) (Transfer, error)
 	CreateWallet(ctx context.Context, arg CreateWalletParams) (Wallet, error)
+	GetIdempotencyRecord(ctx context.Context, key string) (IdempotencyRecord, error)
 	GetLedgerEntriesByTransferID(ctx context.Context, transferID string) ([]LedgerEntry, error)
 	GetTransfer(ctx context.Context, id string) (Transfer, error)
 	GetWallet(ctx context.Context, id string) (Wallet, error)

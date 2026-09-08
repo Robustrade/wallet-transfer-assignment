@@ -20,6 +20,7 @@ type transferFixture struct {
 	wallet   *mocks.MockWalletRepository
 	transfer *mocks.MockTransferRepository
 	ledger   *mocks.MockLedgerRepository
+	idemp    *mocks.MockIdempotencyRepository
 }
 
 func newTransferFixture(t *testing.T) *transferFixture {
@@ -29,8 +30,9 @@ func newTransferFixture(t *testing.T) *transferFixture {
 		wallet:   mocks.NewMockWalletRepository(ctrl),
 		transfer: mocks.NewMockTransferRepository(ctrl),
 		ledger:   mocks.NewMockLedgerRepository(ctrl),
+		idemp:    mocks.NewMockIdempotencyRepository(ctrl),
 	}
-	f.svc = service.NewTransferService(f.txMgr, f.wallet, f.transfer, f.ledger)
+	f.svc = service.NewTransferService(f.txMgr, f.wallet, f.transfer, f.ledger, f.idemp)
 	return f
 }
 
@@ -91,6 +93,20 @@ func TestTransferRequest_Validation(t *testing.T) {
 
 func TestTransferService_SuccessfulTransfer(t *testing.T) {
 	f := newTransferFixture(t)
+
+	f.idemp.EXPECT().
+		GetIdempotencyRecord(gomock.Any(), "key_success").
+		Return(nil, nil)
+
+	f.idemp.EXPECT().
+		CreateIdempotencyRecord(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, rec domain.IdempotencyRecord) (*domain.IdempotencyRecord, error) {
+			assert.Equal(t, "key_success", rec.Key)
+			assert.Equal(t, 201, rec.ResponseCode)
+			assert.NotEmpty(t, rec.RequestHash)
+			assert.NotEmpty(t, rec.ResponseBody)
+			return &rec, nil
+		})
 
 	// Transparently execute inside transaction callback
 	f.txMgr.EXPECT().
@@ -156,12 +172,17 @@ func TestTransferService_SuccessfulTransfer(t *testing.T) {
 	result, err := f.svc.ExecuteTransfer(context.Background(), req)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.Equal(t, domain.StatusProcessed, result.Status)
-	assert.Equal(t, int64(300), result.Amount)
+	assert.False(t, result.IsReplay)
+	assert.Equal(t, domain.StatusProcessed, result.Transfer.Status)
+	assert.Equal(t, int64(300), result.Transfer.Amount)
 }
 
 func TestTransferService_InsufficientFunds(t *testing.T) {
 	f := newTransferFixture(t)
+
+	f.idemp.EXPECT().
+		GetIdempotencyRecord(gomock.Any(), "key_insuf").
+		Return(nil, nil)
 
 	f.txMgr.EXPECT().
 		WithinTransaction(gomock.Any(), gomock.Any()).
@@ -205,6 +226,10 @@ func TestTransferService_InsufficientFunds(t *testing.T) {
 func TestTransferService_InsufficientFunds_RecordFailureError(t *testing.T) {
 	f := newTransferFixture(t)
 
+	f.idemp.EXPECT().
+		GetIdempotencyRecord(gomock.Any(), "key_insuf").
+		Return(nil, nil)
+
 	f.txMgr.EXPECT().
 		WithinTransaction(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
@@ -237,6 +262,10 @@ func TestTransferService_InsufficientFunds_RecordFailureError(t *testing.T) {
 func TestTransferService_WalletNotFound(t *testing.T) {
 	f := newTransferFixture(t)
 
+	f.idemp.EXPECT().
+		GetIdempotencyRecord(gomock.Any(), "key_missing").
+		Return(nil, nil)
+
 	f.txMgr.EXPECT().
 		WithinTransaction(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
@@ -262,6 +291,10 @@ func TestTransferService_WalletNotFound(t *testing.T) {
 func TestTransferService_DatabaseErrorPropagation(t *testing.T) {
 	f := newTransferFixture(t)
 
+	f.idemp.EXPECT().
+		GetIdempotencyRecord(gomock.Any(), "key_err").
+		Return(nil, nil)
+
 	dbErr := errors.New("connection reset by peer")
 	f.txMgr.EXPECT().
 		WithinTransaction(gomock.Any(), gomock.Any()).
@@ -276,4 +309,68 @@ func TestTransferService_DatabaseErrorPropagation(t *testing.T) {
 
 	_, err := f.svc.ExecuteTransfer(context.Background(), req)
 	require.ErrorIs(t, err, dbErr)
+}
+
+func TestTransferService_IdempotentReplay(t *testing.T) {
+	f := newTransferFixture(t)
+
+	req := domain.CreateTransferRequest{
+		IdempotencyKey: "key_replay",
+		FromWalletID:   "w1",
+		ToWalletID:     "w2",
+		Amount:         250,
+	}
+
+	cachedBody := `{"id":"tr_cached_999","idempotencyKey":"key_replay","fromWalletId":"w1","toWalletId":"w2","amount":250,"status":"PROCESSED","createdAt":"2026-09-09T03:00:00Z","updatedAt":"2026-09-09T03:00:00Z"}`
+
+	f.idemp.EXPECT().
+		GetIdempotencyRecord(gomock.Any(), "key_replay").
+		Return(&domain.IdempotencyRecord{
+			Key:          "key_replay",
+			RequestHash:  req.CanonicalHash(),
+			ResponseCode: 201,
+			ResponseBody: cachedBody,
+		}, nil)
+
+	// WithinTransaction, wallet, transfer, and ledger should NOT be called!
+	result, err := f.svc.ExecuteTransfer(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.IsReplay)
+	assert.Equal(t, 201, result.ResponseCode)
+	require.NotNil(t, result.Transfer)
+	assert.Equal(t, "tr_cached_999", result.Transfer.ID)
+	assert.Equal(t, int64(250), result.Transfer.Amount)
+	assert.Equal(t, domain.StatusProcessed, result.Transfer.Status)
+}
+
+func TestTransferService_IdempotentConflict(t *testing.T) {
+	f := newTransferFixture(t)
+
+	req := domain.CreateTransferRequest{
+		IdempotencyKey: "key_conflict",
+		FromWalletID:   "w1",
+		ToWalletID:     "w2",
+		Amount:         500,
+	}
+
+	tamperedReq := domain.CreateTransferRequest{
+		IdempotencyKey: "key_conflict",
+		FromWalletID:   "w1",
+		ToWalletID:     "w2",
+		Amount:         100, // different amount
+	}
+
+	f.idemp.EXPECT().
+		GetIdempotencyRecord(gomock.Any(), "key_conflict").
+		Return(&domain.IdempotencyRecord{
+			Key:          "key_conflict",
+			RequestHash:  tamperedReq.CanonicalHash(),
+			ResponseCode: 201,
+			ResponseBody: `{}`,
+		}, nil)
+
+	// WithinTransaction, wallet, transfer, and ledger should NOT be called!
+	_, err := f.svc.ExecuteTransfer(context.Background(), req)
+	require.ErrorIs(t, err, domain.ErrIdempotencyConflict)
 }

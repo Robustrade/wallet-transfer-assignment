@@ -45,7 +45,8 @@ func setupTestServer(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 
 	transferRepo := repository.NewTransferRepository(pool)
 	ledgerRepo := repository.NewLedgerRepository(pool)
-	transferSvc := service.NewTransferService(txManager, walletRepo, transferRepo, ledgerRepo)
+	idempRepo := repository.NewIdempotencyRepository(pool)
+	transferSvc := service.NewTransferService(txManager, walletRepo, transferRepo, ledgerRepo, idempRepo)
 	transferHandler := handler.NewTransferHandler(transferSvc)
 
 	router := handler.NewRouter(walletHandler, transferHandler)

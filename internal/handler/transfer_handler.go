@@ -22,11 +22,17 @@ func (h *TransferHandler) CreateTransfer(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	transfer, err := h.service.ExecuteTransfer(r.Context(), req)
+	result, err := h.service.ExecuteTransfer(r.Context(), req)
 	if err != nil {
 		mapTransferError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, transfer)
+	if result.IsReplay {
+		w.Header().Set("X-Idempotent-Replay", "true")
+		writeJSON(w, http.StatusOK, result.Transfer)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, result.Transfer)
 }

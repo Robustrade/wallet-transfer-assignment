@@ -8,6 +8,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type IdempotencyRecord struct {
+	Key          string             `json:"key"`
+	RequestHash  string             `json:"request_hash"`
+	ResponseCode int32              `json:"response_code"`
+	ResponseBody string             `json:"response_body"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 type LedgerEntry struct {
 	ID         string             `json:"id"`
 	TransferID string             `json:"transfer_id"`

@@ -48,8 +48,8 @@ func getTestWallet(t *testing.T, ts *httptest.Server, id string) domain.Wallet {
 	return w
 }
 
-// sendTransfer sends a POST /transfers request and returns the HTTP status and decoded transfer if 201.
-func sendTransfer(t *testing.T, ts *httptest.Server, req domain.CreateTransferRequest) (int, *domain.Transfer, map[string]any) {
+// sendTransferFull sends a POST /transfers request and returns the status, headers, transfer, and error body.
+func sendTransferFull(t *testing.T, ts *httptest.Server, req domain.CreateTransferRequest) (int, http.Header, *domain.Transfer, map[string]any) {
 	t.Helper()
 
 	body, err := json.Marshal(req)
@@ -59,16 +59,24 @@ func sendTransfer(t *testing.T, ts *httptest.Server, req domain.CreateTransferRe
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusCreated {
+	headers := resp.Header.Clone()
+
+	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
 		var tr domain.Transfer
 		err = json.NewDecoder(resp.Body).Decode(&tr)
 		require.NoError(t, err)
-		return resp.StatusCode, &tr, nil
+		return resp.StatusCode, headers, &tr, nil
 	}
 
 	var errBody map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&errBody)
-	return resp.StatusCode, nil, errBody
+	return resp.StatusCode, headers, nil, errBody
+}
+
+// sendTransfer sends a POST /transfers request and returns the HTTP status and decoded transfer if 200 or 201.
+func sendTransfer(t *testing.T, ts *httptest.Server, req domain.CreateTransferRequest) (int, *domain.Transfer, map[string]any) {
+	status, _, tr, errBody := sendTransferFull(t, ts, req)
+	return status, tr, errBody
 }
 
 // getTestLedgerEntries queries the database directly for ledger entries belonging to a transfer.
@@ -110,4 +118,18 @@ func getTestTransferByIdempotencyKey(t *testing.T, pool *pgxpool.Pool, key strin
 	require.NoError(t, err)
 	tr.Status = domain.TransferStatus(status)
 	return tr
+}
+
+// getTestIdempotencyRecord queries the database directly for an idempotency record by key.
+func getTestIdempotencyRecord(t *testing.T, pool *pgxpool.Pool, key string) domain.IdempotencyRecord {
+	t.Helper()
+
+	var rec domain.IdempotencyRecord
+	err := pool.QueryRow(context.Background(), `
+		SELECT key, request_hash, response_code, response_body, created_at
+		FROM idempotency_records
+		WHERE key = $1
+	`, key).Scan(&rec.Key, &rec.RequestHash, &rec.ResponseCode, &rec.ResponseBody, &rec.CreatedAt)
+	require.NoError(t, err)
+	return rec
 }
