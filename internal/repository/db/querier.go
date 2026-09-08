@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	CreateWallet(ctx context.Context, arg CreateWalletParams) (Wallet, error)
 	GetWallet(ctx context.Context, id string) (Wallet, error)
 }
 
