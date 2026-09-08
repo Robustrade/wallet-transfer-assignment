@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -373,4 +374,44 @@ func TestTransferService_IdempotentConflict(t *testing.T) {
 	// WithinTransaction, wallet, transfer, and ledger should NOT be called!
 	_, err := f.svc.ExecuteTransfer(context.Background(), req)
 	require.ErrorIs(t, err, domain.ErrIdempotencyConflict)
+}
+
+func TestTransferService_ConcurrentDuplicateKeyRecovery(t *testing.T) {
+	f := newTransferFixture(t)
+
+	req := domain.CreateTransferRequest{
+		IdempotencyKey: "key_race",
+		FromWalletID:   "w1",
+		ToWalletID:     "w2",
+		Amount:         250,
+	}
+
+	// 1. Initial lookup misses (both requests arrive simultaneously)
+	f.idemp.EXPECT().
+		GetIdempotencyRecord(gomock.Any(), "key_race").
+		Return(nil, nil)
+
+	// 2. Transaction fails with PostgreSQL unique violation 23505
+	pgErr := &pgconn.PgError{Code: "23505"}
+	f.txMgr.EXPECT().
+		WithinTransaction(gomock.Any(), gomock.Any()).
+		Return(pgErr)
+
+	// 3. Race recovery: re-reads the winner's committed record
+	cachedBody := `{"id":"tr_winner_1","idempotencyKey":"key_race","fromWalletId":"w1","toWalletId":"w2","amount":250,"status":"PROCESSED","createdAt":"2026-09-09T03:00:00Z","updatedAt":"2026-09-09T03:00:00Z"}`
+	f.idemp.EXPECT().
+		GetIdempotencyRecord(gomock.Any(), "key_race").
+		Return(&domain.IdempotencyRecord{
+			Key:          "key_race",
+			RequestHash:  req.CanonicalHash(),
+			ResponseCode: 201,
+			ResponseBody: cachedBody,
+		}, nil)
+
+	result, err := f.svc.ExecuteTransfer(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.IsReplay)
+	assert.Equal(t, "tr_winner_1", result.Transfer.ID)
+	assert.Equal(t, int64(250), result.Transfer.Amount)
 }

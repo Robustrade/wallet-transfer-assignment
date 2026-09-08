@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"wallet-transfer-assignment/internal/domain"
 	"wallet-transfer-assignment/internal/repository"
 )
@@ -64,6 +66,14 @@ func (s *TransferService) ExecuteTransfer(ctx context.Context, req domain.Create
 	})
 
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			if replay, idempErr := s.checkIdempotency(ctx, req); idempErr != nil {
+				return nil, idempErr
+			} else if replay != nil {
+				return replay, nil
+			}
+		}
 		return nil, err
 	}
 
