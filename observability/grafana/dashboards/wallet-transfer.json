@@ -1,0 +1,42 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "title": "HTTP request rate",
+      "type": "timeseries",
+      "targets": [{"expr": "sum by (route, status) (rate(wallet_transfer_http_requests_total[5m]))", "legendFormat": "{{route}} {{status}}", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "title": "HTTP latency",
+      "type": "timeseries",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, route) (rate(wallet_transfer_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95 {{route}}", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 3,
+      "title": "Transfer outcomes",
+      "type": "timeseries",
+      "targets": [{"expr": "sum by (outcome) (rate(wallet_transfer_transfers_total[5m]))", "legendFormat": "{{outcome}}", "refId": "A"}]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["wallet-transfer"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "title": "Wallet Transfer",
+  "uid": "wallet-transfer",
+  "version": 1
+}
