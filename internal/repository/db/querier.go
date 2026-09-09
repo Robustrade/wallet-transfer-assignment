@@ -18,6 +18,7 @@ type Querier interface {
 	GetTransfer(ctx context.Context, id string) (Transfer, error)
 	GetWallet(ctx context.Context, id string) (Wallet, error)
 	GetWalletsForUpdate(ctx context.Context, arg GetWalletsForUpdateParams) ([]Wallet, error)
+	ListTransfersByWalletID(ctx context.Context, arg ListTransfersByWalletIDParams) ([]Transfer, error)
 	UpdateWalletBalance(ctx context.Context, arg UpdateWalletBalanceParams) error
 }
 

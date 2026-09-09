@@ -21,7 +21,7 @@ func initGoose() error {
 // Up applies all pending database migrations.
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
 	db := stdlib.OpenDBFromPool(pool)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := initGoose(); err != nil {
 		return fmt.Errorf("failed to initialize goose: %w", err)
@@ -32,7 +32,7 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 // Down rolls back the last database migration.
 func Down(ctx context.Context, pool *pgxpool.Pool) error {
 	db := stdlib.OpenDBFromPool(pool)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := initGoose(); err != nil {
 		return fmt.Errorf("failed to initialize goose: %w", err)
@@ -43,7 +43,7 @@ func Down(ctx context.Context, pool *pgxpool.Pool) error {
 // Status prints the status of all migrations.
 func Status(ctx context.Context, pool *pgxpool.Pool) error {
 	db := stdlib.OpenDBFromPool(pool)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := initGoose(); err != nil {
 		return fmt.Errorf("failed to initialize goose: %w", err)

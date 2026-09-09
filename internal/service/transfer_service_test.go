@@ -415,3 +415,136 @@ func TestTransferService_ConcurrentDuplicateKeyRecovery(t *testing.T) {
 	assert.Equal(t, "tr_winner_1", result.Transfer.ID)
 	assert.Equal(t, int64(250), result.Transfer.Amount)
 }
+
+func TestTransferService_GetTransfer(t *testing.T) {
+	t.Run("empty transfer id", func(t *testing.T) {
+		f := newTransferFixture(t)
+		_, err := f.svc.GetTransfer(context.Background(), "  ")
+		require.ErrorIs(t, err, service.ErrInvalidTransferID)
+	})
+
+	t.Run("transfer not found", func(t *testing.T) {
+		f := newTransferFixture(t)
+		f.transfer.EXPECT().
+			GetTransfer(gomock.Any(), "tr_missing").
+			Return(nil, domain.ErrTransferNotFound)
+
+		_, err := f.svc.GetTransfer(context.Background(), "tr_missing")
+		require.ErrorIs(t, err, domain.ErrTransferNotFound)
+	})
+
+	t.Run("transfer repository error", func(t *testing.T) {
+		f := newTransferFixture(t)
+		dbErr := errors.New("database connection failed")
+		f.transfer.EXPECT().
+			GetTransfer(gomock.Any(), "tr_err").
+			Return(nil, dbErr)
+
+		_, err := f.svc.GetTransfer(context.Background(), "tr_err")
+		require.ErrorIs(t, err, dbErr)
+	})
+
+	t.Run("successful transfer retrieval", func(t *testing.T) {
+		f := newTransferFixture(t)
+		expected := &domain.Transfer{
+			ID:             "tr_123",
+			IdempotencyKey: "key_1",
+			FromWalletID:   "w1",
+			ToWalletID:     "w2",
+			Amount:         500,
+			Status:         domain.StatusProcessed,
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
+		f.transfer.EXPECT().
+			GetTransfer(gomock.Any(), "tr_123").
+			Return(expected, nil)
+
+		actual, err := f.svc.GetTransfer(context.Background(), "tr_123")
+		require.NoError(t, err)
+		assert.Equal(t, expected, actual)
+	})
+}
+
+func TestTransferService_ListWalletTransfers(t *testing.T) {
+	t.Run("empty wallet id", func(t *testing.T) {
+		f := newTransferFixture(t)
+		_, err := f.svc.ListWalletTransfers(context.Background(), "  ", 10, 0)
+		require.ErrorIs(t, err, service.ErrInvalidWalletID)
+	})
+
+	t.Run("wallet not found", func(t *testing.T) {
+		f := newTransferFixture(t)
+		f.wallet.EXPECT().
+			GetWallet(gomock.Any(), "w_missing").
+			Return(nil, domain.ErrWalletNotFound)
+
+		_, err := f.svc.ListWalletTransfers(context.Background(), "w_missing", 10, 0)
+		require.ErrorIs(t, err, domain.ErrWalletNotFound)
+	})
+
+	t.Run("default pagination when non-positive limit and negative offset", func(t *testing.T) {
+		f := newTransferFixture(t)
+		f.wallet.EXPECT().
+			GetWallet(gomock.Any(), "w1").
+			Return(&domain.Wallet{ID: "w1", Balance: 1000}, nil)
+
+		f.transfer.EXPECT().
+			ListTransfersByWalletID(gomock.Any(), "w1", int32(20), int32(0)).
+			Return([]domain.Transfer{}, nil)
+
+		results, err := f.svc.ListWalletTransfers(context.Background(), "w1", 0, -5)
+		require.NoError(t, err)
+		assert.Empty(t, results)
+	})
+
+	t.Run("cap limit to max pagination 100", func(t *testing.T) {
+		f := newTransferFixture(t)
+		f.wallet.EXPECT().
+			GetWallet(gomock.Any(), "w1").
+			Return(&domain.Wallet{ID: "w1", Balance: 1000}, nil)
+
+		f.transfer.EXPECT().
+			ListTransfersByWalletID(gomock.Any(), "w1", int32(100), int32(10)).
+			Return([]domain.Transfer{}, nil)
+
+		results, err := f.svc.ListWalletTransfers(context.Background(), "w1", 500, 10)
+		require.NoError(t, err)
+		assert.Empty(t, results)
+	})
+
+	t.Run("successful transfer list", func(t *testing.T) {
+		f := newTransferFixture(t)
+		f.wallet.EXPECT().
+			GetWallet(gomock.Any(), "w1").
+			Return(&domain.Wallet{ID: "w1", Balance: 1000}, nil)
+
+		expected := []domain.Transfer{
+			{
+				ID:             "tr_2",
+				IdempotencyKey: "key_2",
+				FromWalletID:   "w1",
+				ToWalletID:     "w2",
+				Amount:         200,
+				Status:         domain.StatusProcessed,
+			},
+			{
+				ID:             "tr_1",
+				IdempotencyKey: "key_1",
+				FromWalletID:   "w3",
+				ToWalletID:     "w1",
+				Amount:         500,
+				Status:         domain.StatusProcessed,
+			},
+		}
+
+		f.transfer.EXPECT().
+			ListTransfersByWalletID(gomock.Any(), "w1", int32(10), int32(0)).
+			Return(expected, nil)
+
+		results, err := f.svc.ListWalletTransfers(context.Background(), "w1", 10, 0)
+		require.NoError(t, err)
+		assert.Equal(t, expected, results)
+	})
+}
+

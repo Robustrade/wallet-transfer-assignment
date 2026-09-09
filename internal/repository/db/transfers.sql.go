@@ -74,3 +74,47 @@ func (q *Queries) GetTransfer(ctx context.Context, id string) (Transfer, error) 
 	)
 	return i, err
 }
+
+const listTransfersByWalletID = `-- name: ListTransfersByWalletID :many
+SELECT id, idempotency_key, from_wallet_id, to_wallet_id, amount, status, error_reason, created_at, updated_at
+FROM transfers
+WHERE from_wallet_id = $1 OR to_wallet_id = $1
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListTransfersByWalletIDParams struct {
+	FromWalletID string `json:"from_wallet_id"`
+	Limit        int32  `json:"limit"`
+	Offset       int32  `json:"offset"`
+}
+
+func (q *Queries) ListTransfersByWalletID(ctx context.Context, arg ListTransfersByWalletIDParams) ([]Transfer, error) {
+	rows, err := q.db.Query(ctx, listTransfersByWalletID, arg.FromWalletID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transfer
+	for rows.Next() {
+		var i Transfer
+		if err := rows.Scan(
+			&i.ID,
+			&i.IdempotencyKey,
+			&i.FromWalletID,
+			&i.ToWalletID,
+			&i.Amount,
+			&i.Status,
+			&i.ErrorReason,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

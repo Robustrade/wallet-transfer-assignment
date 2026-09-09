@@ -72,7 +72,7 @@ func TestWalletLifecycle(t *testing.T) {
 
 	resp, err := client.Post(ts.URL+"/wallets", "application/json", bytes.NewReader(createBody))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	var created domain.Wallet
@@ -84,7 +84,7 @@ func TestWalletLifecycle(t *testing.T) {
 	// 2. Get Wallet successfully
 	getResp, err := client.Get(ts.URL + "/wallets/" + walletID)
 	require.NoError(t, err)
-	defer getResp.Body.Close()
+	defer func() { _ = getResp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, getResp.StatusCode)
 
 	var fetched domain.Wallet
@@ -96,7 +96,7 @@ func TestWalletLifecycle(t *testing.T) {
 	// 3. Get non-existent Wallet returns 404
 	missingResp, err := client.Get(ts.URL + "/wallets/unknown_wallet_id")
 	require.NoError(t, err)
-	defer missingResp.Body.Close()
+	defer func() { _ = missingResp.Body.Close() }()
 	assert.Equal(t, http.StatusNotFound, missingResp.StatusCode)
 
 	// 4. Create Wallet with negative balance returns 400
@@ -108,6 +108,6 @@ func TestWalletLifecycle(t *testing.T) {
 
 	negResp, err := client.Post(ts.URL+"/wallets", "application/json", bytes.NewReader(negBody))
 	require.NoError(t, err)
-	defer negResp.Body.Close()
+	defer func() { _ = negResp.Body.Close() }()
 	assert.Equal(t, http.StatusBadRequest, negResp.StatusCode)
 }

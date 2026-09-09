@@ -54,6 +54,57 @@ Creates a transfer between two wallets.
   }
   ```
 
+### `GET /transfers/{id}`
+
+Fetches a transfer record by its unique transfer ID.
+
+#### Responses
+- `200 OK`: Transfer found. Returns the transfer object (`id`, `idempotencyKey`, `fromWalletId`, `toWalletId`, `amount` in paise, `status`, `errorReason`, `createdAt`, `updatedAt`).
+- `400 Bad Request`: Transfer ID parameter is empty.
+- `404 Not Found`: Transfer record does not exist.
+  ```json
+  {
+    "error": "NOT_FOUND",
+    "message": "transfer not found"
+  }
+  ```
+
+### `GET /wallets/{id}`
+
+Fetches wallet details and current balance.
+
+#### Responses
+- `200 OK`: Returns wallet object (`id`, `balance` in paise, `createdAt`, `updatedAt`).
+- `400 Bad Request`: Wallet ID parameter is empty.
+- `404 Not Found`: Wallet does not exist.
+
+### `GET /wallets/{id}/transfers`
+
+Lists all transfers involving the specified wallet (as sender or receiver), ordered reverse-chronologically (`created_at DESC`).
+
+#### Query Parameters
+- `limit`: integer, optional (default: 20, maximum: 100). Number of records to return.
+- `offset`: integer, optional (default: 0, minimum: 0). Number of records to skip.
+
+#### Responses
+- `200 OK`: Returns a JSON array of transfer objects.
+  ```json
+  [
+    {
+      "id": "tr_123",
+      "idempotencyKey": "key_1",
+      "fromWalletId": "wallet_1",
+      "toWalletId": "wallet_2",
+      "amount": 3000,
+      "status": "PROCESSED",
+      "createdAt": "2026-09-09T03:00:00Z",
+      "updatedAt": "2026-09-09T03:00:00Z"
+    }
+  ]
+  ```
+- `400 Bad Request`: Wallet ID parameter is empty.
+- `404 Not Found`: Wallet does not exist.
+
 ---
 
 ## 3. Database Schema
@@ -87,6 +138,9 @@ CREATE TABLE transfers (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT check_different_wallets CHECK (from_wallet_id <> to_wallet_id)
 );
+
+CREATE INDEX idx_transfers_from_wallet_id ON transfers(from_wallet_id);
+CREATE INDEX idx_transfers_to_wallet_id ON transfers(to_wallet_id);
 ```
 
 ### `ledger_entries`
@@ -218,3 +272,6 @@ The test suite validates behavior directly against the database:
 3. **Concurrency Tests**:
    - 50 concurrent goroutines attempting to debit from a single wallet with limited funds to verify that no double-spending occurs and balances never drop below zero.
    - Bidirectional concurrent transfers between two wallets to verify deadlock-free execution.
+4. **History & Lookup Tests**:
+   - Single transfer lookup (`GET /transfers/{id}`) for processed and failed transfers.
+   - Wallet history lookup (`GET /wallets/{id}/transfers`) verifying reverse-chronological order, debit/credit inclusion, and limit/offset pagination.

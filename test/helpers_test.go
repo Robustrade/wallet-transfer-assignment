@@ -22,7 +22,7 @@ func createTestWallet(t *testing.T, ts *httptest.Server, id string, balance int6
 
 	resp, err := ts.Client().Post(ts.URL+"/wallets", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 
@@ -38,7 +38,7 @@ func getTestWallet(t *testing.T, ts *httptest.Server, id string) domain.Wallet {
 
 	resp, err := ts.Client().Get(ts.URL + "/wallets/" + id)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -57,7 +57,7 @@ func sendTransferFull(t *testing.T, ts *httptest.Server, req domain.CreateTransf
 
 	resp, err := ts.Client().Post(ts.URL+"/transfers", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	headers := resp.Header.Clone()
 
@@ -78,6 +78,52 @@ func sendTransfer(t *testing.T, ts *httptest.Server, req domain.CreateTransferRe
 	status, _, tr, errBody := sendTransferFull(t, ts, req)
 	return status, tr, errBody
 }
+
+// getTestTransfer fetches a transfer via GET /transfers/{id}.
+func getTestTransfer(t *testing.T, ts *httptest.Server, id string) (int, *domain.Transfer, map[string]any) {
+	t.Helper()
+
+	resp, err := ts.Client().Get(ts.URL + "/transfers/" + id)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusOK {
+		var tr domain.Transfer
+		err = json.NewDecoder(resp.Body).Decode(&tr)
+		require.NoError(t, err)
+		return resp.StatusCode, &tr, nil
+	}
+
+	var errBody map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&errBody)
+	return resp.StatusCode, nil, errBody
+}
+
+// listTestWalletTransfers fetches transfer history via GET /wallets/{id}/transfers?{query}.
+func listTestWalletTransfers(t *testing.T, ts *httptest.Server, walletID string, query string) (int, []domain.Transfer, map[string]any) {
+	t.Helper()
+
+	url := ts.URL + "/wallets/" + walletID + "/transfers"
+	if query != "" {
+		url += "?" + query
+	}
+
+	resp, err := ts.Client().Get(url)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusOK {
+		var transfers []domain.Transfer
+		err = json.NewDecoder(resp.Body).Decode(&transfers)
+		require.NoError(t, err)
+		return resp.StatusCode, transfers, nil
+	}
+
+	var errBody map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&errBody)
+	return resp.StatusCode, nil, errBody
+}
+
 
 // getTestLedgerEntries queries the database directly for ledger entries belonging to a transfer.
 func getTestLedgerEntries(t *testing.T, pool *pgxpool.Pool, transferID string) []domain.LedgerEntry {

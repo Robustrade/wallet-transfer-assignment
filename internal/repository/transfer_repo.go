@@ -14,6 +14,7 @@ import (
 type TransferRepository interface {
 	CreateTransfer(ctx context.Context, transfer domain.Transfer) (*domain.Transfer, error)
 	GetTransfer(ctx context.Context, id string) (*domain.Transfer, error)
+	ListTransfersByWalletID(ctx context.Context, walletID string, limit, offset int32) ([]domain.Transfer, error)
 }
 
 type PostgresTransferRepository struct {
@@ -60,6 +61,22 @@ func (r *PostgresTransferRepository) GetTransfer(ctx context.Context, id string)
 		return nil, err
 	}
 	return toDomainTransfer(row), nil
+}
+
+func (r *PostgresTransferRepository) ListTransfersByWalletID(ctx context.Context, walletID string, limit, offset int32) ([]domain.Transfer, error) {
+	rows, err := r.q(ctx).ListTransfersByWalletID(ctx, db.ListTransfersByWalletIDParams{
+		FromWalletID: walletID,
+		Limit:        limit,
+		Offset:       offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	transfers := make([]domain.Transfer, len(rows))
+	for i, row := range rows {
+		transfers[i] = *toDomainTransfer(row)
+	}
+	return transfers, nil
 }
 
 func toDomainTransfer(t db.Transfer) *domain.Transfer {

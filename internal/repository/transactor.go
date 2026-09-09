@@ -32,7 +32,7 @@ func (t *PgxTransactor) WithinTransaction(ctx context.Context, fn func(ctx conte
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	txCtx := context.WithValue(ctx, txContextKey{}, tx)
 	if err := fn(txCtx); err != nil {

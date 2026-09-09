@@ -70,3 +70,18 @@ func (mr *MockTransferRepositoryMockRecorder) GetTransfer(ctx, id any) *gomock.C
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransfer", reflect.TypeOf((*MockTransferRepository)(nil).GetTransfer), ctx, id)
 }
+
+// ListTransfersByWalletID mocks base method.
+func (m *MockTransferRepository) ListTransfersByWalletID(ctx context.Context, walletID string, limit, offset int32) ([]domain.Transfer, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListTransfersByWalletID", ctx, walletID, limit, offset)
+	ret0, _ := ret[0].([]domain.Transfer)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListTransfersByWalletID indicates an expected call of ListTransfersByWalletID.
+func (mr *MockTransferRepositoryMockRecorder) ListTransfersByWalletID(ctx, walletID, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTransfersByWalletID", reflect.TypeOf((*MockTransferRepository)(nil).ListTransfersByWalletID), ctx, walletID, limit, offset)
+}

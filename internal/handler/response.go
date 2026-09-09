@@ -78,11 +78,14 @@ func mapWalletError(w http.ResponseWriter, err error) {
 // mapTransferError maps transfer service/domain errors to HTTP responses.
 func mapTransferError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, domain.ErrEmptyIdempotencyKey),
+	case errors.Is(err, service.ErrInvalidTransferID),
+		errors.Is(err, domain.ErrEmptyIdempotencyKey),
 		errors.Is(err, domain.ErrEmptyWalletID),
 		errors.Is(err, domain.ErrSameWalletTransfer),
 		errors.Is(err, domain.ErrInvalidAmount):
 		writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	case errors.Is(err, domain.ErrTransferNotFound):
+		writeJSONError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
 	case errors.Is(err, domain.ErrWalletNotFound):
 		writeJSONError(w, http.StatusUnprocessableEntity, "WALLET_NOT_FOUND", err.Error())
 	case errors.Is(err, domain.ErrInsufficientFunds):
@@ -93,3 +96,16 @@ func mapTransferError(w http.ResponseWriter, err error) {
 		writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 	}
 }
+
+// mapWalletTransferHistoryError maps errors when querying transfer history for a wallet.
+func mapWalletTransferHistoryError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, service.ErrInvalidWalletID), errors.Is(err, domain.ErrEmptyWalletID):
+		writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	case errors.Is(err, domain.ErrWalletNotFound):
+		writeJSONError(w, http.StatusNotFound, "NOT_FOUND", "wallet not found")
+	default:
+		writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+	}
+}
+

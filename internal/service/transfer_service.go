@@ -6,12 +6,23 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"wallet-transfer-assignment/internal/domain"
 	"wallet-transfer-assignment/internal/repository"
 )
+
+var (
+	ErrInvalidTransferID = errors.New("transfer id cannot be empty")
+)
+
+const (
+	defaultTransferLimit = 20
+	maxTransferLimit     = 100
+)
+
 
 type TransferService struct {
 	txManager    repository.Transactor
@@ -209,3 +220,44 @@ func (s *TransferService) executeTransferTransaction(
 
 	return createdTransfer, nil
 }
+
+// GetTransfer retrieves a transfer by its ID.
+func (s *TransferService) GetTransfer(ctx context.Context, id string) (*domain.Transfer, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, ErrInvalidTransferID
+	}
+	transfer, err := s.transferRepo.GetTransfer(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if transfer == nil {
+		return nil, domain.ErrTransferNotFound
+	}
+	return transfer, nil
+}
+
+// ListWalletTransfers retrieves transfers involving the specified wallet with pagination.
+func (s *TransferService) ListWalletTransfers(ctx context.Context, walletID string, limit, offset int32) ([]domain.Transfer, error) {
+	walletID = strings.TrimSpace(walletID)
+	if walletID == "" {
+		return nil, ErrInvalidWalletID
+	}
+
+	if _, err := s.walletRepo.GetWallet(ctx, walletID); err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 {
+		limit = defaultTransferLimit
+	} else if limit > maxTransferLimit {
+		limit = maxTransferLimit
+	}
+
+	if offset < 0 {
+		offset = 0
+	}
+
+	return s.transferRepo.ListTransfersByWalletID(ctx, walletID, limit, offset)
+}
+
