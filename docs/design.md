@@ -50,7 +50,7 @@ Creates a transfer between two wallets.
   ```json
   {
     "error": "INSUFFICIENT_FUNDS",
-    "message": "source wallet has insufficient balance"
+    "message": "insufficient funds"
   }
   ```
 
@@ -139,8 +139,8 @@ CREATE TABLE transfers (
     CONSTRAINT check_different_wallets CHECK (from_wallet_id <> to_wallet_id)
 );
 
-CREATE INDEX idx_transfers_from_wallet_id ON transfers(from_wallet_id);
-CREATE INDEX idx_transfers_to_wallet_id ON transfers(to_wallet_id);
+CREATE INDEX idx_transfers_from_wallet_created_at ON transfers(from_wallet_id, created_at DESC);
+CREATE INDEX idx_transfers_to_wallet_created_at ON transfers(to_wallet_id, created_at DESC);
 ```
 
 ### `ledger_entries`
@@ -152,7 +152,8 @@ CREATE TABLE ledger_entries (
     wallet_id   VARCHAR(64) NOT NULL REFERENCES wallets(id) ON DELETE RESTRICT,
     type        VARCHAR(10) NOT NULL CHECK (type IN ('DEBIT', 'CREDIT')),
     amount      BIGINT NOT NULL CHECK (amount > 0),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_ledger_transfer_type UNIQUE (transfer_id, type)
 );
 
 CREATE INDEX idx_ledger_transfer_id ON ledger_entries(transfer_id);
@@ -226,22 +227,54 @@ If two identical requests with the same `idempotencyKey` arrive simultaneously:
 
 ---
 
-## 6. Transfer State Machine
+## 6. Transfer State Machine & Lifecycle
 
-Allowed states are `PENDING`, `PROCESSED`, and `FAILED`.
+Allowed states defined in the database schema check constraint (`CHECK (status IN ('PENDING', 'PROCESSED', 'FAILED'))`) are:
+- `PENDING`: Initial state reserved for asynchronous or multi-stage settlement workflows.
+- `PROCESSED`: Terminal successful state indicating all ledger entries and balance mutations committed atomically.
+- `FAILED`: Terminal failed state indicating business rule failure (e.g. insufficient funds) with zero ledger entries.
 
-Lifecycle:
-- Transfers start in `PENDING`.
-- If balance is sufficient and accounts are valid, the status transitions to `PROCESSED`.
-- If balance is insufficient or an account is invalid, the status transitions to `FAILED` with an error reason.
+```mermaid
+stateDiagram-v2
+    [*] --> Evaluating: POST /transfers
+    
+    state "Atomic Database Transaction" as Tx {
+        Evaluating --> Locking: SELECT ... FOR UPDATE (ORDER BY id ASC)
+        Locking --> BalanceCheck: Read committed balances
+        
+        state BalanceCheck <<choice>>
+        BalanceCheck --> Processed: Balance >= Amount\n(Update balances, Write Ledger, Write Transfer)
+        BalanceCheck --> Failed: Balance < Amount\n(Leave balances & ledger untouched, Write Transfer)
+    }
 
-Terminal states (`PROCESSED`, `FAILED`) are immutable. Guarded SQL updates enforce that transitions can only occur from `PENDING`:
-```sql
-UPDATE transfers 
-SET status = 'PROCESSED', updated_at = NOW() 
-WHERE id = $1 AND status = 'PENDING';
+    Processed --> [*]: 201 Created\n(Idempotency Cached 200 OK)
+    Failed --> [*]: 422 Unprocessable Entity\n(Idempotency Cached 422)
+
+    note right of Tx
+        Under PostgreSQL READ COMMITTED isolation,
+        all mutations commit together atomically.
+        No intermediate uncommitted state is visible.
+    end note
 ```
-If the status is not `PENDING`, zero rows are updated.
+
+### Synchronous Atomic Execution (Current Implementation)
+Because internal wallet transfers execute synchronously in an isolated ACID transaction:
+1. **Zero Intermediate Visibility**: Under PostgreSQL's default `READ COMMITTED` isolation level, uncommitted writes are invisible to concurrent transactions. Inserting a transfer as `PENDING` followed immediately by `UPDATE ... SET status = 'PROCESSED'` within the same transaction would produce no observable difference to external clients while incurring redundant write-ahead log (WAL) and row-version churn.
+2. **Direct Atomic States**:
+   - **Successful Transfers**: If `fromWallet.Balance >= req.Amount`, sender balance is debited, receiver balance is credited, two immutable ledger entries (`DEBIT` and `CREDIT`) are recorded, and the transfer is written directly with status `PROCESSED`. The idempotency record is persisted in the same transaction.
+   - **Failed Transfers**: If `fromWallet.Balance < req.Amount`, balances and ledger remain strictly untouched. The transfer is persisted with status `FAILED` and `error_reason = 'INSUFFICIENT_FUNDS'` alongside an idempotency record for auditability.
+3. **Terminal Immutability**: `PROCESSED` and `FAILED` records are immutable once committed. No further updates are permitted.
+
+### Asynchronous Multi-Stage Lifecycle (Future Extension)
+The database constraint `CHECK (status IN ('PENDING', 'PROCESSED', 'FAILED'))` preserves forward compatibility for asynchronous or external payment rails (e.g., bank integrations, payment gateways, or distributed Saga workflows):
+1. **Stage 1 (Initiation)**: Transaction 1 creates the transfer with status `PENDING` and places an escrow or balance reservation on the source wallet.
+2. **Stage 2 (Settlement / Webhook)**: An asynchronous worker or external callback executes Stage 2 using a guarded SQL update:
+   ```sql
+   UPDATE transfers 
+   SET status = 'PROCESSED', updated_at = NOW() 
+   WHERE id = $1 AND status = 'PENDING';
+   ```
+   If the transfer is no longer in `PENDING` (e.g. already finalized or canceled), zero rows are updated, ensuring state machine safety across distributed workers.
 
 ---
 
