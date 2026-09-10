@@ -176,7 +176,7 @@ func (s *TransferService) recordFailedTransfer(ctx context.Context, req domain.C
 
 	errResp := map[string]string{
 		"error":   reason,
-		"message": "insufficient wallet balance for transfer",
+		"message": domain.ErrInsufficientFunds.Error(),
 	}
 	body, err := json.Marshal(errResp)
 	if err != nil {

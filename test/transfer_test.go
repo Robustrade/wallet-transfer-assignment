@@ -121,6 +121,7 @@ func TestTransfer_InsufficientFunds(t *testing.T) {
 	assert.Equal(t, "true", retryHeaders.Get("X-Idempotent-Replay"))
 	assert.Nil(t, retryTransfer)
 	assert.Equal(t, domain.ErrReasonInsufficientFunds, retryErrBody["error"])
+	assert.Equal(t, errBody, retryErrBody, "replayed error response payload must match the initial error response exactly")
 
 	// 10. Act: Retry with same key but different payload -> returns 409 Conflict
 	conflictStatus, _, _, conflictErrBody := sendTransferFull(t, ts, domain.CreateTransferRequest{

@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -369,7 +370,7 @@ func TestTransferService_IdempotentReplay(t *testing.T) {
 		Return(&domain.IdempotencyRecord{
 			Key:          "key_replay",
 			RequestHash:  req.CanonicalHash(),
-			ResponseCode: 201,
+			ResponseCode: http.StatusOK,
 			ResponseBody: cachedBody,
 		}, nil)
 
@@ -378,7 +379,7 @@ func TestTransferService_IdempotentReplay(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsReplay)
-	assert.Equal(t, 201, result.ResponseCode)
+	assert.Equal(t, http.StatusOK, result.ResponseCode)
 	require.NotNil(t, result.Transfer)
 	assert.Equal(t, "tr_cached_999", result.Transfer.ID)
 	assert.Equal(t, int64(250), result.Transfer.Amount)
@@ -407,7 +408,7 @@ func TestTransferService_IdempotentConflict(t *testing.T) {
 		Return(&domain.IdempotencyRecord{
 			Key:          "key_conflict",
 			RequestHash:  tamperedReq.CanonicalHash(),
-			ResponseCode: 201,
+			ResponseCode: http.StatusOK,
 			ResponseBody: `{}`,
 		}, nil)
 
@@ -444,7 +445,7 @@ func TestTransferService_ConcurrentDuplicateKeyRecovery(t *testing.T) {
 		Return(&domain.IdempotencyRecord{
 			Key:          "key_race",
 			RequestHash:  req.CanonicalHash(),
-			ResponseCode: 201,
+			ResponseCode: http.StatusOK,
 			ResponseBody: cachedBody,
 		}, nil)
 
@@ -452,6 +453,7 @@ func TestTransferService_ConcurrentDuplicateKeyRecovery(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsReplay)
+	assert.Equal(t, http.StatusOK, result.ResponseCode)
 	assert.Equal(t, "tr_winner_1", result.Transfer.ID)
 	assert.Equal(t, int64(250), result.Transfer.Amount)
 }
