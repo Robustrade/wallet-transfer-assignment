@@ -1,0 +1,521 @@
+openapi: 3.0.3
+info:
+  title: Wallet Transfer Service API
+  description: |
+    Production-grade HTTP REST API for wallet management, atomic double-entry ledger fund transfers,
+    deterministic concurrency control, and distributed idempotency replay.
+    
+    All monetary amounts are strictly represented as 64-bit signed integers in minor currency units (paise)
+    to prevent floating-point rounding drift.
+  version: 1.0.0
+  contact:
+    name: Backend Engineering Team
+servers:
+  - url: http://localhost:8080
+    description: Local Development Server
+
+paths:
+  /wallets:
+    post:
+      summary: Create or seed a wallet
+      description: |
+        Creates a new wallet with an initial balance. Used for account onboarding and test fixture seeding.
+        Negative balances are rejected at both the service layer and database constraint level (`CHECK (balance >= 0)`).
+      operationId: createWallet
+      tags:
+        - Wallets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWalletRequest'
+      responses:
+        '201':
+          description: Wallet created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+        '400':
+          description: Invalid request payload or validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidJSON:
+                  summary: Malformed JSON or unknown field
+                  value:
+                    error: INVALID_REQUEST
+                    message: "malformed JSON at position 12"
+                emptyWalletID:
+                  summary: Empty Wallet ID
+                  value:
+                    error: VALIDATION_ERROR
+                    message: "wallet id cannot be empty"
+                negativeBalance:
+                  summary: Negative Balance
+                  value:
+                    error: VALIDATION_ERROR
+                    message: "wallet balance cannot be negative"
+        '409':
+          description: Wallet with this ID already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: CONFLICT
+                message: "wallet with this id already exists"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: INTERNAL_ERROR
+                message: "internal server error"
+
+  /wallets/{id}:
+    get:
+      summary: Get wallet details and balance
+      description: Retrieves the current stored balance and timestamps for a specific wallet.
+      operationId: getWallet
+      tags:
+        - Wallets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the wallet
+          schema:
+            type: string
+          example: "w_alice"
+      responses:
+        '200':
+          description: Wallet retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+        '400':
+          description: Invalid wallet ID parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: INVALID_REQUEST
+                message: "wallet id is required"
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: NOT_FOUND
+                message: "wallet not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: INTERNAL_ERROR
+                message: "internal server error"
+
+  /wallets/{id}/transfers:
+    get:
+      summary: List transfer history for a wallet
+      description: |
+        Retrieves a paginated chronological list of transfers involving the specified wallet
+        (either as sender or receiver), ordered from newest to oldest.
+      operationId: listWalletTransfers
+      tags:
+        - Wallets
+        - Transfers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the wallet
+          schema:
+            type: string
+          example: "w_alice"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of transfers to return (default 20, max 100)
+          schema:
+            type: integer
+            format: int32
+            default: 20
+            minimum: 1
+            maximum: 100
+          example: 20
+        - name: offset
+          in: query
+          required: false
+          description: Number of transfers to skip for pagination (default 0)
+          schema:
+            type: integer
+            format: int32
+            default: 0
+            minimum: 0
+          example: 0
+      responses:
+        '200':
+          description: List of transfers retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transfer'
+        '400':
+          description: Invalid wallet ID parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: VALIDATION_ERROR
+                message: "wallet id cannot be empty"
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: NOT_FOUND
+                message: "wallet not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: INTERNAL_ERROR
+                message: "internal server error"
+
+  /transfers:
+    post:
+      summary: Execute an atomic funds transfer
+      description: |
+        Initiates an atomic funds transfer between two distinct wallets.
+        
+        **Transactional Guarantees & Concurrency Control**:
+        1. **Row Locking**: Sender and receiver wallet rows are locked in deterministic ID order (`ORDER BY id ASC FOR UPDATE`) to prevent circular deadlocks.
+        2. **Balance Validation**: Source wallet must have `balance >= amount`.
+        3. **Atomic Execution**: Balance mutations, transfer record, double-entry ledger rows (`DEBIT` and `CREDIT`), and idempotency records are committed in a single PostgreSQL transaction.
+        4. **Idempotency & Replay**:
+           - If a request with the same `idempotencyKey` and identical payload is re-submitted, the system returns `200 OK` with header `X-Idempotent-Replay: true` and the exact cached payload without mutating balances.
+           - Concurrent duplicate requests racing at the exact same microsecond are resolved via PostgreSQL unique constraint violation (`23505`) recovery.
+           - If an existing `idempotencyKey` is reused with altered parameters, the request is rejected with `409 Conflict`.
+        5. **Audit Invariant**: If funds are insufficient, the transfer is persisted as `FAILED` with reason `INSUFFICIENT_FUNDS` alongside an idempotency record for auditing, ensuring retries safely return 422 with `X-Idempotent-Replay: true` while touching **zero** balances and creating **zero** ledger entries.
+      operationId: createTransfer
+      tags:
+        - Transfers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransferRequest'
+      responses:
+        '201':
+          description: Transfer executed and processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '200':
+          description: Idempotent replay of previously processed transfer
+          headers:
+            X-Idempotent-Replay:
+              schema:
+                type: string
+                enum: ["true"]
+              description: Indicates this response is a cached replay rather than a freshly executed transaction
+              example: "true"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '400':
+          description: Validation error or malformed request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidAmount:
+                  summary: Amount not greater than zero
+                  value:
+                    error: VALIDATION_ERROR
+                    message: "transfer amount must be strictly greater than zero"
+                sameWallet:
+                  summary: Self-transfer prohibited
+                  value:
+                    error: VALIDATION_ERROR
+                    message: "cannot transfer funds to the same wallet"
+                emptyKey:
+                  summary: Missing idempotency key
+                  value:
+                    error: VALIDATION_ERROR
+                    message: "idempotency key cannot be empty"
+                emptyWalletID:
+                  summary: Missing wallet ID
+                  value:
+                    error: VALIDATION_ERROR
+                    message: "wallet id cannot be empty"
+        '409':
+          description: Idempotency conflict - key reused with different parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: IDEMPOTENCY_CONFLICT
+                message: "idempotency key reused with different parameters"
+        '422':
+          description: Business logic rejection
+          headers:
+            X-Idempotent-Replay:
+              schema:
+                type: string
+                enum: ["true"]
+              description: Present if this failure response is an idempotent replay of a previously recorded failed transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                insufficientFunds:
+                  summary: Sender has insufficient balance
+                  value:
+                    error: INSUFFICIENT_FUNDS
+                    message: "insufficient funds"
+                walletNotFound:
+                  summary: One or both wallets do not exist
+                  value:
+                    error: WALLET_NOT_FOUND
+                    message: "wallet not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: INTERNAL_ERROR
+                message: "internal server error"
+
+  /transfers/{id}:
+    get:
+      summary: Get transfer details by ID
+      description: Retrieves the current status, amounts, timestamps, and error reason (if failed) for a transfer.
+      operationId: getTransfer
+      tags:
+        - Transfers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the transfer
+          schema:
+            type: string
+          example: "0191eb42-6f34-7a1b-8e2c-1234567890ab"
+      responses:
+        '200':
+          description: Transfer details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '400':
+          description: Invalid transfer ID parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: INVALID_REQUEST
+                message: "transfer id is required"
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: NOT_FOUND
+                message: "transfer not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: INTERNAL_ERROR
+                message: "internal server error"
+
+components:
+  schemas:
+    CreateWalletRequest:
+      type: object
+      required:
+        - id
+        - balance
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the wallet (non-empty string).
+          example: "w_alice"
+        balance:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Initial balance in minor currency units (paise). Must be non-negative.
+          example: 10000
+
+    Wallet:
+      type: object
+      required:
+        - id
+        - balance
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the wallet.
+          example: "w_alice"
+        balance:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Current wallet balance in minor currency units (paise).
+          example: 10000
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the wallet was created.
+          example: "2026-09-07T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the wallet was last updated.
+          example: "2026-09-07T10:00:00Z"
+
+    CreateTransferRequest:
+      type: object
+      required:
+        - idempotencyKey
+        - fromWalletId
+        - toWalletId
+        - amount
+      additionalProperties: false
+      properties:
+        idempotencyKey:
+          type: string
+          description: Client-supplied unique key to ensure exactly-once execution across retries.
+          example: "idemp_req_001"
+        fromWalletId:
+          type: string
+          description: Sender wallet identifier. Must not be empty.
+          example: "w_alice"
+        toWalletId:
+          type: string
+          description: Receiver wallet identifier. Must not equal fromWalletId.
+          example: "w_bob"
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Transfer amount in minor currency units (paise). Must be strictly positive.
+          example: 2500
+
+    TransferStatus:
+      type: string
+      enum:
+        - PENDING
+        - PROCESSED
+        - FAILED
+      description: Lifecycle state of the transfer.
+      example: "PROCESSED"
+
+    Transfer:
+      type: object
+      required:
+        - id
+        - idempotencyKey
+        - fromWalletId
+        - toWalletId
+        - amount
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: Unique UUID of the transfer.
+          example: "0191eb42-6f34-7a1b-8e2c-1234567890ab"
+        idempotencyKey:
+          type: string
+          description: Idempotency key associated with this transfer.
+          example: "idemp_req_001"
+        fromWalletId:
+          type: string
+          description: Sender wallet identifier.
+          example: "w_alice"
+        toWalletId:
+          type: string
+          description: Receiver wallet identifier.
+          example: "w_bob"
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Transfer amount in minor currency units (paise).
+          example: 2500
+        status:
+          $ref: '#/components/schemas/TransferStatus'
+        errorReason:
+          type: string
+          nullable: true
+          description: Explanation reason if the transfer ended in FAILED status (e.g. INSUFFICIENT_FUNDS). Omitted on success.
+          example: "INSUFFICIENT_FUNDS"
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the transfer record was created.
+          example: "2026-09-07T10:05:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the transfer record was last updated.
+          example: "2026-09-07T10:05:00Z"
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code.
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          description: Human-readable error message.
+          example: "transfer amount must be strictly greater than zero"

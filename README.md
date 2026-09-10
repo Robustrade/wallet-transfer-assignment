@@ -1,35 +1,137 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+A high-concurrency, transactional wallet transfer service in Go and PostgreSQL with atomic double-entry ledger bookkeeping, deterministic row locking, and distributed idempotency replay. For architectural rationale, database constraints, and concurrency strategies, see [`docs/design.md`](./docs/design.md).
 
-## Included
+---
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+## Tech Stack
 
-## Intended use
+- **Language**: Go 1.24
+- **Database**: PostgreSQL 18 (Docker container)
+- **Database Driver / Pool**: `jackc/pgx/v5`
+- **Database Migrations**: `pressly/goose/v3`
+- **SQL Queries**: `sqlc` (type-safe SQL compiler)
+- **HTTP Routing**: `go-chi/chi/v5`
+- **API Specification**: OpenAPI 3.0.3 ([`openapi.yaml`](./openapi.yaml))
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+---
 
-## Notes
+## How to Run
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+### Prerequisites
 
-## How to Submit Assignment
+- [Go 1.24+](https://go.dev/dl/)
+- [Docker & Docker Compose](https://docs.docker.com/get-docker/)
+- `make` (standard on Linux/macOS)
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+### 1. Install Development Tools (Setup)
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+Check and automatically install required CLI tools (`goose` for migrations, `sqlc`, `mockgen`) if not already present:
+
+```bash
+make setup
+```
+
+### 2. Start Local PostgreSQL
+
+Start the isolated PostgreSQL 18 development container on port `5433`:
+
+```bash
+make dev-up
+```
+
+### 3. Apply Database Migrations
+
+Apply database schemas (`wallets`, `transfers`, `ledger_entries`, `idempotency_records`):
+
+```bash
+make migrate-up
+```
+
+### 4. Start the API Server
+
+Run the HTTP server on port `8080`:
+
+```bash
+make run
+```
+
+*Alternatively, compile the binary and run directly:*
+
+```bash
+make build
+./bin/api
+```
+
+The API server will connect to PostgreSQL and listen on `http://localhost:8080`.
+
+---
+
+## Running Tests
+
+All test suites run against the live PostgreSQL database:
+
+```bash
+# Run unit and integration tests
+make test
+
+# Run tests with Go data race detector
+go test -race -v -count=1 ./test/...
+```
+
+---
+
+## API Examples (`curl`)
+
+All monetary values are stored and transferred as 64-bit integers in minor currency units (paise: ₹1.00 = 100 paise). See [`openapi.yaml`](./openapi.yaml) for full schema details.
+
+### 1. Create / Seed Wallets
+
+```bash
+# Seed Alice with 10,000 paise (₹100)
+curl -s -X POST http://localhost:8080/wallets \
+  -H "Content-Type: application/json" \
+  -d '{"id": "alice", "balance": 10000}' | jq
+
+# Seed Bob with 2,000 paise (₹20)
+curl -s -X POST http://localhost:8080/wallets \
+  -H "Content-Type: application/json" \
+  -d '{"id": "bob", "balance": 2000}' | jq
+```
+
+### 2. Query Wallet Balance
+
+```bash
+curl -s http://localhost:8080/wallets/alice | jq
+```
+
+### 3. Execute an Idempotent Transfer (Alice -> Bob)
+
+```bash
+curl -s -i -X POST http://localhost:8080/transfers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "idempotencyKey": "tx-001",
+    "fromWalletId": "alice",
+    "toWalletId": "bob",
+    "amount": 3000
+  }'
+```
+
+*Returns `201 Created` on the initial execution. Re-running the exact request returns `200 OK` with header `X-Idempotent-Replay: true` without double-debiting.*
+
+### 4. Fetch Wallet Transfer History
+
+```bash
+curl -s "http://localhost:8080/wallets/alice/transfers?limit=10&offset=0" | jq
+```
+
+---
+
+## Teardown
+
+To stop and remove the local PostgreSQL container and database volumes:
+
+```bash
+make dev-down
+```
