@@ -4671,3 +4671,52 @@ I conducted a comprehensive contract review comparing the specification against 
    - All errors adhere to the unified schema: `{"error": string, "message": string}`, matching `writeJSONError` in `internal/handler/response.go`.
 
 ---
+
+## [85] User Prompt (2026-09-10T02:43:04Z)
+
+<USER_REQUEST>
+Now create a readme file with the basic steps to run the service , make it clean and readable. Since we already have the design document, the first part can be techstack ,second should be how to run
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-10T08:13:04+05:30.
+</ADDITIONAL_METADATA>
+
+---
+
+### Antigravity Assistant Response (2026-09-10T02:43:40Z)
+
+I have updated [`README.md`](file:///home/navnit/robustrade/wallet-transfer-assignment/README.md) to be clean, readable, and practical:
+
+- **Architecture Reference**: Directly links to [`docs/design.md`](file:///home/navnit/robustrade/wallet-transfer-assignment/docs/design.md) for architectural trade-offs, schema constraints, and concurrency strategies rather than duplicating deep design notes.
+- **Tech Stack First**: Clearly lists Go 1.24, PostgreSQL 18, `pgx/v5`, `goose`, `sqlc`, `chi/v5`, and OpenAPI 3.0.3 ([`openapi.yaml`](file:///home/navnit/robustrade/wallet-transfer-assignment/openapi.yaml)).
+- **How to Run**:
+  - `make dev-up`: Starts the isolated local PostgreSQL 18 development container on port `5433`.
+  - `make migrate-up`: Executes Goose migrations for `wallets`, `transfers`, `ledger_entries`, `idempotency_records`, and transfer indexes.
+  - `make run` / `make build`: Runs the HTTP server on port `8080`.
+- **Testing**: Instructions for `make test` and data race detector `go test -race -v -count=1 ./test/...`.
+- **API Examples**: Clean `curl` examples demonstrating wallet creation, balance inquiry, idempotent transfer execution, replay verification (`X-Idempotent-Replay: true`), and paginated history.
+
+---
+
+## [86] User Prompt (2026-09-10T02:45:14Z)
+
+<USER_REQUEST>
+Can we also inlclude a setup script in makefile , to install if something is missing, like goose , this can be the first step in doc too
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-10T08:15:14+05:30.
+</ADDITIONAL_METADATA>
+
+---
+
+### Antigravity Assistant Response (2026-09-10T02:45:45Z)
+
+I have added an automated `setup` target to [`Makefile`](file:///home/navnit/robustrade/wallet-transfer-assignment/Makefile) and updated [`README.md`](file:///home/navnit/robustrade/wallet-transfer-assignment/README.md) to make it the initial step in the onboarding flow:
+
+1. **Makefile `setup` Target**:
+   - Checks for `goose`, `sqlc`, and `mockgen`.
+   - Automatically installs any missing binaries via `go install` (`github.com/pressly/goose/v3/cmd/goose@v3.24.1`, `github.com/sqlc-dev/sqlc/cmd/sqlc@v1.28.0`, `go.uber.org/mock/mockgen@v0.5.0`).
+   - Exports `PATH := $(shell go env GOPATH)/bin:$(PATH)` at the top of [`Makefile`](file:///home/navnit/robustrade/wallet-transfer-assignment/Makefile) so installed tool binaries are immediately executable across all make targets without requiring manual shell path configuration.
+
+2. **README.md First Step**:
+   - Added `Step 1: Install Development Tools (Setup)` executing `make setup` before starting the database or running migrations.

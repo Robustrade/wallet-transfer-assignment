@@ -1,7 +1,16 @@
-.PHONY: help dev-up dev-down migrate-up migrate-down migrate-status sqlc mock build run test fmt
+.PHONY: help setup dev-up dev-down migrate-up migrate-down migrate-status sqlc mock build run test fmt
+
+export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
 help: ## Display available targets
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+setup: ## Install missing development tools (goose, sqlc, mockgen)
+	@echo "Checking development tools..."
+	@which goose > /dev/null 2>&1 || (echo "Installing goose..." && go install github.com/pressly/goose/v3/cmd/goose@v3.24.1)
+	@which sqlc > /dev/null 2>&1 || (echo "Installing sqlc..." && go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.28.0)
+	@which mockgen > /dev/null 2>&1 || (echo "Installing mockgen..." && go install go.uber.org/mock/mockgen@v0.5.0)
+	@echo "All required development tools are available."
 
 dev-up: ## Start local PostgreSQL 18 container
 	docker compose -f docker-compose.dev.yml up -d
