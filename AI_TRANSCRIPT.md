@@ -4619,3 +4619,55 @@ The assignment explicitly states:
    - **Option B (Keep only `GET /transfers/{id}`)**: Keep the 15 lines for `GET /transfers/{id}` since it fulfills the optional transfer history/inquiry item, but strip all health/middleware fluff.
 
 Which option would you prefer: **Option A (Strict Minimal Core)** or **Option B (Keep only `GET /transfers/{id}`)**?
+
+---
+
+## [84] User Prompt (2026-09-10T02:37:22Z)
+
+<USER_REQUEST>
+Add openapi.yaml file fro every end point, make sure the request response body is correct with our schema, conduct a review to verify there is no drift
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-10T08:07:22+05:30.
+</ADDITIONAL_METADATA>
+
+---
+
+### Antigravity Assistant Response (2026-09-10T02:37:55Z)
+
+I have created [`openapi.yaml`](file:///home/navnit/robustrade/wallet-transfer-assignment/openapi.yaml) defining the complete OpenAPI 3.0.3 specification for all 5 HTTP endpoints in the service.
+
+I conducted a comprehensive contract review comparing the specification against our Go router, HTTP handlers, domain models, and PostgreSQL constraints to verify zero drift:
+
+---
+
+### 1. Endpoint & Method Coverage
+
+| Endpoint | HTTP Method | Handler Function | Purpose |
+| :--- | :--- | :--- | :--- |
+| `/wallets` | `POST` | `WalletHandler.CreateWallet` | Onboard or seed wallet with balance |
+| `/wallets/{id}` | `GET` | `WalletHandler.GetWallet` | Retrieve wallet balance & metadata |
+| `/wallets/{id}/transfers` | `GET` | `TransferHandler.ListWalletTransfers` | Paginated wallet transfer history |
+| `/transfers` | `POST` | `TransferHandler.CreateTransfer` | Execute atomic double-entry transfer / replay |
+| `/transfers/{id}` | `GET` | `TransferHandler.GetTransfer` | Retrieve transfer status & details |
+
+---
+
+### 2. Schema Drift Verification
+
+1. **Monetary Quantities (Minor Units)**:
+   - In Go & PostgreSQL: `amount` and `balance` are strictly `int64` / `BIGINT` representing minor currency units (paise).
+   - In OpenAPI: Defined as `type: integer`, `format: int64`, with `minimum: 0` for balances and `minimum: 1` for transfer amounts. Zero floating-point types used.
+2. **Payload Validation & Strict Property Rules**:
+   - `CreateWalletRequest` and `CreateTransferRequest` specify `additionalProperties: false`, matching Go JSON decoder enforcement (`dec.DisallowUnknownFields()`).
+3. **Transfer Lifecycle & State Machine**:
+   - `TransferStatus` enum in OpenAPI strictly matches domain constants: `PENDING`, `PROCESSED`, `FAILED`.
+   - `errorReason` is nullable/optional, populating only on business failures (e.g. `INSUFFICIENT_FUNDS`), matching Go struct tag `json:"errorReason,omitempty"`.
+4. **Idempotency & Replay Semantics**:
+   - Fresh executions return HTTP `201 Created` with the newly minted transfer object.
+   - Replay executions return HTTP `200 OK` accompanied by the `X-Idempotent-Replay: true` HTTP response header.
+   - Parameter tampering / key reuse returns HTTP `409 Conflict` with `error: "IDEMPOTENCY_CONFLICT"`.
+5. **Business Error Response Structure**:
+   - All errors adhere to the unified schema: `{"error": string, "message": string}`, matching `writeJSONError` in `internal/handler/response.go`.
+
+---
