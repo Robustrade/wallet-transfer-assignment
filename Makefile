@@ -8,7 +8,7 @@ help: ## Display available targets
 setup: ## Install missing development tools (goose, sqlc, mockgen)
 	@echo "Checking development tools..."
 	@which goose > /dev/null 2>&1 || (echo "Installing goose..." && go install github.com/pressly/goose/v3/cmd/goose@v3.24.1)
-	@which sqlc > /dev/null 2>&1 || (echo "Installing sqlc..." && go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.28.0)
+	@which sqlc > /dev/null 2>&1 || (echo "Installing sqlc..." && go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0)
 	@which mockgen > /dev/null 2>&1 || (echo "Installing mockgen..." && go install go.uber.org/mock/mockgen@v0.5.0)
 	@echo "All required development tools are available."
 
