@@ -60,6 +60,10 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 		}
 	}
 
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("request body must only contain a single JSON object")
+	}
+
 	return nil
 }
 
@@ -68,6 +72,8 @@ func mapWalletError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, service.ErrInvalidWalletID), errors.Is(err, service.ErrNegativeWalletBalance):
 		writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	case errors.Is(err, domain.ErrWalletAlreadyExists):
+		writeJSONError(w, http.StatusConflict, "CONFLICT", err.Error())
 	case errors.Is(err, domain.ErrWalletNotFound):
 		writeJSONError(w, http.StatusNotFound, "NOT_FOUND", "wallet not found")
 	default:
@@ -108,4 +114,3 @@ func mapWalletTransferHistoryError(w http.ResponseWriter, err error) {
 		writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 	}
 }
-

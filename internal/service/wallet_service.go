@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	ErrInvalidWalletID      = errors.New("wallet id cannot be empty")
+	ErrInvalidWalletID       = errors.New("wallet id cannot be empty")
 	ErrNegativeWalletBalance = errors.New("wallet balance cannot be negative")
 )
 

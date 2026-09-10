@@ -6,7 +6,8 @@ import (
 )
 
 var (
-	ErrWalletNotFound = errors.New("wallet not found")
+	ErrWalletNotFound      = errors.New("wallet not found")
+	ErrWalletAlreadyExists = errors.New("wallet with this id already exists")
 )
 
 type Wallet struct {

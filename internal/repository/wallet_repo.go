@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"wallet-transfer-assignment/internal/domain"
 	"wallet-transfer-assignment/internal/repository/db"
@@ -37,6 +38,10 @@ func (r *PostgresWalletRepository) CreateWallet(ctx context.Context, id string, 
 		Balance: balance,
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, domain.ErrWalletAlreadyExists
+		}
 		return nil, err
 	}
 	return toDomainWallet(row), nil

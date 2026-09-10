@@ -55,59 +55,135 @@ func setupTestServer(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 	return ts, pool
 }
 
-func TestWalletLifecycle(t *testing.T) {
+func TestWallet_Create_Success(t *testing.T) {
 	ts, pool := setupTestServer(t)
 	defer ts.Close()
 	defer pool.Close()
 
-	client := ts.Client()
 	walletID := fmt.Sprintf("wallet_%d", time.Now().UnixNano())
+	var w domain.Wallet = createTestWallet(t, ts, walletID, 10000)
+	assert.Equal(t, walletID, w.ID)
+	assert.Equal(t, int64(10000), w.Balance)
+	assert.False(t, w.CreatedAt.IsZero())
+	assert.False(t, w.UpdatedAt.IsZero())
+}
 
-	// 1. Create Wallet successfully
-	createBody, err := json.Marshal(map[string]any{
+func TestWallet_Create_DuplicateID(t *testing.T) {
+	ts, pool := setupTestServer(t)
+	defer ts.Close()
+	defer pool.Close()
+
+	walletID := fmt.Sprintf("wallet_dup_%d", time.Now().UnixNano())
+	createTestWallet(t, ts, walletID, 5000)
+
+	body, err := json.Marshal(map[string]any{
 		"id":      walletID,
-		"balance": 10000,
+		"balance": 2000,
 	})
 	require.NoError(t, err)
 
-	resp, err := client.Post(ts.URL+"/wallets", "application/json", bytes.NewReader(createBody))
+	resp, err := ts.Client().Post(ts.URL+"/wallets", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	var created domain.Wallet
-	err = json.NewDecoder(resp.Body).Decode(&created)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+	var errBody map[string]any
+	err = json.NewDecoder(resp.Body).Decode(&errBody)
 	require.NoError(t, err)
-	assert.Equal(t, walletID, created.ID)
-	assert.Equal(t, int64(10000), created.Balance)
+	assert.Equal(t, "CONFLICT", errBody["error"])
+	assert.Equal(t, "wallet with this id already exists", errBody["message"])
+}
 
-	// 2. Get Wallet successfully
-	getResp, err := client.Get(ts.URL + "/wallets/" + walletID)
-	require.NoError(t, err)
-	defer func() { _ = getResp.Body.Close() }()
-	assert.Equal(t, http.StatusOK, getResp.StatusCode)
+func TestWallet_Create_NegativeBalance(t *testing.T) {
+	ts, pool := setupTestServer(t)
+	defer ts.Close()
+	defer pool.Close()
 
-	var fetched domain.Wallet
-	err = json.NewDecoder(getResp.Body).Decode(&fetched)
-	require.NoError(t, err)
-	assert.Equal(t, walletID, fetched.ID)
-	assert.Equal(t, int64(10000), fetched.Balance)
-
-	// 3. Get non-existent Wallet returns 404
-	missingResp, err := client.Get(ts.URL + "/wallets/unknown_wallet_id")
-	require.NoError(t, err)
-	defer func() { _ = missingResp.Body.Close() }()
-	assert.Equal(t, http.StatusNotFound, missingResp.StatusCode)
-
-	// 4. Create Wallet with negative balance returns 400
-	negBody, err := json.Marshal(map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"id":      "neg_wallet",
 		"balance": -500,
 	})
 	require.NoError(t, err)
 
-	negResp, err := client.Post(ts.URL+"/wallets", "application/json", bytes.NewReader(negBody))
+	resp, err := ts.Client().Post(ts.URL+"/wallets", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
-	defer func() { _ = negResp.Body.Close() }()
-	assert.Equal(t, http.StatusBadRequest, negResp.StatusCode)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	var errBody map[string]any
+	err = json.NewDecoder(resp.Body).Decode(&errBody)
+	require.NoError(t, err)
+	assert.Equal(t, "VALIDATION_ERROR", errBody["error"])
+	assert.Equal(t, "wallet balance cannot be negative", errBody["message"])
+}
+
+func TestWallet_Create_EmptyID(t *testing.T) {
+	ts, pool := setupTestServer(t)
+	defer ts.Close()
+	defer pool.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"id":      "   ",
+		"balance": 500,
+	})
+	require.NoError(t, err)
+
+	resp, err := ts.Client().Post(ts.URL+"/wallets", "application/json", bytes.NewReader(body))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	var errBody map[string]any
+	err = json.NewDecoder(resp.Body).Decode(&errBody)
+	require.NoError(t, err)
+	assert.Equal(t, "VALIDATION_ERROR", errBody["error"])
+	assert.Equal(t, "wallet id cannot be empty", errBody["message"])
+}
+
+func TestWallet_Create_TrailingJSON(t *testing.T) {
+	ts, pool := setupTestServer(t)
+	defer ts.Close()
+	defer pool.Close()
+
+	payload := []byte(`{"id":"wallet_trailing","balance":100} {"extra":"data"}`)
+	resp, err := ts.Client().Post(ts.URL+"/wallets", "application/json", bytes.NewReader(payload))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	var errBody map[string]any
+	err = json.NewDecoder(resp.Body).Decode(&errBody)
+	require.NoError(t, err)
+	assert.Equal(t, "INVALID_REQUEST", errBody["error"])
+	assert.Equal(t, "request body must only contain a single JSON object", errBody["message"])
+}
+
+func TestWallet_Get_Success(t *testing.T) {
+	ts, pool := setupTestServer(t)
+	defer ts.Close()
+	defer pool.Close()
+
+	walletID := fmt.Sprintf("wallet_get_%d", time.Now().UnixNano())
+	created := createTestWallet(t, ts, walletID, 7500)
+
+	fetched := getTestWallet(t, ts, walletID)
+	assert.Equal(t, created.ID, fetched.ID)
+	assert.Equal(t, created.Balance, fetched.Balance)
+}
+
+func TestWallet_Get_NotFound(t *testing.T) {
+	ts, pool := setupTestServer(t)
+	defer ts.Close()
+	defer pool.Close()
+
+	resp, err := ts.Client().Get(ts.URL + "/wallets/non_existent_wallet_id")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	var errBody map[string]any
+	err = json.NewDecoder(resp.Body).Decode(&errBody)
+	require.NoError(t, err)
+	assert.Equal(t, "NOT_FOUND", errBody["error"])
+	assert.Equal(t, "wallet not found", errBody["message"])
 }
