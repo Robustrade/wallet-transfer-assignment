@@ -23,7 +23,6 @@ const (
 	maxTransferLimit     = 100
 )
 
-
 type TransferService struct {
 	txManager    repository.Transactor
 	walletRepo   repository.WalletRepository
@@ -92,7 +91,10 @@ func (s *TransferService) ExecuteTransfer(ctx context.Context, req domain.Create
 		return nil, domain.ErrInsufficientFunds
 	}
 
-	body, _ := json.Marshal(createdTransfer)
+	body, err := json.Marshal(createdTransfer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal transfer: %w", err)
+	}
 	return &domain.TransferResult{
 		Transfer:     createdTransfer,
 		IsReplay:     false,
@@ -114,10 +116,17 @@ func (s *TransferService) checkIdempotency(ctx context.Context, req domain.Creat
 		return nil, domain.ErrIdempotencyConflict
 	}
 
-	var cachedTransfer domain.Transfer
-	_ = json.Unmarshal([]byte(record.ResponseBody), &cachedTransfer)
+	var transferPtr *domain.Transfer
+	if record.ResponseCode < 400 {
+		var cachedTransfer domain.Transfer
+		if err := json.Unmarshal([]byte(record.ResponseBody), &cachedTransfer); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal cached transfer: %w", err)
+		}
+		transferPtr = &cachedTransfer
+	}
+
 	return &domain.TransferResult{
-		Transfer:     &cachedTransfer,
+		Transfer:     transferPtr,
 		IsReplay:     true,
 		ResponseCode: record.ResponseCode,
 		ResponseBody: []byte(record.ResponseBody),
@@ -149,7 +158,7 @@ func (s *TransferService) lockWallets(ctx context.Context, fromID, toID string) 
 	return fromWallet, toWallet, nil
 }
 
-// recordFailedTransfer persists a FAILED transfer record for auditability without mutating balances or ledger.
+// recordFailedTransfer persists a FAILED transfer record and idempotency record for auditability without mutating balances or ledger.
 func (s *TransferService) recordFailedTransfer(ctx context.Context, req domain.CreateTransferRequest, reason string) (*domain.Transfer, error) {
 	failedTransfer := domain.Transfer{
 		ID:             uuid.New().String(),
@@ -164,6 +173,26 @@ func (s *TransferService) recordFailedTransfer(ctx context.Context, req domain.C
 	if err != nil {
 		return nil, fmt.Errorf("failed to record failed transfer: %w", err)
 	}
+
+	errResp := map[string]string{
+		"error":   reason,
+		"message": "insufficient wallet balance for transfer",
+	}
+	body, err := json.Marshal(errResp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal error response for idempotency: %w", err)
+	}
+
+	idempRecord := domain.IdempotencyRecord{
+		Key:          req.IdempotencyKey,
+		RequestHash:  req.CanonicalHash(),
+		ResponseCode: http.StatusUnprocessableEntity,
+		ResponseBody: string(body),
+	}
+	if _, err := s.idempRepo.CreateIdempotencyRecord(ctx, idempRecord); err != nil {
+		return nil, fmt.Errorf("failed to save idempotency record for failed transfer: %w", err)
+	}
+
 	return tr, nil
 }
 
@@ -211,7 +240,7 @@ func (s *TransferService) executeTransferTransaction(
 	idempRecord := domain.IdempotencyRecord{
 		Key:          req.IdempotencyKey,
 		RequestHash:  req.CanonicalHash(),
-		ResponseCode: http.StatusCreated,
+		ResponseCode: http.StatusOK,
 		ResponseBody: string(body),
 	}
 	if _, err := s.idempRepo.CreateIdempotencyRecord(ctx, idempRecord); err != nil {
@@ -260,4 +289,3 @@ func (s *TransferService) ListWalletTransfers(ctx context.Context, walletID stri
 
 	return s.transferRepo.ListTransfersByWalletID(ctx, walletID, limit, offset)
 }
-

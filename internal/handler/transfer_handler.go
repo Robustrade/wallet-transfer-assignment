@@ -32,7 +32,9 @@ func (h *TransferHandler) CreateTransfer(w http.ResponseWriter, r *http.Request)
 
 	if result.IsReplay {
 		w.Header().Set("X-Idempotent-Replay", "true")
-		writeJSON(w, http.StatusOK, result.Transfer)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(result.ResponseCode)
+		_, _ = w.Write(result.ResponseBody)
 		return
 	}
 
@@ -86,4 +88,3 @@ func (h *TransferHandler) ListWalletTransfers(w http.ResponseWriter, r *http.Req
 
 	writeJSON(w, http.StatusOK, transfers)
 }
-

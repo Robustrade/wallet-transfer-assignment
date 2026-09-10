@@ -124,7 +124,6 @@ func listTestWalletTransfers(t *testing.T, ts *httptest.Server, walletID string,
 	return resp.StatusCode, nil, errBody
 }
 
-
 // getTestLedgerEntries queries the database directly for ledger entries belonging to a transfer.
 func getTestLedgerEntries(t *testing.T, pool *pgxpool.Pool, transferID string) []domain.LedgerEntry {
 	t.Helper()
@@ -147,6 +146,7 @@ func getTestLedgerEntries(t *testing.T, pool *pgxpool.Pool, transferID string) [
 		e.Type = domain.LedgerEntryType(typ)
 		entries = append(entries, e)
 	}
+	require.NoError(t, rows.Err())
 	return entries
 }
 

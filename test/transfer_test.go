@@ -1,6 +1,8 @@
 package test
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -99,6 +101,55 @@ func TestTransfer_InsufficientFunds(t *testing.T) {
 	// 6. Assert: Zero ledger entries were created for the failed transfer
 	ledgerEntries := getTestLedgerEntries(t, pool, failedTransfer.ID)
 	assert.Empty(t, ledgerEntries)
+
+	// 7. Assert: Idempotency record is persisted in DB with 422 status
+	idempRec := getTestIdempotencyRecord(t, pool, idempKey)
+	assert.Equal(t, idempKey, idempRec.Key)
+	assert.Equal(t, http.StatusUnprocessableEntity, idempRec.ResponseCode)
+	assert.Contains(t, idempRec.ResponseBody, domain.ErrReasonInsufficientFunds)
+
+	// 8. Act: Retry identical failed transfer with same idempotency key
+	retryStatus, retryHeaders, retryTransfer, retryErrBody := sendTransferFull(t, ts, domain.CreateTransferRequest{
+		IdempotencyKey: idempKey,
+		FromWalletID:   fromID,
+		ToWalletID:     toID,
+		Amount:         1000,
+	})
+
+	// 9. Assert: Replay returns 422 Unprocessable Entity with X-Idempotent-Replay header
+	require.Equal(t, http.StatusUnprocessableEntity, retryStatus)
+	assert.Equal(t, "true", retryHeaders.Get("X-Idempotent-Replay"))
+	assert.Nil(t, retryTransfer)
+	assert.Equal(t, domain.ErrReasonInsufficientFunds, retryErrBody["error"])
+
+	// 10. Act: Retry with same key but different payload -> returns 409 Conflict
+	conflictStatus, _, _, conflictErrBody := sendTransferFull(t, ts, domain.CreateTransferRequest{
+		IdempotencyKey: idempKey,
+		FromWalletID:   fromID,
+		ToWalletID:     toID,
+		Amount:         2000, // modified amount
+	})
+	require.Equal(t, http.StatusConflict, conflictStatus)
+	assert.Equal(t, "IDEMPOTENCY_CONFLICT", conflictErrBody["error"])
+}
+
+func TestTransfer_TrailingJSON(t *testing.T) {
+	ts, pool := setupTestServer(t)
+	defer ts.Close()
+	defer pool.Close()
+
+	// Send JSON payload with trailing data after closing brace
+	payload := []byte(`{"idempotencyKey":"key_trailing","fromWalletId":"w1","toWalletId":"w2","amount":100} {"extra":"tokens"}`)
+	resp, err := ts.Client().Post(ts.URL+"/transfers", "application/json", bytes.NewReader(payload))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	var errBody map[string]any
+	err = json.NewDecoder(resp.Body).Decode(&errBody)
+	require.NoError(t, err)
+	assert.Equal(t, "INVALID_REQUEST", errBody["error"])
+	assert.Equal(t, "request body must only contain a single JSON object", errBody["message"])
 }
 
 func TestTransfer_WalletNotFound(t *testing.T) {

@@ -226,3 +226,80 @@ func TestConcurrency_DuplicateIdempotencyKeyRace(t *testing.T) {
 	ledgerEntries := getTestLedgerEntries(t, pool, transferID)
 	require.Len(t, ledgerEntries, 2)
 }
+
+// TestConcurrency_InsufficientFunds_DuplicateKeyRace verifies that when 10 goroutines
+// concurrently submit the exact same request with insufficient funds and identical idempotencyKey,
+// all 10 receive 422 Unprocessable Entity (no 500 internal errors) and exactly 1 failed transfer is recorded.
+func TestConcurrency_InsufficientFunds_DuplicateKeyRace(t *testing.T) {
+	ts, pool := setupTestServer(t)
+	defer ts.Close()
+	defer pool.Close()
+
+	fromID := fmt.Sprintf("sender_insuf_race_%d", time.Now().UnixNano())
+	toID := fmt.Sprintf("receiver_insuf_race_%d", time.Now().UnixNano())
+	createTestWallet(t, ts, fromID, 500)
+	createTestWallet(t, ts, toID, 1000)
+
+	idempKey := fmt.Sprintf("insuf_race_key_%d", time.Now().UnixNano())
+	req := domain.CreateTransferRequest{
+		IdempotencyKey: idempKey,
+		FromWalletID:   fromID,
+		ToWalletID:     toID,
+		Amount:         1000,
+	}
+
+	const racers = 10
+	var (
+		wg         sync.WaitGroup
+		startLatch = make(chan struct{})
+		results    = make([]struct {
+			status  int
+			headers http.Header
+			errBody map[string]any
+		}, racers)
+	)
+
+	wg.Add(racers)
+	for i := 0; i < racers; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			<-startLatch
+
+			status, headers, _, errBody := sendTransferFull(t, ts, req)
+			results[idx] = struct {
+				status  int
+				headers http.Header
+				errBody map[string]any
+			}{status: status, headers: headers, errBody: errBody}
+		}(i)
+	}
+
+	close(startLatch)
+	wg.Wait()
+
+	// Assert: All 10 racers received 422 Unprocessable Entity with INSUFFICIENT_FUNDS
+	var replayCount int
+	for _, res := range results {
+		require.Equal(t, http.StatusUnprocessableEntity, res.status)
+		require.NotNil(t, res.errBody)
+		assert.Equal(t, domain.ErrReasonInsufficientFunds, res.errBody["error"])
+		if res.headers.Get("X-Idempotent-Replay") == "true" {
+			replayCount++
+		}
+	}
+
+	// At least 1 initial failure and other racers replayed safely without 500 errors
+	assert.GreaterOrEqual(t, replayCount, 1, "at least one racer should be an idempotent replay")
+
+	// Balances remain untouched
+	assert.Equal(t, int64(500), getTestWallet(t, ts, fromID).Balance)
+	assert.Equal(t, int64(1000), getTestWallet(t, ts, toID).Balance)
+
+	// Exactly 1 failed transfer record in DB
+	failedTransfer := getTestTransferByIdempotencyKey(t, pool, idempKey)
+	assert.Equal(t, domain.StatusFailed, failedTransfer.Status)
+
+	// Zero ledger entries in DB
+	ledgerEntries := getTestLedgerEntries(t, pool, failedTransfer.ID)
+	assert.Empty(t, ledgerEntries)
+}

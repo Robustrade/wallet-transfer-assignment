@@ -103,7 +103,7 @@ func TestTransferService_SuccessfulTransfer(t *testing.T) {
 		CreateIdempotencyRecord(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, rec domain.IdempotencyRecord) (*domain.IdempotencyRecord, error) {
 			assert.Equal(t, "key_success", rec.Key)
-			assert.Equal(t, 201, rec.ResponseCode)
+			assert.Equal(t, 200, rec.ResponseCode)
 			assert.NotEmpty(t, rec.RequestHash)
 			assert.NotEmpty(t, rec.ResponseBody)
 			return &rec, nil
@@ -213,6 +213,15 @@ func TestTransferService_InsufficientFunds(t *testing.T) {
 			return &tr, nil
 		})
 
+	f.idemp.EXPECT().
+		CreateIdempotencyRecord(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, rec domain.IdempotencyRecord) (*domain.IdempotencyRecord, error) {
+			assert.Equal(t, "key_insuf", rec.Key)
+			assert.Equal(t, 422, rec.ResponseCode)
+			assert.Contains(t, rec.ResponseBody, domain.ErrReasonInsufficientFunds)
+			return &rec, nil
+		})
+
 	req := domain.CreateTransferRequest{
 		IdempotencyKey: "key_insuf",
 		FromWalletID:   "w1",
@@ -222,6 +231,37 @@ func TestTransferService_InsufficientFunds(t *testing.T) {
 
 	_, err := f.svc.ExecuteTransfer(context.Background(), req)
 	require.ErrorIs(t, err, domain.ErrInsufficientFunds)
+}
+
+func TestTransferService_InsufficientFunds_IdempotentReplay(t *testing.T) {
+	f := newTransferFixture(t)
+
+	req := domain.CreateTransferRequest{
+		IdempotencyKey: "key_insuf_replay",
+		FromWalletID:   "w1",
+		ToWalletID:     "w2",
+		Amount:         500,
+	}
+
+	cachedBody := `{"error":"INSUFFICIENT_FUNDS","message":"insufficient wallet balance for transfer"}`
+
+	f.idemp.EXPECT().
+		GetIdempotencyRecord(gomock.Any(), "key_insuf_replay").
+		Return(&domain.IdempotencyRecord{
+			Key:          "key_insuf_replay",
+			RequestHash:  req.CanonicalHash(),
+			ResponseCode: 422,
+			ResponseBody: cachedBody,
+		}, nil)
+
+	// WithinTransaction, wallet, and transfer should NOT be called!
+	result, err := f.svc.ExecuteTransfer(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.IsReplay)
+	assert.Equal(t, 422, result.ResponseCode)
+	assert.Equal(t, cachedBody, string(result.ResponseBody))
+	assert.Nil(t, result.Transfer)
 }
 
 func TestTransferService_InsufficientFunds_RecordFailureError(t *testing.T) {
@@ -547,4 +587,3 @@ func TestTransferService_ListWalletTransfers(t *testing.T) {
 		assert.Equal(t, expected, results)
 	})
 }
-

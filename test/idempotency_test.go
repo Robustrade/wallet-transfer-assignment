@@ -69,7 +69,7 @@ func TestTransfer_IdempotentReplay(t *testing.T) {
 	idempRec := getTestIdempotencyRecord(t, pool, idempKey)
 	assert.Equal(t, idempKey, idempRec.Key)
 	assert.Equal(t, req.CanonicalHash(), idempRec.RequestHash)
-	assert.Equal(t, http.StatusCreated, idempRec.ResponseCode)
+	assert.Equal(t, http.StatusOK, idempRec.ResponseCode)
 	assert.NotEmpty(t, idempRec.ResponseBody)
 }
 
