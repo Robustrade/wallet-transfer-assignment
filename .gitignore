@@ -5,3 +5,9 @@ build/
 .tmp/
 .env
 .env.*
+data/
+*.db
+*.db-shm
+*.db-wal
+coverage.out
+bin/

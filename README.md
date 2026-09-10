@@ -33,3 +33,20 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+## Solution
+
+Requires Go 1.24+. Design notes are in [`docs/DESIGN.md`](./docs/DESIGN.md).
+
+```bash
+go run ./cmd/server
+go test ./... -count=1 -race
+```
+
+The server listens on `:8080` and seeds `wallet_1` (balance 1000) and `wallet_2` (balance 0).
+
+```bash
+curl -sS -X POST localhost:8080/transfers \
+  -H 'content-type: application/json' \
+  -d '{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100}'
+```
