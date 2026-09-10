@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wallet-transfer-postgres
+
+    environment:
+      POSTGRES_DB: wallet_transfer
+      POSTGRES_USER: wallet_user
+      POSTGRES_PASSWORD: wallet_password
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet_user -d wallet_transfer"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
