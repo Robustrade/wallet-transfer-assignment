@@ -59,6 +59,15 @@ paths:
                   value:
                     error: VALIDATION_ERROR
                     message: "wallet balance cannot be negative"
+        '409':
+          description: Wallet with this ID already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: CONFLICT
+                message: "wallet with this id already exists"
         '500':
           description: Internal server error
           content:
@@ -209,7 +218,7 @@ paths:
            - If a request with the same `idempotencyKey` and identical payload is re-submitted, the system returns `200 OK` with header `X-Idempotent-Replay: true` and the exact cached payload without mutating balances.
            - Concurrent duplicate requests racing at the exact same microsecond are resolved via PostgreSQL unique constraint violation (`23505`) recovery.
            - If an existing `idempotencyKey` is reused with altered parameters, the request is rejected with `409 Conflict`.
-        5. **Audit Invariant**: If funds are insufficient, the transfer is persisted as `FAILED` with reason `INSUFFICIENT_FUNDS` for auditing, while touching **zero** balances and creating **zero** ledger entries.
+        5. **Audit Invariant**: If funds are insufficient, the transfer is persisted as `FAILED` with reason `INSUFFICIENT_FUNDS` alongside an idempotency record for auditing, ensuring retries safely return 422 with `X-Idempotent-Replay: true` while touching **zero** balances and creating **zero** ledger entries.
       operationId: createTransfer
       tags:
         - Transfers
@@ -277,6 +286,12 @@ paths:
                 message: "idempotency key reused with different parameters"
         '422':
           description: Business logic rejection
+          headers:
+            X-Idempotent-Replay:
+              schema:
+                type: string
+                enum: ["true"]
+              description: Present if this failure response is an idempotent replay of a previously recorded failed transfer
           content:
             application/json:
               schema:
