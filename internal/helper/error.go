@@ -16,7 +16,8 @@ func HandleError(w http.ResponseWriter, result *domain.CreateTransferResult, err
 	switch {
 	case errors.Is(err, domain.ErrInvalidAmount),
 		errors.Is(err, domain.ErrSameWallet),
-		errors.Is(err, domain.ErrInvalidIdempotencyKey):
+		errors.Is(err, domain.ErrInvalidIdempotencyKey),
+		errors.Is(err, domain.ErrInvalidWalletID):
 
 		WriteError(w, http.StatusBadRequest, err.Error())
 

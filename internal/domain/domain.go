@@ -28,6 +28,7 @@ var (
 	ErrIdempotencyKeyExists  = errors.New("idempotency key already exists")
 	ErrIdempotencyNotFound   = errors.New("idempotency record not found")
 	ErrInvalidIdempotencyKey = errors.New("idempotency key is required")
+	ErrInvalidWalletID       = errors.New("invalid wallet id")
 )
 
 type Wallet struct {
