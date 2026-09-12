@@ -1,0 +1,14 @@
+run:
+  timeout: 5m
+
+linters:
+  # These are in addition to the defaults, which stay on: errcheck,
+  # gosimple, govet, ineffassign, staticcheck, unused.
+  enable:
+    - bodyclose
+    - errorlint # sentinel errors are compared with errors.Is throughout
+    - gocritic
+    - misspell
+    - revive
+    - unconvert
+    - whitespace

@@ -33,3 +33,14 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+## Solution Scaffold
+
+A working implementation of the assignment lives in
+[`solution/`](./solution), kept separate from the template docs above so
+the two don't get tangled together — it's a self-contained Go module
+(handler -> service -> repository -> domain, Postgres-backed).
+
+See **[`solution/README.md`](./solution/README.md)** for the API
+reference, architecture notes, how to build/run/test/deploy it, and the
+pros/cons and known limitations behind the key design decisions.
