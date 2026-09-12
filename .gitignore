@@ -5,3 +5,6 @@ build/
 .tmp/
 .env
 .env.*
+bin/
+*.exe
+pgdata/

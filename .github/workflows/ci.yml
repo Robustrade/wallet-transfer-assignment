@@ -18,6 +18,8 @@ jobs:
       FORMAT_CHECK_CMD: ${{ vars.FORMAT_CHECK_CMD }}
       TEST_CMD: ${{ vars.TEST_CMD }}
       CGO_ENABLED: ${{ vars.CGO_ENABLED }}
+      TEST_DATABASE_URL: "postgres://wallet_app:wallet_app_password@localhost:5432/wallet_test_db?sslmode=disable"
+      TEST_ADMIN_URL: "postgres://postgres:postgrespassword@localhost:5432/wallet_test_db?sslmode=disable"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,7 +37,8 @@ jobs:
 
       - name: Install golangci-lint
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $HOME/.local/bin v1.64.8 echo "$HOME/.local/bin" >> $GITHUB_PATH
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $HOME/.local/bin v1.64.8
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Validate commands configured
         shell: bash
@@ -57,8 +60,51 @@ jobs:
           set -euo pipefail
           eval "$FORMAT_CHECK_CMD"
 
+      - name: Start PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker compose version >/dev/null 2>&1; then
+            COMPOSE_CMD="docker compose"
+          elif command -v docker-compose >/dev/null 2>&1; then
+            COMPOSE_CMD="docker-compose"
+          else
+            echo "Error: neither 'docker compose' nor 'docker-compose' available" >&2
+            exit 1
+          fi
+          echo "COMPOSE_CMD=$COMPOSE_CMD" >> "$GITHUB_ENV"
+          $COMPOSE_CMD up -d
+
+          echo "Waiting for PostgreSQL to be ready..."
+          READY=0
+          for i in $(seq 1 30); do
+            if docker exec $($COMPOSE_CMD ps -q postgres) pg_isready -U postgres -d wallet_db >/dev/null 2>&1; then
+              echo "PostgreSQL is ready after ${i}s"
+              docker exec $($COMPOSE_CMD ps -q postgres) psql -U postgres -c "CREATE DATABASE wallet_test_db;" || true
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$READY" -ne 1 ]; then
+            echo "Timed out waiting for PostgreSQL readiness" >&2
+            exit 1
+          fi
+
       - name: Run tests
         shell: bash
         run: |
           set -euo pipefail
           eval "$TEST_CMD"
+
+      - name: Teardown PostgreSQL
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${COMPOSE_CMD:-}" ]; then
+            $COMPOSE_CMD down -v || true
+          elif docker compose version >/dev/null 2>&1; then
+            docker compose down -v || true
+          elif command -v docker-compose >/dev/null 2>&1; then
+            docker-compose down -v || true
+          fi
