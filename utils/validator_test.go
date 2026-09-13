@@ -62,3 +62,12 @@ func TestValidateRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestNewLoggerMethods(t *testing.T) {
+	logger := utils.NewLogger()
+	logger.Info("info")
+	logger.Error("error")
+	logger.Warn("warn")
+	logger.Debug("debug")
+	logger.Sync()
+}

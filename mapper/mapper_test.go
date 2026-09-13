@@ -80,3 +80,9 @@ func TestMappToCreateTransferParams(t *testing.T) {
 		t.Errorf("mapper should leave transaction ID for the persistence layer, got %q", got.TransactionID)
 	}
 }
+
+func TestNewMapper(t *testing.T) {
+	if NewMapper(nil) == nil {
+		t.Fatal("new mapper returned nil")
+	}
+}

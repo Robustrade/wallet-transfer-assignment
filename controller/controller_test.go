@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -182,6 +183,30 @@ func TestControllerGetWalletByIDReturnsDatasourceError(t *testing.T) {
 	}
 	if mapperMock.walletCalls != 0 {
 		t.Fatal("wallet mapper should not be called after datasource failure")
+	}
+}
+
+func TestNewControllerInitializesSuccessfully(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	controller, err := NewController(controllerTestLogger{})
+	if err != nil {
+		t.Fatalf("new controller: %v", err)
+	}
+	if controller == nil {
+		t.Fatal("new controller returned nil")
+	}
+}
+
+func TestNewControllerReturnsDatasourceError(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.Mkdir("wallet.db", 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	controller, err := NewController(controllerTestLogger{})
+	if err == nil || controller != nil {
+		t.Fatalf("expected controller initialization error, got controller=%v err=%v", controller, err)
 	}
 }
 

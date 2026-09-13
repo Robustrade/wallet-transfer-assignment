@@ -260,3 +260,159 @@ func TestProcessTransferDoesNotOverspendUnderConcurrentDebits(t *testing.T) {
 		t.Fatalf("sender balance: got %d, want 25", sender.Balance)
 	}
 }
+
+func TestWalletDataSourceMethods(t *testing.T) {
+	dataSource := newTestDataSource(t)
+	addWallet(t, dataSource, "wallet_1", 100)
+
+	wallets, err := dataSource.GetWallets(context.Background())
+	if err != nil || len(wallets) != 1 || wallets[0].WalletID != "wallet_1" {
+		t.Fatalf("get wallets: %#v, %v", wallets, err)
+	}
+	wallet, err := dataSource.GetWalletById(context.Background(), "wallet_1")
+	if err != nil || wallet.WalletID != "wallet_1" {
+		t.Fatalf("get wallet: %#v, %v", wallet, err)
+	}
+	if _, err := dataSource.GetWalletById(context.Background(), "missing"); err == nil {
+		t.Fatal("expected missing wallet error")
+	}
+}
+
+func TestDatasourceTransactionFailures(t *testing.T) {
+	t.Run("closed database", func(t *testing.T) {
+		dataSource := newTestDataSource(t)
+		if err := dataSource.db.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := dataSource.Transfer(context.Background(), db.CreateTransferParams{}, "key"); err == nil {
+			t.Fatal("expected transfer begin error")
+		}
+		if err := markTransferFailed(context.Background(), dataSource, "id"); err == nil {
+			t.Fatal("expected failed-status begin error")
+		}
+		if err := processTransfer(context.Background(), dataSource, db.CreateTransferParams{}, "id"); err == nil {
+			t.Fatal("expected process begin error")
+		}
+	})
+
+	t.Run("missing sender and receiver", func(t *testing.T) {
+		dataSource := newTestDataSource(t)
+		if err := processTransfer(context.Background(), dataSource, db.CreateTransferParams{FromWalletID: "missing", ToWalletID: "also-missing", Amount: 1}, "id"); err == nil {
+			t.Fatal("expected sender lookup error")
+		}
+		addWallet(t, dataSource, "wallet_1", 100)
+		if err := processTransfer(context.Background(), dataSource, db.CreateTransferParams{FromWalletID: "wallet_1", ToWalletID: "missing", Amount: 1}, "id"); err == nil {
+			t.Fatal("expected receiver lookup error")
+		}
+	})
+
+	t.Run("insufficient balance", func(t *testing.T) {
+		dataSource := newTestDataSource(t)
+		addWallet(t, dataSource, "wallet_1", 1)
+		addWallet(t, dataSource, "wallet_2", 0)
+		addPendingTransfer(t, dataSource, "transaction_1", "wallet_1", "wallet_2", 2)
+		if err := processTransfer(context.Background(), dataSource, db.CreateTransferParams{FromWalletID: "wallet_1", ToWalletID: "wallet_2", Amount: 2}, "transaction_1"); err == nil {
+			t.Fatal("expected insufficient balance error")
+		}
+	})
+
+	t.Run("invalid transfer state", func(t *testing.T) {
+		dataSource := newTestDataSource(t)
+		addWallet(t, dataSource, "wallet_1", 100)
+		addWallet(t, dataSource, "wallet_2", 0)
+		addPendingTransfer(t, dataSource, "transaction_1", "wallet_1", "wallet_2", 1)
+		if _, err := dataSource.Queries.UpdateTransferStatus(context.Background(), db.UpdateTransferStatusParams{Status: string(utils.PROCESSED), TransactionID: "transaction_1"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := processTransfer(context.Background(), dataSource, db.CreateTransferParams{FromWalletID: "wallet_1", ToWalletID: "wallet_2", Amount: 1}, "transaction_1"); err == nil {
+			t.Fatal("expected invalid state transition error")
+		}
+	})
+}
+
+func TestTransferFailureBranches(t *testing.T) {
+	t.Run("idempotency lookup error", func(t *testing.T) {
+		dataSource := newTestDataSource(t)
+		if _, err := dataSource.db.Exec("DROP TABLE idempotency_record"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := dataSource.Transfer(context.Background(), db.CreateTransferParams{}, "key"); err == nil {
+			t.Fatal("expected idempotency lookup error")
+		}
+	})
+
+	t.Run("create transfer error", func(t *testing.T) {
+		dataSource := newTestDataSource(t)
+		if _, err := dataSource.Transfer(context.Background(), db.CreateTransferParams{
+			FromWalletID: "wallet_1",
+			ToWalletID:   "wallet_2",
+			Amount:       0,
+			Status:       string(utils.PENDING),
+		}, "key"); err == nil {
+			t.Fatal("expected create transfer error")
+		}
+	})
+
+	t.Run("idempotency insert error", func(t *testing.T) {
+		dataSource := newTestDataSource(t)
+		if _, err := dataSource.db.Exec(`CREATE TRIGGER reject_idempotency BEFORE INSERT ON idempotency_record BEGIN SELECT RAISE(ABORT, 'reject idempotency'); END;`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := dataSource.Transfer(context.Background(), db.CreateTransferParams{
+			FromWalletID: "wallet_1",
+			ToWalletID:   "wallet_2",
+			Amount:       1,
+			Status:       string(utils.PENDING),
+		}, "key"); err == nil {
+			t.Fatal("expected idempotency insert error")
+		}
+	})
+
+	t.Run("processing failure marks transfer failed", func(t *testing.T) {
+		dataSource := newTestDataSource(t)
+		addWallet(t, dataSource, "wallet_1", 1)
+		addWallet(t, dataSource, "wallet_2", 0)
+		_, err := dataSource.Transfer(context.Background(), db.CreateTransferParams{
+			FromWalletID: "wallet_1",
+			ToWalletID:   "wallet_2",
+			Amount:       2,
+			Status:       string(utils.PENDING),
+		}, "key")
+		if err == nil {
+			t.Fatal("expected processing failure")
+		}
+		transfers, queryErr := dataSource.Queries.GetTransactions(context.Background())
+		if queryErr != nil || len(transfers) != 1 || transfers[0].Status != string(utils.FAILED) {
+			t.Fatalf("failed transfer state: %#v, %v", transfers, queryErr)
+		}
+	})
+
+	t.Run("processing and failed-state errors", func(t *testing.T) {
+		dataSource := newTestDataSource(t)
+		addWallet(t, dataSource, "wallet_1", 100)
+		addWallet(t, dataSource, "wallet_2", 0)
+		addPendingTransfer(t, dataSource, "transaction_1", "wallet_1", "wallet_2", 1)
+		if _, err := dataSource.db.Exec(`CREATE TRIGGER reject_transfer_update BEFORE UPDATE ON transfer BEGIN SELECT RAISE(ABORT, 'reject transfer update'); END;`); err != nil {
+			t.Fatal(err)
+		}
+		if err := processTransfer(context.Background(), dataSource, db.CreateTransferParams{FromWalletID: "wallet_1", ToWalletID: "wallet_2", Amount: 1}, "transaction_1"); err == nil {
+			t.Fatal("expected transfer status update error")
+		}
+		if err := markTransferFailed(context.Background(), dataSource, "transaction_1"); err == nil {
+			t.Fatal("expected failed status update error")
+		}
+	})
+
+	t.Run("ledger failure", func(t *testing.T) {
+		dataSource := newTestDataSource(t)
+		addWallet(t, dataSource, "wallet_1", 100)
+		addWallet(t, dataSource, "wallet_2", 0)
+		addPendingTransfer(t, dataSource, "transaction_1", "wallet_1", "wallet_2", 1)
+		if _, err := dataSource.db.Exec("DROP TABLE ledger_entry"); err != nil {
+			t.Fatal(err)
+		}
+		if err := processTransfer(context.Background(), dataSource, db.CreateTransferParams{FromWalletID: "wallet_1", ToWalletID: "wallet_2", Amount: 1}, "transaction_1"); err == nil {
+			t.Fatal("expected ledger error")
+		}
+	})
+}
