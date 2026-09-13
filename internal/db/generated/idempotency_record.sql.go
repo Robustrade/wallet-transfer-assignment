@@ -26,3 +26,22 @@ func (q *Queries) CreateIdempotencyRecord(ctx context.Context, arg CreateIdempot
 	_, err := q.db.ExecContext(ctx, createIdempotencyRecord, arg.IdempotencyKey, arg.TransactionID)
 	return err
 }
+
+const getIdempotencyRecordById = `-- name: GetIdempotencyRecordById :one
+select idempotency_key,
+    transaction_id,
+    created_at,
+    updated_at from idempotency_record where idempotency_key=?
+`
+
+func (q *Queries) GetIdempotencyRecordById(ctx context.Context, idempotencyKey string) (IdempotencyRecord, error) {
+	row := q.db.QueryRowContext(ctx, getIdempotencyRecordById, idempotencyKey)
+	var i IdempotencyRecord
+	err := row.Scan(
+		&i.IdempotencyKey,
+		&i.TransactionID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

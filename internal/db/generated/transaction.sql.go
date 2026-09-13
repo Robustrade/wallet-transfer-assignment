@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 )
 
 const createTransfer = `-- name: CreateTransfer :one
@@ -52,22 +51,14 @@ func (q *Queries) CreateTransfer(ctx context.Context, arg CreateTransferParams) 
 }
 
 const getTransactionById = `-- name: GetTransactionById :one
-select transaction_id,from_wallet_id,to_wallet_id,amount,status,comments
+select transaction_id,from_wallet_id,to_wallet_id,amount,status,comments,created_at,
+    updated_at
 from transfer where transaction_id=?
 `
 
-type GetTransactionByIdRow struct {
-	TransactionID string         `json:"transaction_id"`
-	FromWalletID  string         `json:"from_wallet_id"`
-	ToWalletID    string         `json:"to_wallet_id"`
-	Amount        int64          `json:"amount"`
-	Status        string         `json:"status"`
-	Comments      sql.NullString `json:"comments"`
-}
-
-func (q *Queries) GetTransactionById(ctx context.Context, transactionID string) (GetTransactionByIdRow, error) {
+func (q *Queries) GetTransactionById(ctx context.Context, transactionID string) (Transfer, error) {
 	row := q.db.QueryRowContext(ctx, getTransactionById, transactionID)
-	var i GetTransactionByIdRow
+	var i Transfer
 	err := row.Scan(
 		&i.TransactionID,
 		&i.FromWalletID,
@@ -75,33 +66,27 @@ func (q *Queries) GetTransactionById(ctx context.Context, transactionID string) 
 		&i.Amount,
 		&i.Status,
 		&i.Comments,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getTransactions = `-- name: GetTransactions :many
-select transaction_id,from_wallet_id,to_wallet_id,amount,status,comments 
+select transaction_id,from_wallet_id,to_wallet_id,amount,status,comments ,created_at,
+    updated_at
 from transfer
 `
 
-type GetTransactionsRow struct {
-	TransactionID string         `json:"transaction_id"`
-	FromWalletID  string         `json:"from_wallet_id"`
-	ToWalletID    string         `json:"to_wallet_id"`
-	Amount        int64          `json:"amount"`
-	Status        string         `json:"status"`
-	Comments      sql.NullString `json:"comments"`
-}
-
-func (q *Queries) GetTransactions(ctx context.Context) ([]GetTransactionsRow, error) {
+func (q *Queries) GetTransactions(ctx context.Context) ([]Transfer, error) {
 	rows, err := q.db.QueryContext(ctx, getTransactions)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetTransactionsRow
+	var items []Transfer
 	for rows.Next() {
-		var i GetTransactionsRow
+		var i Transfer
 		if err := rows.Scan(
 			&i.TransactionID,
 			&i.FromWalletID,
@@ -109,6 +94,8 @@ func (q *Queries) GetTransactions(ctx context.Context) ([]GetTransactionsRow, er
 			&i.Amount,
 			&i.Status,
 			&i.Comments,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -121,4 +108,41 @@ func (q *Queries) GetTransactions(ctx context.Context) ([]GetTransactionsRow, er
 		return nil, err
 	}
 	return items, nil
+}
+
+const markTransferFailed = `-- name: MarkTransferFailed :execrows
+UPDATE transfer
+SET status = 'FAILED',
+    updated_at = CURRENT_TIMESTAMP
+WHERE transaction_id = ?
+  AND status = 'PENDING'
+`
+
+func (q *Queries) MarkTransferFailed(ctx context.Context, transactionID string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markTransferFailed, transactionID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateTransferStatus = `-- name: UpdateTransferStatus :execrows
+UPDATE transfer
+SET status = ?,
+    updated_at = CURRENT_TIMESTAMP
+WHERE transaction_id = ?
+  AND status = 'PENDING'
+`
+
+type UpdateTransferStatusParams struct {
+	Status        string `json:"status"`
+	TransactionID string `json:"transaction_id"`
+}
+
+func (q *Queries) UpdateTransferStatus(ctx context.Context, arg UpdateTransferStatusParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateTransferStatus, arg.Status, arg.TransactionID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

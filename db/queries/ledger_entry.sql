@@ -1,6 +1,6 @@
 -- name: CreateLedgerRecord :exec
-    INSERT INTO ledger_entry(entry_id,wallet_id,transaction_id,amount,entry_type)
-    VALUES(?,?,?,?,?);
+    INSERT INTO ledger_entry(entry_id,wallet_id,transaction_id,amount,entry_type,balance_after)
+    VALUES(?,?,?,?,?,?);
 
 
 -- name: GetStatementByWalletId :many

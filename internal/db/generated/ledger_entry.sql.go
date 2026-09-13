@@ -12,8 +12,8 @@ import (
 )
 
 const createLedgerRecord = `-- name: CreateLedgerRecord :exec
-    INSERT INTO ledger_entry(entry_id,wallet_id,transaction_id,amount,entry_type)
-    VALUES(?,?,?,?,?)
+    INSERT INTO ledger_entry(entry_id,wallet_id,transaction_id,amount,entry_type,balance_after)
+    VALUES(?,?,?,?,?,?)
 `
 
 type CreateLedgerRecordParams struct {
@@ -22,6 +22,7 @@ type CreateLedgerRecordParams struct {
 	TransactionID string `json:"transaction_id"`
 	Amount        int64  `json:"amount"`
 	EntryType     string `json:"entry_type"`
+	BalanceAfter  int64  `json:"balance_after"`
 }
 
 func (q *Queries) CreateLedgerRecord(ctx context.Context, arg CreateLedgerRecordParams) error {
@@ -31,6 +32,7 @@ func (q *Queries) CreateLedgerRecord(ctx context.Context, arg CreateLedgerRecord
 		arg.TransactionID,
 		arg.Amount,
 		arg.EntryType,
+		arg.BalanceAfter,
 	)
 	return err
 }

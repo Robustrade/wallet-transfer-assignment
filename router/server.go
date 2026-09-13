@@ -4,41 +4,60 @@ import (
 	"net/http"
 	ctrl "wallet-transfer-assigment/controller"
 	"wallet-transfer-assigment/utils"
+
+	"go.uber.org/zap"
 )
 
 type Server struct {
-	Conroller ctrl.Controllerer
-	Router    *http.ServeMux
+	Conrollerer ctrl.Controllerer
+	Router      *http.ServeMux
+	logger      utils.Logger
 }
 type Serverer interface {
-	Handler() *http.ServeMux
+	Handler() http.Handler
 	Routes()
+	walletHandler
+	transactionHandler
 }
 
-func NewServer(log utils.Logger) Serverer {
+func (s *Server) Handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		s.Router.ServeHTTP(w, r)
+	})
+}
+func NewServer(log utils.Logger) (Serverer, error) {
 
-	http := http.NewServeMux()
-	log.Logs.Info("Initializing the server...")
-	return &Server{
-		Router:    http,
-		Conroller: ctrl.NewController(log),
+	router := http.NewServeMux()
+	log.Info("Initializing the server...")
+	controllerer, err := ctrl.NewController(log)
+	if err != nil {
+		log.Error(" failed to initialise controller", zap.Error(err))
+		return nil, err
 	}
+
+	return &Server{
+		Router:      router,
+		Conrollerer: controllerer,
+		logger:      log,
+	}, nil
 }
-func (s *Server) Handler() *http.ServeMux {
-	return s.Router
-}
+
 func (s *Server) Routes() {
+	s.logger.Info("Initializing the routes")
 	walletRoutes(s)
 	transactionRoutes(s)
+	s.logger.Info("routes are initialised")
 }
 
 func walletRoutes(s *Server) {
-	s.Router.HandleFunc("/wallets", walletHandler)
-	s.Router.HandleFunc("/wallets/{id}", walletHandler)
-	s.Router.HandleFunc("/wallets/{id}/statements", walletStatementHandler)
+	s.Router.HandleFunc("/wallets", s.getWallets)
+	s.Router.HandleFunc("/wallets/{id}", s.getWalletById)
+	// s.Router.HandleFunc("/wallets/{id}/statements", s.walletStatementHandle)
 }
 func transactionRoutes(s *Server) {
-	s.Router.HandleFunc("/transactions", transactionHandler)
-	s.Router.HandleFunc("/transactions/{id}", transactionHandler)
-	s.Router.HandleFunc("/transactions/{id}/status", transactionStatusHandler)
+	// s.Router.HandleFunc("/transactions", s.transactionHandle)
+	// s.Router.HandleFunc("/transactions/{id}", s.transactionHandle)
+	// s.Router.HandleFunc("/transactions/{id}/status", s.transactionStatusHandle)
+	s.Router.HandleFunc("/transfers", s.transfer)
 }
