@@ -1,0 +1,16 @@
+com/wallettransfer/api/TransferResponse.class
+com/wallettransfer/repository/WalletRepository.class
+com/wallettransfer/api/CreateWalletRequest.class
+com/wallettransfer/repository/LedgerRepository.class
+com/wallettransfer/api/TransferRequest.class
+com/wallettransfer/domain/TransferStatus.class
+com/wallettransfer/api/TransferController.class
+com/wallettransfer/repository/TransferRepository.class
+com/wallettransfer/service/InvalidTransferException.class
+com/wallettransfer/service/WalletNotFoundException.class
+com/wallettransfer/service/InsufficientFundsException.class
+com/wallettransfer/api/ApiExceptionHandler.class
+com/wallettransfer/domain/LedgerEntryType.class
+com/wallettransfer/api/WalletResponse.class
+com/wallettransfer/service/TransferService.class
+com/wallettransfer/WalletTransferApplication.class
