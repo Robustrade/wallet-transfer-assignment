@@ -308,7 +308,7 @@ components:
           format: int64
         status:
           type: string
-          enum: [PENDING, COMPLETED, FAILED]
+          enum: [PENDING, PROCESSED, FAILED]
         comments:
           type: string
         created_at:
