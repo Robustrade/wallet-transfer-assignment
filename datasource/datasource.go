@@ -39,6 +39,7 @@ func NewDataSource(log utils.Logger) (DataSourceer, error) {
 	if err != nil {
 		log.Error("migration Failed", zap.Error(err))
 		_ = con.Close()
+		return nil, err
 	}
 
 	log.Info("Database connected successfully")

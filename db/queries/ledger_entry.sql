@@ -33,7 +33,6 @@ SELECT
     l.amount,
     l.entry_type,
     l.balance_after,
-    l.created_at,
     t.from_wallet_id,
     t.to_wallet_id,
     t.status,

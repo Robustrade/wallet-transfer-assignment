@@ -45,7 +45,6 @@ SELECT
     l.amount,
     l.entry_type,
     l.balance_after,
-    l.created_at,
     t.from_wallet_id,
     t.to_wallet_id,
     t.status,
@@ -64,7 +63,6 @@ type GetStatementRow struct {
 	Amount        int64          `json:"amount"`
 	EntryType     string         `json:"entry_type"`
 	BalanceAfter  int64          `json:"balance_after"`
-	CreatedAt_2   time.Time      `json:"created_at_2"`
 	FromWalletID  string         `json:"from_wallet_id"`
 	ToWalletID    string         `json:"to_wallet_id"`
 	Status        string         `json:"status"`
@@ -87,7 +85,6 @@ func (q *Queries) GetStatement(ctx context.Context) ([]GetStatementRow, error) {
 			&i.Amount,
 			&i.EntryType,
 			&i.BalanceAfter,
-			&i.CreatedAt_2,
 			&i.FromWalletID,
 			&i.ToWalletID,
 			&i.Status,
