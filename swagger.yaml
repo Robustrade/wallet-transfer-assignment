@@ -1,0 +1,376 @@
+openapi: 3.0.3
+info:
+  title: Wallet Transfer API
+  description: API for creating wallets, transferring funds, and reading wallet statements.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Wallets
+  - name: Transfers
+  - name: Statements
+
+paths:
+  /wallets:
+    get:
+      tags: [Wallets]
+      summary: List wallets
+      operationId: listWallets
+      responses:
+        '200':
+          description: Wallets fetched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    post:
+      tags: [Wallets]
+      summary: Create a wallet
+      operationId: createWallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletRequest'
+            example:
+              balance: 10000
+      responses:
+        '201':
+          description: Wallet created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          description: Wallet creation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+              example:
+                message: unsuccessful
+                data: null
+                status: '500'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /wallets/{id}:
+    get:
+      tags: [Wallets]
+      summary: Get a wallet
+      operationId: getWallet
+      parameters:
+        - $ref: '#/components/parameters/WalletId'
+      responses:
+        '200':
+          description: Wallet fetched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /wallets/{id}/statements:
+    get:
+      tags: [Wallets, Statements]
+      summary: List statements for a wallet
+      operationId: listWalletStatements
+      parameters:
+        - $ref: '#/components/parameters/WalletId'
+      responses:
+        '200':
+          description: Wallet statements fetched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatementListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /transactions:
+    get:
+      tags: [Statements]
+      summary: List all transaction statements
+      operationId: listStatements
+      responses:
+        '200':
+          description: Statements fetched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /transfers:
+    post:
+      tags: [Transfers]
+      summary: Transfer funds between wallets
+      operationId: createTransfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+            example:
+              idempotencyKey: request-123
+              fromWalletId: wallet-1
+              toWalletId: wallet-2
+              amount: 2500
+      responses:
+        '201':
+          description: Transfer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          description: Transfer failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+              example:
+                message: transaction failed
+                data: null
+                status: '500'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+components:
+  parameters:
+    WalletId:
+      name: id
+      in: path
+      required: true
+      description: Wallet identifier
+      schema:
+        type: string
+      example: wallet-1
+
+  schemas:
+    Response:
+      type: object
+      required: [message, status]
+      properties:
+        message:
+          type: string
+        data:
+          nullable: true
+        status:
+          type: string
+          description: HTTP status code represented as a string
+          example: '200'
+
+    WalletRequest:
+      type: object
+      required: [balance]
+      properties:
+        balance:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Initial balance in the smallest currency denomination.
+
+    Wallet:
+      type: object
+      required: [wallet_id, balance, created_at, updated_at]
+      properties:
+        wallet_id:
+          type: string
+        balance:
+          type: integer
+          format: int64
+          description: Balance in the smallest currency denomination.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WalletResponse:
+      allOf:
+        - $ref: '#/components/schemas/Response'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Wallet'
+
+    WalletListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Response'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Wallet'
+
+    TransferRequest:
+      type: object
+      required: [idempotencyKey, fromWalletId, toWalletId, amount]
+      properties:
+        idempotencyKey:
+          type: string
+          minLength: 1
+          description: Client-supplied key used to make retries idempotent.
+        fromWalletId:
+          type: string
+        toWalletId:
+          type: string
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Transfer amount in the smallest currency denomination.
+
+    TransferResponse:
+      allOf:
+        - $ref: '#/components/schemas/Response'
+        - type: object
+          properties:
+            data:
+              type: string
+              description: Created transaction identifier.
+
+    Statement:
+      type: object
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        transaction_id:
+          type: string
+        entry_id:
+          type: string
+        amount:
+          type: integer
+          format: int64
+        entry_type:
+          type: string
+        balance_after:
+          type: integer
+          format: int64
+        from_wallet_id:
+          type: string
+        to_wallet_id:
+          type: string
+        status:
+          type: string
+        comments:
+          type: string
+
+    StatementListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Response'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Statement'
+
+    Transaction:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+        from_wallet_id:
+          type: string
+        to_wallet_id:
+          type: string
+        amount:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [PENDING, PROCESSED, FAILED]
+        comments:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TransactionListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Response'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Transaction'
+
+    ErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/Response'
+        - type: object
+          properties:
+            data:
+              nullable: true
+
+  responses:
+    BadRequest:
+      description: Invalid request body or validation failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalidBody:
+              value:
+                message: invalid request body
+                data: null
+                status: '400'
+            invalidRequest:
+              value:
+                message: invalid request
+                data: null
+                status: '400'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            message: failed to fetch wallet statements
+            data: null
+            status: '500'
+    MethodNotAllowed:
+      description: HTTP method is not supported for this endpoint
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            message: Invalid method type
+            data: null
+            status: '405'

@@ -1,0 +1,10 @@
+services:
+  wallet-transfer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./wallet.db:/app/wallet.db
+    restart: unless-stopped
