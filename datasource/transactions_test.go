@@ -140,6 +140,34 @@ func TestTransferIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestRetrySQLiteLockRetriesTransientLock(t *testing.T) {
+	attempts := 0
+	err := retrySQLiteLock(context.Background(), func() error {
+		attempts++
+		if attempts < 3 {
+			return errors.New("database is locked")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("retry returned error: %v", err)
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts: got %d, want 3", attempts)
+	}
+}
+
+func TestRetrySQLiteLockHonorsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := retrySQLiteLock(ctx, func() error {
+		return errors.New("database is locked")
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error: got %v, want context canceled", err)
+	}
+}
+
 func TestProcessTransferCreatesBalancedLedgerAndProcessesTransfer(t *testing.T) {
 	dataSource := newTestDataSource(t)
 	addWallet(t, dataSource, "wallet_1", 500)

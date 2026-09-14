@@ -5,11 +5,18 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 	db "wallet-transfer-assigment/internal/db/generated"
 	"wallet-transfer-assigment/utils"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+)
+
+const (
+	maxSQLiteLockRetries = 5
+	initialSQLiteRetry   = 10 * time.Millisecond
 )
 
 type transactioner interface {
@@ -108,6 +115,12 @@ func (ds DataSource) Transfer(ctx context.Context, req db.CreateTransferParams, 
 }
 
 func markTransferFailed(ctx context.Context, ds DataSource, transactionID, comment string) error {
+	return retrySQLiteLock(ctx, func() error {
+		return markTransferFailedOnce(ctx, ds, transactionID, comment)
+	})
+}
+
+func markTransferFailedOnce(ctx context.Context, ds DataSource, transactionID, comment string) error {
 	tx, err := ds.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin failed-status transaction: %w", err)
@@ -142,6 +155,12 @@ func markTransferFailed(ctx context.Context, ds DataSource, transactionID, comme
 }
 
 func processTransfer(ctx context.Context, ds DataSource, req db.CreateTransferParams, transactionID string) error {
+	return retrySQLiteLock(ctx, func() error {
+		return processTransferOnce(ctx, ds, req, transactionID)
+	})
+}
+
+func processTransferOnce(ctx context.Context, ds DataSource, req db.CreateTransferParams, transactionID string) error {
 	tx, err := ds.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -234,4 +253,30 @@ func processTransfer(ctx context.Context, ds DataSource, req db.CreateTransferPa
 	}
 
 	return nil
+}
+
+func retrySQLiteLock(ctx context.Context, operation func() error) error {
+	for attempt := 0; attempt < maxSQLiteLockRetries; attempt++ {
+		err := operation()
+		if err == nil || !isSQLiteLockError(err) || attempt == maxSQLiteLockRetries-1 {
+			return err
+		}
+
+		delay := initialSQLiteRetry * time.Duration(1<<attempt)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil
+}
+
+func isSQLiteLockError(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "database is locked") ||
+		strings.Contains(message, "database table is locked") ||
+		strings.Contains(message, "database is busy")
 }
