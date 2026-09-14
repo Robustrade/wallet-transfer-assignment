@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    # LOCK_TIMEOUT helps concurrent transfer tests wait for pessimistic locks under H2.
+    url: jdbc:h2:mem:wallet_transfer;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;LOCK_TIMEOUT=30000
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    tags:
+      application: wallet-transfer-test

@@ -5,3 +5,29 @@ build/
 .tmp/
 .env
 .env.*
+
+# Java / Maven
+target/
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+.vscode/
+*.class
+*.jar
+*.war
+*.log
+.mvn/wrapper/maven-wrapper.jar.download
+
+# OS / tooling
+.factorypath
+
+# Local Maven cache / tools (do not commit)
+.m2/
+.tools/
+
+# Generated API test reports
+reports/

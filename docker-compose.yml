@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wallet-transfer-db
+    environment:
+      POSTGRES_DB: wallet_transfer
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+    ports:
+      - "5432:5432"
+    volumes:
+      - wallet_transfer_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet_transfer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  wallet_transfer_pgdata:

@@ -6,7 +6,7 @@ This repository is a reusable coding assignment template for evaluating backend 
 
 - `ASSIGNMENT.md` - candidate-facing prompt
 - `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
+- `.github/workflows/ci.yml` - Maven build with unit + integration tests
 - `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
 - `.github/copilot-instructions.md` - repository-level Copilot review guidance
 - `evaluation_guide.md` - reviewer rubric
@@ -24,7 +24,7 @@ This repository is a reusable coding assignment template for evaluating backend 
 
 - Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
 - The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+- The CI workflow builds the Java service with `./mvnw clean verify` (unit + integration tests).
 
 ## How to Submit Assignment
 
@@ -33,3 +33,7 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+## Local Java skeleton
+
+A Java 17 + Spring Boot + PostgreSQL project skeleton lives in this repo. See [`SETUP.md`](./SETUP.md).
