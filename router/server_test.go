@@ -216,7 +216,7 @@ func TestServerReturnsInternalErrorFromController(t *testing.T) {
 		t.Fatalf("status: got %d, want %d", recorder.Code, http.StatusInternalServerError)
 	}
 	response := decodeResponse(t, recorder)
-	if response.Message != "failed to fetch wallets" || response.Status != "500" {
+	if response.Message != "failed to fetch wallet statements" || response.Status != "500" {
 		t.Fatalf("response: got %#v", response)
 	}
 }
@@ -458,7 +458,7 @@ func TestServerWalletByIDReturnsControllerError(t *testing.T) {
 		t.Fatalf("status: got %d, want %d", recorder.Code, http.StatusInternalServerError)
 	}
 	response := decodeResponse(t, recorder)
-	if response.Message != "failed to fetch wallets" || response.Status != "500" {
+	if response.Message != "failed to fetch wallet statements" || response.Status != "500" {
 		t.Fatalf("response: got %#v", response)
 	}
 }

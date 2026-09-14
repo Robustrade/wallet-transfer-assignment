@@ -134,9 +134,9 @@ func (s *Server) walletStatementByWalletId(w http.ResponseWriter, r *http.Reques
 	}
 	walletStatements, err := s.Conrollerer.GetWalletStatementByWalletId(ctx, wallet_id)
 	if err != nil {
-		s.logger.Error("failed to fetch wallets", zap.Error(err))
+		s.logger.Error("failed to fetch wallet statements", zap.Error(err))
 		response = models.Response{
-			Message: "failed to fetch wallets",
+			Message: "failed to fetch wallet statements",
 			Data:    nil,
 			Status:  fmt.Sprint(http.StatusInternalServerError),
 		}
@@ -190,9 +190,9 @@ func (s *Server) getWalletById(w http.ResponseWriter, r *http.Request) {
 	}
 	walletDetail, err := s.Conrollerer.GetWalletById(ctx, wallet_id)
 	if err != nil {
-		s.logger.Error("failed to fetch wallets", zap.Error(err))
+		s.logger.Error("failed to fetch wallet statements", zap.Error(err))
 		response = models.Response{
-			Message: "failed to fetch wallets",
+			Message: "failed to fetch wallet statements",
 			Data:    nil,
 			Status:  fmt.Sprint(http.StatusInternalServerError),
 		}
@@ -233,9 +233,9 @@ func (s *Server) getWallets(w http.ResponseWriter, r *http.Request) {
 	}
 	walletDetails, err := s.Conrollerer.GetWalletsDetails(ctx)
 	if err != nil {
-		s.logger.Error("failed to fetch wallets", zap.Error(err))
+		s.logger.Error("failed to fetch wallet statements", zap.Error(err))
 		response = models.Response{
-			Message: "failed to fetch wallets",
+			Message: "failed to fetch wallet statements",
 			Data:    nil,
 			Status:  fmt.Sprint(http.StatusInternalServerError),
 		}

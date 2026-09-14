@@ -361,7 +361,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
-            message: failed to fetch wallets
+            message: failed to fetch wallet statements
             data: null
             status: '500'
     MethodNotAllowed:
