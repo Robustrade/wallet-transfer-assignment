@@ -38,6 +38,9 @@ PENDING -> FAILED
 
 The unique primary key on `idempotency_record.idempotency_key` prevents duplicate idempotency records. The lookup-before-processing path makes retries return the original transaction ID.
 
+Migration `002_ledger_entry_indexes.sql` adds indexes on `(wallet_id, created_at)` and
+`created_at` to support wallet-scoped statements and global ledger reads ordered by time.
+
 ## Balance and Concurrency Strategy
 
 Wallet balances are stored on the `wallet` table. Debits use a guarded SQL update:

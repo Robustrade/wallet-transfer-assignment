@@ -164,7 +164,7 @@ func TestServerTransferReturnsCreatedResponse(t *testing.T) {
 		t.Fatalf("transfer request: got %#v", controllerMock.transferRequest)
 	}
 	response := decodeResponse(t, recorder)
-	if response.Message != "Successfull" || response.Status != "201" {
+	if response.Message != "Successful" || response.Status != "201" {
 		t.Fatalf("response: got %#v", response)
 	}
 }
@@ -250,7 +250,7 @@ func TestServerTransactionsReturnsControllerError(t *testing.T) {
 		t.Fatalf("status: got %d, want %d", recorder.Code, http.StatusInternalServerError)
 	}
 	response := decodeResponse(t, recorder)
-	if response.Message != "failed to fetch wallets" || response.Status != "500" {
+	if response.Message != "failed to fetch transactions" || response.Status != "500" {
 		t.Fatalf("response: got %#v", response)
 	}
 }

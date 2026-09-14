@@ -33,9 +33,9 @@ func (s *Server) getTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 	statements, err := s.Conrollerer.GetTransactions(ctx)
 	if err != nil {
-		s.logger.Error("failed to fetch wallets", zap.Error(err))
+		s.logger.Error("failed to fetch transactions", zap.Error(err))
 		response = models.Response{
-			Message: "failed to fetch wallets",
+			Message: "failed to fetch transactions",
 			Data:    nil,
 			Status:  fmt.Sprint(http.StatusInternalServerError),
 		}
@@ -120,7 +120,7 @@ func (s *Server) transfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response = models.Response{
-		Message: "Successfull",
+		Message: "Successful",
 		Data:    transaction_id,
 		Status:  fmt.Sprint(http.StatusCreated),
 	}
