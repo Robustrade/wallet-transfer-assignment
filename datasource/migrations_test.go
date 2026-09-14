@@ -46,7 +46,7 @@ func TestRunMigrationsAppliesAndSkipsMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer con.Close()
+	defer func() { _ = con.Close() }()
 
 	if err := runMigrations(con, testLogger{}); err != nil {
 		t.Fatalf("run migrations: %v", err)
@@ -77,7 +77,7 @@ func TestRunMigrationsRejectsInvalidMigrationFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer con.Close()
+	defer func() { _ = con.Close() }()
 
 	if err := runMigrations(con, testLogger{}); err == nil {
 		t.Fatal("expected invalid migration filename error")
@@ -106,7 +106,7 @@ func TestApplyMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer con.Close()
+	defer func() { _ = con.Close() }()
 	if err := ensureMigrationTable(con); err != nil {
 		t.Fatal(err)
 	}

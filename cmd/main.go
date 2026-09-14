@@ -23,6 +23,8 @@ func main() {
 	log.Info("Setting up routes...")
 	Router.Routes()
 	log.Info("Server is running on port 8080...")
-	http.ListenAndServe(":8080", Router.Handler())
+	if err := http.ListenAndServe(":8080", Router.Handler()); err != nil {
+		log.Error("server stopped", zap.Error(err))
+	}
 
 }

@@ -35,3 +35,9 @@ UPDATE wallet
 SET balance = balance + ?
 WHERE wallet_id = ?
 RETURNING balance;
+
+
+-- name: CreateWallet :one
+INSERT INTO wallet (wallet_id,balance)
+VALUES (?,?)
+RETURNING wallet_id,balance;

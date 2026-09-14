@@ -196,7 +196,7 @@ func TestMarkTransferFailedOnlyTransitionsPendingTransfer(t *testing.T) {
 	addWallet(t, dataSource, "wallet_2", 100)
 	addPendingTransfer(t, dataSource, "transaction_1", "wallet_1", "wallet_2", 150)
 
-	if err := markTransferFailed(context.Background(), dataSource, "transaction_1"); err != nil {
+	if err := markTransferFailed(context.Background(), dataSource, "transaction_1", "test failure"); err != nil {
 		t.Fatalf("mark transfer failed: %v", err)
 	}
 	transfer, err := dataSource.Queries.GetTransactionById(context.Background(), "transaction_1")
@@ -207,7 +207,7 @@ func TestMarkTransferFailedOnlyTransitionsPendingTransfer(t *testing.T) {
 		t.Fatalf("transfer status: got %q, want %q", transfer.Status, utils.FAILED)
 	}
 
-	if err := markTransferFailed(context.Background(), dataSource, "transaction_1"); err == nil {
+	if err := markTransferFailed(context.Background(), dataSource, "transaction_1", "test failure"); err == nil {
 		t.Fatal("expected a second failure transition to be rejected")
 	}
 }
@@ -276,6 +276,39 @@ func TestWalletDataSourceMethods(t *testing.T) {
 	if _, err := dataSource.GetWalletById(context.Background(), "missing"); err == nil {
 		t.Fatal("expected missing wallet error")
 	}
+
+	created, err := dataSource.CreateWallet(context.Background(), 250)
+	if err != nil || created == nil || created.Balance != 250 {
+		t.Fatalf("create wallet: %#v, %v", created, err)
+	}
+	statements, err := dataSource.GetStatementsByWalletId(context.Background(), "wallet_1")
+	if err != nil {
+		t.Fatalf("get wallet statements: %#v, %v", statements, err)
+	}
+	transactions, err := dataSource.GetTransactions(context.Background())
+	if err != nil {
+		t.Fatalf("get transactions: %#v, %v", transactions, err)
+	}
+}
+
+func TestWalletDataSourceCreateWalletError(t *testing.T) {
+	dataSource := newTestDataSource(t)
+	if err := dataSource.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dataSource.CreateWallet(context.Background(), 100); err == nil {
+		t.Fatal("expected create wallet error")
+	}
+}
+
+func TestGetTransactionsError(t *testing.T) {
+	dataSource := newTestDataSource(t)
+	if err := dataSource.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dataSource.GetTransactions(context.Background()); err == nil {
+		t.Fatal("expected transaction query error")
+	}
 }
 
 func TestDatasourceTransactionFailures(t *testing.T) {
@@ -287,7 +320,7 @@ func TestDatasourceTransactionFailures(t *testing.T) {
 		if _, err := dataSource.Transfer(context.Background(), db.CreateTransferParams{}, "key"); err == nil {
 			t.Fatal("expected transfer begin error")
 		}
-		if err := markTransferFailed(context.Background(), dataSource, "id"); err == nil {
+		if err := markTransferFailed(context.Background(), dataSource, "id", "test failure"); err == nil {
 			t.Fatal("expected failed-status begin error")
 		}
 		if err := processTransfer(context.Background(), dataSource, db.CreateTransferParams{}, "id"); err == nil {
@@ -398,7 +431,7 @@ func TestTransferFailureBranches(t *testing.T) {
 		if err := processTransfer(context.Background(), dataSource, db.CreateTransferParams{FromWalletID: "wallet_1", ToWalletID: "wallet_2", Amount: 1}, "transaction_1"); err == nil {
 			t.Fatal("expected transfer status update error")
 		}
-		if err := markTransferFailed(context.Background(), dataSource, "transaction_1"); err == nil {
+		if err := markTransferFailed(context.Background(), dataSource, "transaction_1", "test failure"); err == nil {
 			t.Fatal("expected failed status update error")
 		}
 	})

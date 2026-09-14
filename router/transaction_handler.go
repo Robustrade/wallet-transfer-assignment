@@ -12,12 +12,53 @@ import (
 
 type transactionHandler interface {
 	transfer(w http.ResponseWriter, r *http.Request)
-	// transactionHandle(w http.ResponseWriter, r *http.Request)
-	// transactionStatusHandle(w http.ResponseWriter, r *http.Request)
+	getTransactions(w http.ResponseWriter, r *http.Request)
 }
 
+func (s *Server) getTransactions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var response models.Response
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		response = models.Response{
+			Message: "Invalid method type",
+			Data:    nil,
+			Status:  fmt.Sprint(http.StatusMethodNotAllowed),
+		}
+		err := json.NewEncoder(w).Encode(response)
+		if err != nil {
+			s.logger.Error("unable to encode the response", zap.Error(err))
+		}
+		return
+	}
+	statements, err := s.Conrollerer.GetTransactions(ctx)
+	if err != nil {
+		s.logger.Error("failed to fetch wallets", zap.Error(err))
+		response = models.Response{
+			Message: "failed to fetch wallets",
+			Data:    nil,
+			Status:  fmt.Sprint(http.StatusInternalServerError),
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		err = json.NewEncoder(w).Encode(response)
+		if err != nil {
+			s.logger.Error("unable to encode the response", zap.Error(err))
+		}
+		return
+	}
+	response = models.Response{
+		Data:    statements,
+		Message: "SUCCESS",
+		Status:  fmt.Sprint(http.StatusOK),
+	}
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		s.logger.Error("unable to encode the response", zap.Error(err))
+	}
+}
 func (s *Server) transfer(w http.ResponseWriter, r *http.Request) {
-	response := models.Response{}
+	var response models.Response
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		response = models.Response{

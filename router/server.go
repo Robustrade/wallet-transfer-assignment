@@ -51,13 +51,11 @@ func (s *Server) Routes() {
 }
 
 func walletRoutes(s *Server) {
-	s.Router.HandleFunc("/wallets", s.getWallets)
+	s.Router.HandleFunc("/wallets", s.wallets)
 	s.Router.HandleFunc("/wallets/{id}", s.getWalletById)
-	// s.Router.HandleFunc("/wallets/{id}/statements", s.walletStatementHandle)
+	s.Router.HandleFunc("/wallets/{id}/statements", s.walletStatementByWalletId)
 }
 func transactionRoutes(s *Server) {
-	// s.Router.HandleFunc("/transactions", s.transactionHandle)
-	// s.Router.HandleFunc("/transactions/{id}", s.transactionHandle)
-	// s.Router.HandleFunc("/transactions/{id}/status", s.transactionStatusHandle)
+	s.Router.HandleFunc("/transactions", s.getTransactions)
 	s.Router.HandleFunc("/transfers", s.transfer)
 }

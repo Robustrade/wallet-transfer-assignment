@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 )
 
 const createTransfer = `-- name: CreateTransfer :one
@@ -112,14 +113,19 @@ func (q *Queries) GetTransactions(ctx context.Context) ([]Transfer, error) {
 
 const markTransferFailed = `-- name: MarkTransferFailed :execrows
 UPDATE transfer
-SET status = 'FAILED',
+SET status = 'FAILED',comments=?,
     updated_at = CURRENT_TIMESTAMP
 WHERE transaction_id = ?
   AND status = 'PENDING'
 `
 
-func (q *Queries) MarkTransferFailed(ctx context.Context, transactionID string) (int64, error) {
-	result, err := q.db.ExecContext(ctx, markTransferFailed, transactionID)
+type MarkTransferFailedParams struct {
+	Comments      sql.NullString `json:"comments"`
+	TransactionID string         `json:"transaction_id"`
+}
+
+func (q *Queries) MarkTransferFailed(ctx context.Context, arg MarkTransferFailedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markTransferFailed, arg.Comments, arg.TransactionID)
 	if err != nil {
 		return 0, err
 	}

@@ -26,7 +26,7 @@ WHERE transaction_id = ?
 
 -- name: MarkTransferFailed :execrows
 UPDATE transfer
-SET status = 'FAILED',
+SET status = 'FAILED',comments=?,
     updated_at = CURRENT_TIMESTAMP
 WHERE transaction_id = ?
   AND status = 'PENDING';

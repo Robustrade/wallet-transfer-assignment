@@ -47,6 +47,10 @@ type serverControllerMock struct {
 	walletsErr      error
 	walletErr       error
 	transferErr     error
+	transactions    []models.Transfers
+	transactionsErr error
+	statements      []models.Statement
+	statementsErr   error
 	requestedWallet string
 	transferRequest models.TransferRequest
 }
@@ -60,12 +64,28 @@ func (mock *serverControllerMock) GetWalletById(_ context.Context, walletID stri
 	return mock.wallet, mock.walletErr
 }
 
+func (mock *serverControllerMock) CreateWallet(context.Context, models.WalletRequest) (*models.Wallet, error) {
+	return mock.wallet, mock.walletErr
+}
+
 func (mock *serverControllerMock) Transfer(_ context.Context, request models.TransferRequest) (*string, error) {
 	mock.transferRequest = request
 	if mock.transferErr != nil {
 		return nil, mock.transferErr
 	}
 	return &mock.transactionID, nil
+}
+
+func (mock *serverControllerMock) GetStatements(context.Context) ([]models.Statement, error) {
+	return nil, nil
+}
+
+func (mock *serverControllerMock) GetTransactions(context.Context) ([]models.Transfers, error) {
+	return mock.transactions, mock.transactionsErr
+}
+
+func (mock *serverControllerMock) GetWalletStatementByWalletId(context.Context, string) ([]models.Statement, error) {
+	return mock.statements, mock.statementsErr
 }
 
 func newTestServer(controllerMock *serverControllerMock) *Server {
@@ -201,6 +221,52 @@ func TestServerReturnsInternalErrorFromController(t *testing.T) {
 	}
 }
 
+func TestServerTransactionsReturnsSuccessResponse(t *testing.T) {
+	server := newTestServer(&serverControllerMock{
+		transactions: []models.Transfers{{TransactionID: "transaction_1", Amount: 100}},
+	})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/transactions", nil)
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want %d", recorder.Code, http.StatusOK)
+	}
+	response := decodeResponse(t, recorder)
+	if response.Message != "SUCCESS" || response.Status != "200" {
+		t.Fatalf("response: got %#v", response)
+	}
+}
+
+func TestServerTransactionsReturnsControllerError(t *testing.T) {
+	server := newTestServer(&serverControllerMock{transactionsErr: errors.New("transaction lookup failed")})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/transactions", nil)
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status: got %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+	response := decodeResponse(t, recorder)
+	if response.Message != "failed to fetch wallets" || response.Status != "500" {
+		t.Fatalf("response: got %#v", response)
+	}
+}
+
+func TestServerTransactionsRejectsUnsupportedMethod(t *testing.T) {
+	server := newTestServer(&serverControllerMock{})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/transactions", nil)
+
+	server.getTransactions(recorder, request)
+
+	if recorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status: got %d, want %d", recorder.Code, http.StatusMethodNotAllowed)
+	}
+}
+
 func TestNewServerInitializesInEmptyWorkingDirectory(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -246,10 +312,97 @@ func TestServerTransferReturnsControllerError(t *testing.T) {
 	}
 }
 
+func TestServerCreatesWallet(t *testing.T) {
+	server := newTestServer(&serverControllerMock{wallet: &models.Wallet{WalletID: "wallet_1", Balance: 100}})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/wallets", strings.NewReader(`{"balance":100}`))
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status: got %d, want %d", recorder.Code, http.StatusCreated)
+	}
+	response := decodeResponse(t, recorder)
+	if response.Message != "successful" || response.Status != "201" {
+		t.Fatalf("response: got %#v", response)
+	}
+}
+
+func TestServerCreateWalletValidationAndErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		body   string
+		mock   *serverControllerMock
+		status int
+	}{
+		{name: "malformed body", body: "{", mock: &serverControllerMock{}, status: http.StatusBadRequest},
+		{name: "invalid request", body: `{"balance":0}`, mock: &serverControllerMock{}, status: http.StatusBadRequest},
+		{name: "controller error", body: `{"balance":100}`, mock: &serverControllerMock{walletErr: errors.New("create failed")}, status: http.StatusInternalServerError},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := newTestServer(test.mock)
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, "/wallets", strings.NewReader(test.body))
+			server.Handler().ServeHTTP(recorder, request)
+			if recorder.Code != test.status {
+				t.Fatalf("status: got %d, want %d", recorder.Code, test.status)
+			}
+		})
+	}
+}
+
+func TestServerWalletStatementBranches(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		url    string
+		status int
+	}{
+		{name: "method", method: http.MethodPost, url: "/wallets/wallet_1/statements", status: http.StatusMethodNotAllowed},
+		{name: "missing id", method: http.MethodGet, url: "/wallets//statements", status: http.StatusBadRequest},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := newTestServer(&serverControllerMock{})
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(test.method, test.url, nil)
+			request.SetPathValue("id", "")
+			server.walletStatementByWalletId(recorder, request)
+			if recorder.Code != test.status {
+				t.Fatalf("status: got %d, want %d", recorder.Code, test.status)
+			}
+		})
+	}
+}
+
+func TestServerWalletStatementsSuccessAndControllerError(t *testing.T) {
+	tests := []struct {
+		name   string
+		mock   *serverControllerMock
+		status int
+	}{
+		{name: "success", mock: &serverControllerMock{statements: []models.Statement{{EntryID: "entry_1"}}}, status: http.StatusOK},
+		{name: "controller error", mock: &serverControllerMock{statementsErr: errors.New("lookup failed")}, status: http.StatusInternalServerError},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := newTestServer(test.mock)
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/wallets/wallet_1/statements", nil)
+			request.SetPathValue("id", "wallet_1")
+			server.walletStatementByWalletId(recorder, request)
+			if recorder.Code != test.status {
+				t.Fatalf("status: got %d, want %d", recorder.Code, test.status)
+			}
+		})
+	}
+}
+
 func TestServerWalletListRejectsUnsupportedMethod(t *testing.T) {
 	server := newTestServer(&serverControllerMock{})
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/wallets", nil)
+	request := httptest.NewRequest(http.MethodPut, "/wallets", nil)
 
 	server.Handler().ServeHTTP(recorder, request)
 

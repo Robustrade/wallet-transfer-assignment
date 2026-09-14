@@ -13,7 +13,17 @@ import (
 )
 
 type transactioner interface {
+	GetTransactions(ctx context.Context) ([]db.Transfer, error)
 	Transfer(ctx context.Context, request db.CreateTransferParams, idempotencyKey string) (*string, error)
+}
+
+func (ds DataSource) GetTransactions(ctx context.Context) ([]db.Transfer, error) {
+	statements, err := ds.Queries.GetTransactions(ctx)
+	if err != nil {
+		ds.log.Error(" unable to fetch statement record", zap.Error(err))
+		return nil, err
+	}
+	return statements, nil
 }
 
 func (ds DataSource) Transfer(ctx context.Context, req db.CreateTransferParams, idempotencyKey string) (*string, error) {
@@ -77,7 +87,7 @@ func (ds DataSource) Transfer(ctx context.Context, req db.CreateTransferParams, 
 			zap.Error(err),
 		)
 
-		if failedErr := markTransferFailed(ctx, ds, transactionID); failedErr != nil {
+		if failedErr := markTransferFailed(ctx, ds, transactionID, err.Error()); failedErr != nil {
 			ds.log.Error(
 				"failed to mark transfer as FAILED",
 				zap.String("transaction_id", transactionID),
@@ -97,7 +107,7 @@ func (ds DataSource) Transfer(ctx context.Context, req db.CreateTransferParams, 
 	return &transactionID, nil
 }
 
-func markTransferFailed(ctx context.Context, ds DataSource, transactionID string) error {
+func markTransferFailed(ctx context.Context, ds DataSource, transactionID, comment string) error {
 	tx, err := ds.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin failed-status transaction: %w", err)
@@ -109,7 +119,13 @@ func markTransferFailed(ctx context.Context, ds DataSource, transactionID string
 
 	q := ds.Queries.WithTx(tx)
 
-	rows, err := q.MarkTransferFailed(ctx, transactionID)
+	rows, err := q.MarkTransferFailed(ctx, db.MarkTransferFailedParams{
+		Comments: sql.NullString{
+			String: comment,
+			Valid:  comment != "",
+		},
+		TransactionID: transactionID,
+	})
 	if err != nil {
 		return fmt.Errorf("mark transfer failed: %w", err)
 	}

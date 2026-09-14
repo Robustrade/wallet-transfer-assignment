@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -29,6 +30,49 @@ func TestMappToWalletResponse(t *testing.T) {
 
 	if got != want {
 		t.Fatalf("wallet mapping mismatch: got %#v, want %#v", got, want)
+	}
+}
+
+func TestMappToCreateWalletResponse(t *testing.T) {
+	got := (Mapp{}).ToWalletReesponse(db.CreateWalletRow{WalletID: "wallet_1", Balance: 500})
+	if got.WalletID != "wallet_1" || got.Balance != 500 {
+		t.Fatalf("wallet mapping mismatch: got %#v", got)
+	}
+}
+
+func TestMappToResponseTransactions(t *testing.T) {
+	createdAt := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	transactions := []db.Transfer{{
+		TransactionID: "transaction_1",
+		FromWalletID:  "wallet_1",
+		ToWalletID:    "wallet_2",
+		Amount:        100,
+		Status:        "PROCESSED",
+		Comments:      sql.NullString{String: "done", Valid: true},
+		CreatedAt:     createdAt,
+		UpdatedAt:     createdAt,
+	}}
+
+	got := (Mapp{}).ToResponseTransactions(transactions)
+	if len(got) != 1 || got[0].TransactionID != "transaction_1" || got[0].Comments != "done" {
+		t.Fatalf("transaction mapping mismatch: got %#v", got)
+	}
+	if empty := (Mapp{}).ToResponseTransactions(nil); empty == nil || len(empty) != 0 {
+		t.Fatalf("empty transaction mapping should be non-nil: %#v", empty)
+	}
+}
+
+func TestMappToWalletStatements(t *testing.T) {
+	statement := db.GetStatementByWalletIdRow{
+		TransactionID: "transaction_1",
+		EntryID:       "entry_1",
+		Amount:        100,
+		EntryType:     "DEBIT",
+		Comments:      sql.NullString{String: "debit", Valid: true},
+	}
+	got := (Mapp{}).ToWalletStatements([]db.GetStatementByWalletIdRow{statement})
+	if len(got) != 1 || got[0].EntryID != "entry_1" || got[0].Comments != "debit" {
+		t.Fatalf("statement mapping mismatch: got %#v", got)
 	}
 }
 

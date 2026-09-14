@@ -26,6 +26,9 @@ func (controllerTestLogger) Sync()                      {}
 type controllerDataSourceMock struct {
 	wallets       []db.Wallet
 	wallet        db.Wallet
+	createdWallet db.CreateWalletRow
+	transactions  []db.Transfer
+	statements    []db.GetStatementByWalletIdRow
 	transferID    string
 	walletsErr    error
 	walletErr     error
@@ -38,8 +41,30 @@ func (mock *controllerDataSourceMock) GetWallets(context.Context) ([]db.Wallet, 
 	return mock.wallets, mock.walletsErr
 }
 
-func (mock *controllerDataSourceMock) GetWalletById(context.Context, string) (db.Wallet, error) {
-	return mock.wallet, mock.walletErr
+func (mock *controllerDataSourceMock) GetWalletById(context.Context, string) (*db.Wallet, error) {
+	if mock.walletErr != nil {
+		return nil, mock.walletErr
+	}
+	return &mock.wallet, nil
+}
+
+func (mock *controllerDataSourceMock) CreateWallet(context.Context, int64) (*db.CreateWalletRow, error) {
+	if mock.walletErr != nil {
+		return nil, mock.walletErr
+	}
+	return &mock.createdWallet, nil
+}
+
+func (mock *controllerDataSourceMock) GetStatementsByWalletId(context.Context, string) ([]db.GetStatementByWalletIdRow, error) {
+	return mock.statements, mock.walletsErr
+}
+
+func (mock *controllerDataSourceMock) GetStatement(context.Context) ([]db.GetStatementRow, error) {
+	return nil, nil
+}
+
+func (mock *controllerDataSourceMock) GetTransactions(context.Context) ([]db.Transfer, error) {
+	return mock.transactions, mock.walletsErr
 }
 
 func (mock *controllerDataSourceMock) Transfer(_ context.Context, request db.CreateTransferParams, idempotencyKey string) (*string, error) {
@@ -52,12 +77,14 @@ func (mock *controllerDataSourceMock) Transfer(_ context.Context, request db.Cre
 }
 
 type controllerMapperMock struct {
-	walletResponse  models.Wallet
-	walletsResponse []models.Wallet
-	transferParams  db.CreateTransferParams
-	walletCalls     int
-	walletsCalls    int
-	transferCalls   int
+	walletResponse       models.Wallet
+	walletsResponse      []models.Wallet
+	transactionsResponse []models.Transfers
+	statementsResponse   []models.Statement
+	transferParams       db.CreateTransferParams
+	walletCalls          int
+	walletsCalls         int
+	transferCalls        int
 }
 
 func (mock *controllerMapperMock) ToWalletResponse(db.Wallet) models.Wallet {
@@ -68,6 +95,22 @@ func (mock *controllerMapperMock) ToWalletResponse(db.Wallet) models.Wallet {
 func (mock *controllerMapperMock) ToWalletsResponse([]db.Wallet) []models.Wallet {
 	mock.walletsCalls++
 	return mock.walletsResponse
+}
+
+func (mock *controllerMapperMock) ToWalletStatements([]db.GetStatementByWalletIdRow) []models.Statement {
+	return mock.statementsResponse
+}
+
+func (mock *controllerMapperMock) ToResponseStatements([]db.GetStatementRow) []models.Statement {
+	return nil
+}
+
+func (mock *controllerMapperMock) ToResponseTransactions([]db.Transfer) []models.Transfers {
+	return mock.transactionsResponse
+}
+
+func (mock *controllerMapperMock) ToWalletReesponse(db.CreateWalletRow) models.Wallet {
+	return mock.walletResponse
 }
 
 func (mock *controllerMapperMock) ToCreateTransferParams(models.TransferRequest) db.CreateTransferParams {
@@ -150,6 +193,74 @@ func TestControllerGetWalletsDetailsReturnsDatasourceError(t *testing.T) {
 	}
 	if mapperMock.walletsCalls != 0 {
 		t.Fatal("wallet mapper should not be called after datasource failure")
+	}
+}
+
+func TestControllerGetTransactionsMapsDatasourceTransactions(t *testing.T) {
+	dataSource := &controllerDataSourceMock{transactions: []db.Transfer{{TransactionID: "transaction_1", Amount: 100}}}
+	mapperMock := &controllerMapperMock{transactionsResponse: []models.Transfers{{TransactionID: "transaction_1", Amount: 100}}}
+	controller := newControllerTest(dataSource, mapperMock)
+
+	got, err := controller.GetTransactions(context.Background())
+	if err != nil {
+		t.Fatalf("get transactions returned error: %v", err)
+	}
+	if len(got) != 1 || got[0] != mapperMock.transactionsResponse[0] {
+		t.Fatalf("transaction response: got %#v, want %#v", got, mapperMock.transactionsResponse)
+	}
+}
+
+func TestControllerGetTransactionsReturnsDatasourceError(t *testing.T) {
+	wantErr := errors.New("transaction list failed")
+	dataSource := &controllerDataSourceMock{walletsErr: wantErr}
+	controller := newControllerTest(dataSource, &controllerMapperMock{})
+
+	_, err := controller.GetTransactions(context.Background())
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("error: got %v, want %v", err, wantErr)
+	}
+}
+
+func TestControllerCreateWalletMapsDatasourceWallet(t *testing.T) {
+	dataSource := &controllerDataSourceMock{createdWallet: db.CreateWalletRow{WalletID: "wallet_1", Balance: 100}}
+	mapperMock := &controllerMapperMock{walletResponse: models.Wallet{WalletID: "wallet_1", Balance: 100}}
+	controller := newControllerTest(dataSource, mapperMock)
+
+	got, err := controller.CreateWallet(context.Background(), models.WalletRequest{Balance: 100})
+	if err != nil || got == nil || *got != mapperMock.walletResponse {
+		t.Fatalf("created wallet: got %#v, err %v", got, err)
+	}
+}
+
+func TestControllerCreateWalletReturnsDatasourceError(t *testing.T) {
+	wantErr := errors.New("create wallet failed")
+	controller := newControllerTest(&controllerDataSourceMock{walletErr: wantErr}, &controllerMapperMock{})
+
+	if _, err := controller.CreateWallet(context.Background(), models.WalletRequest{Balance: 100}); !errors.Is(err, wantErr) {
+		t.Fatalf("error: got %v, want %v", err, wantErr)
+	}
+}
+
+func TestControllerGetWalletStatementMapsDatasourceStatements(t *testing.T) {
+	dataSource := &controllerDataSourceMock{statements: []db.GetStatementByWalletIdRow{{EntryID: "entry_1"}}}
+	mapperMock := &controllerMapperMock{statementsResponse: []models.Statement{{EntryID: "entry_1"}}}
+	controller := newControllerTest(dataSource, mapperMock)
+
+	got, err := controller.GetWalletStatementByWalletId(context.Background(), "wallet_1")
+	if err != nil {
+		t.Fatalf("get statements: %v", err)
+	}
+	if len(got) != 1 || got[0] != mapperMock.statementsResponse[0] {
+		t.Fatalf("statement response: got %#v, want %#v", got, mapperMock.statementsResponse)
+	}
+}
+
+func TestControllerGetWalletStatementReturnsDatasourceError(t *testing.T) {
+	wantErr := errors.New("statement lookup failed")
+	controller := newControllerTest(&controllerDataSourceMock{walletsErr: wantErr}, &controllerMapperMock{})
+
+	if _, err := controller.GetWalletStatementByWalletId(context.Background(), "wallet_1"); !errors.Is(err, wantErr) {
+		t.Fatalf("error: got %v, want %v", err, wantErr)
 	}
 }
 

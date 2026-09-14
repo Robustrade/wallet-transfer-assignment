@@ -9,6 +9,7 @@ import (
 
 type transactioner interface {
 	Transfer(ctx context.Context, request models.TransferRequest) (*string, error)
+	GetTransactions(ctx context.Context) ([]models.Transfers, error)
 }
 
 func (ctr Controller) Transfer(ctx context.Context, request models.TransferRequest) (*string, error) {
@@ -19,4 +20,14 @@ func (ctr Controller) Transfer(ctx context.Context, request models.TransferReque
 		return nil, err
 	}
 	return transactionID, nil
+}
+
+func (ctr Controller) GetTransactions(ctx context.Context) ([]models.Transfers, error) {
+	transactions, err := ctr.db.GetTransactions(ctx)
+	if err != nil {
+		ctr.log.Error("unable to fetch statement", zap.Error(err))
+		return nil, err
+	}
+	responseData := ctr.maper.ToResponseTransactions(transactions)
+	return responseData, nil
 }

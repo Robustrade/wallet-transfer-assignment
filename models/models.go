@@ -56,3 +56,20 @@ type TransferRequest struct {
 	ToWalletID     string `json:"toWalletId" validate:"required"`
 	Amount         int64  `json:"amount" validate:"required,gt=0"`
 }
+
+type Statement struct {
+	CreatedAt     time.Time `json:"created_at"`
+	TransactionID string    `json:"transaction_id"`
+	EntryID       string    `json:"entry_id"`
+	Amount        int64     `json:"amount"`
+	EntryType     string    `json:"entry_type"`
+	BalanceAfter  int64     `json:"balance_after"`
+	FromWalletID  string    `json:"from_wallet_id"`
+	ToWalletID    string    `json:"to_wallet_id"`
+	Status        string    `json:"status"`
+	Comments      string    `json:"comments"`
+}
+
+type WalletRequest struct {
+	Balance int64 `json:"balance" validate:"required,gt=0"`
+}

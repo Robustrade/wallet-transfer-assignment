@@ -14,10 +14,53 @@ type Mapper interface {
 	ToWalletResponse(wallet db.Wallet) models.Wallet
 	ToWalletsResponse(wallet []db.Wallet) []models.Wallet
 	ToCreateTransferParams(transfer models.TransferRequest) db.CreateTransferParams
+	ToWalletStatements(statements []db.GetStatementByWalletIdRow) []models.Statement
+	ToResponseTransactions(transactions []db.Transfer) []models.Transfers
+	ToWalletReesponse(wallet db.CreateWalletRow) models.Wallet
 }
 
 func NewMapper(log utils.Logger) Mapper {
 	return Mapp{log: log}
+}
+func (m Mapp) ToWalletReesponse(wallet db.CreateWalletRow) models.Wallet {
+	return models.Wallet{
+		WalletID: wallet.WalletID,
+		Balance:  wallet.Balance,
+	}
+}
+func (m Mapp) ToResponseTransactions(transactions []db.Transfer) []models.Transfers {
+	dtoList := make([]models.Transfers, 0, len(transactions))
+	for _, transaction := range transactions {
+		dtoList = append(dtoList, models.Transfers{
+			TransactionID: transaction.TransactionID,
+			FromWalletID:  transaction.FromWalletID,
+			ToWalletID:    transaction.ToWalletID,
+			Amount:        transaction.Amount,
+			Status:        utils.TRANSFER_STATUS(transaction.Status),
+			Comments:      transaction.Comments.String,
+			CreatedAt:     transaction.CreatedAt,
+			UpdatedAt:     transaction.UpdatedAt,
+		})
+	}
+	return dtoList
+}
+func (m Mapp) ToWalletStatements(statements []db.GetStatementByWalletIdRow) []models.Statement {
+	walletStatements := make([]models.Statement, 0, len(statements))
+	for _, statement := range statements {
+		walletStatements = append(walletStatements, models.Statement{
+			CreatedAt:     statement.CreatedAt,
+			TransactionID: statement.TransactionID,
+			EntryID:       statement.EntryID,
+			Amount:        statement.Amount,
+			EntryType:     statement.EntryType,
+			BalanceAfter:  statement.BalanceAfter,
+			FromWalletID:  statement.FromWalletID,
+			ToWalletID:    statement.ToWalletID,
+			Status:        statement.Status,
+			Comments:      statement.Comments.String,
+		})
+	}
+	return walletStatements
 }
 
 func (m Mapp) ToWalletResponse(wallet db.Wallet) models.Wallet {

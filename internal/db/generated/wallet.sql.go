@@ -9,6 +9,29 @@ import (
 	"context"
 )
 
+const createWallet = `-- name: CreateWallet :one
+INSERT INTO wallet (wallet_id,balance)
+VALUES (?,?)
+RETURNING wallet_id,balance
+`
+
+type CreateWalletParams struct {
+	WalletID string `json:"wallet_id"`
+	Balance  int64  `json:"balance"`
+}
+
+type CreateWalletRow struct {
+	WalletID string `json:"wallet_id"`
+	Balance  int64  `json:"balance"`
+}
+
+func (q *Queries) CreateWallet(ctx context.Context, arg CreateWalletParams) (CreateWalletRow, error) {
+	row := q.db.QueryRowContext(ctx, createWallet, arg.WalletID, arg.Balance)
+	var i CreateWalletRow
+	err := row.Scan(&i.WalletID, &i.Balance)
+	return i, err
+}
+
 const creditWallet = `-- name: CreditWallet :execrows
 UPDATE wallet
 SET balance = balance + ?
