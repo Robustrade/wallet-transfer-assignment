@@ -1,5 +1,6 @@
 .DS_Store
 coverage/
+coverage.out
 dist/
 build/
 .tmp/

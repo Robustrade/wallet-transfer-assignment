@@ -8,16 +8,31 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+
+concurrency:
+  group: sonarqube-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   sonarqube:
     name: sonarqube
     runs-on: [actions_runner_dev_new]
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate Go coverage report
+        run: go test ./... -covermode=atomic -coverprofile=coverage.out
 
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v5
