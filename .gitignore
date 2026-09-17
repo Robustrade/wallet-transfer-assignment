@@ -5,3 +5,12 @@ build/
 .tmp/
 .env
 .env.*
+
+# Go
+bin/
+vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib

@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: wallet_db
+      POSTGRES_USER: wallet_user
+      POSTGRES_PASSWORD: wallet_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./internal/db/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet_user -d wallet_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://wallet_user:wallet_pass@postgres:5432/wallet_db?sslmode=disable
+      PORT: "8080"
+
+volumes:
+  pgdata:
