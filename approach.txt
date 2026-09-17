@@ -1,0 +1,310 @@
+Wallet Transfer Service
+
+FRs:
+
+- a transfer happens exactly once, even if the client sends the same request many times
+- a transfer is all or nothing. Either both wallets and the ledger get updated, or nothing does
+- two transfers hitting the same wallet at the same time can never overspend it
+- every transfer is recorded in a double entry ledger that always balances
+
+------------------------------------------------------------------------------------------------------------------------
+
+API contract:
+
+POST /transfers
+
+Body: {
+        "idempotencyKey": "abc123",
+        "fromWalletId": "wallet_1",
+        "toWalletId": "wallet_2",
+        "amount": 100
+      }
+
+- idempotencyKey: required, not empty, max 255 chars
+- fromWalletId, toWalletId: required, must exist, must be different
+- amount: required, greater than 0. BigDecimal in Java, NUMERIC(15,4)  in the DB
+
+
+Sample Response:
+
+{
+  "transferId": "8f1c2a7e-...",
+  "status": "PROCESSED",
+  "fromWalletId": "wallet_1",
+  "toWalletId": "wallet_2",
+  "amount": 100,
+  "failureReason": null,
+  "createdAt": "2026-09-16T10:00:00Z"
+}
+
+Replay: if the same key comes again with the same request, we return exactly what the first
+call returned. Same status code, same body, plus a header Idempotent-Replayed: true.
+
+------------------------------------------------------------------------------------------------------------------------
+
+Flow:
+
+The whole transfer is one @Transactional method, TransferService.createTransfer().
+Steps 2 to 7 run inside that one DB transaction.
+
+1. Validate the request in the controller. If invalid -> 400 with appropriate error messages, nothing is saved.
+
+
+2. Transaction starts.
+
+3. Look the idempotency key up first. If a transfer already exists for it, check it matches the
+   request and return it as a replay; otherwise 409. This costs one indexed read and means a
+   retry of an already completed transfer never takes wallet locks, so it cannot queue behind an
+   unrelated transfer on those wallets or time out waiting for one.
+   A duplicate arriving while the first request is still open will not see it here, because that
+   row stays invisible until it commits. It falls through to step 5, where the unique index
+   serialises the two.
+
+
+4. Lock both wallet rows, always the smaller wallet id first (sort the two ids in Java):
+     walletRepository.findByIdForUpdate(firstId)
+     walletRepository.findByIdForUpdate(secondId)
+   Both are @Lock(LockModeType.PESSIMISTIC_WRITE) queries, which Hibernate turns into
+   SELECT ... FOR NO KEY UPDATE on Postgres.
+   If either wallet is missing -> WalletNotFoundException -> rollback, 404 with appropriate error message.
+
+
+5. Insert the transfer as PENDING using a native query:
+     INSERT INTO transfers (...) VALUES (...)
+     ON CONFLICT (idempotency_key) DO NOTHING
+   It returns 1 if the row got inserted and 0 if the key already exists. If 0 -> read the
+   saved transfer by key and return it. Nothing else gets written.
+
+
+6. If either wallet is not ACTIVE -> transfer.markFailed(WALLET_NOT_ACTIVE)
+   If the from wallet doesn't have enough balance -> transfer.markFailed(INSUFFICIENT_FUNDS)
+   - return a result with status FAILED (no exception). The transaction commits and the
+     API returns 422
+
+7. Otherwise:
+   - fromWallet.debit(amount), toWallet.credit(amount)
+   - save 2 ledger entries: DEBIT on the from wallet, CREDIT on the to wallet
+   - transfer.markProcessed()
+   - the transaction commits, the controller returns 201
+
+8. Any unexpected exception -> Spring rolls back, 500.
+
+Insufficient funds is a commit, not a rollback:
+We want the FAILED transfer saved against the key, so a retry later still gets FAILED. If we
+rolled it back, a retry could go through once the wallet has money, and the same request
+would end up with two different answers.
+
+
+Why sort the wallet ids? To make deadlocks impossible.
+Take T1 moving wallet_1 → wallet_2 and T2 moving wallet_2 → wallet_1 at the same instant.
+If each locks its own source first, T1 holds wallet_1 and waits for wallet_2 while T2 holds wallet_2 and waits for wallet_1.
+Neither can move, so Postgres kills one with a deadlock error and that client gets a 500 for no real reason.
+Sorting means both lock wallet_1 then wallet_2, so one simply waits and both succeed.
+It costs one compareTo and the only rule is that every transaction sorts the same way.
+
+
+Why the balance check sits inside the transaction?
+Doing it before the transaction starts is a read-then-write race. Two requests both read a
+balance of 100, both decide there is enough for a transfer of 100, and then both debit, so the
+wallet ends up at -100. The check only means something while the row lock is held, which is why
+it is step 5 and not step 1.
+
+-------------------------------------------------------------------------------------------------------------------------
+
+Schema:
+
+wallets
+- id: TEXT  (primary key) e.g "wallet_1"
+- customer_id: UUID not null
+- name: TEXT
+- status: TEXT, not null, CHECK (status IN ('ACTIVE', 'INACTIVE', 'BLOCKED'))
+- balance: NUMERIC(15, 4), not null, default 0, CHECK (balance >= 0)
+- meta: TEXT
+- created_at: TIMESTAMPTZ
+- updated_at: TIMESTAMPTZ
+
+Index:
+wallets(customer_id): Get all wallets for a customer
+
+The CHECK on balance is a safety net. The service already checks funds before debiting, but
+even if there is a bug in the code, the DB will refuse to let a wallet go negative.
+
+
+transfers
+- id: UUID, primary key
+- idempotency_key: TEXT, not null, UNIQUE
+- from_wallet_id: TEXT, not null, FK -> wallets.id
+- initiated_by: UUID, not null
+- to_wallet_id: TEXT, not null, FK -> wallets.id
+- amount: NUMERIC(15, 4), not null, CHECK (amount > 0)
+- status: TEXT, not null, CHECK (status IN ('PENDING', 'PROCESSED', 'FAILED'))
+- failure_reason: TEXT, set only when status is FAILED
+- created_at: TIMESTAMPTZ
+- updated_at: TIMESTAMPTZ
+- CHECK (from_wallet_id <> to_wallet_id)
+- CHECK ((status = 'FAILED') = (failure_reason IS NOT NULL))
+
+Index:
+transfers(initiated_by): Get all transfers done by a customer
+No need for index on status since it is low cardinality
+
+The UNIQUE on idempotency_key is what actually stops duplicate transfers, not an if check in
+the code.
+
+ledger_entries
+- id: UUID, primary key
+- transfer_id: UUID, not null, FK -> transfers.id
+- customer_id: UUID, not null
+- wallet_id: TEXT, not null, FK -> wallets.id
+- type: TEXT, not null, CHECK (type IN ('DEBIT', 'CREDIT'))
+- amount: NUMERIC(15, 4), not null, CHECK (amount > 0)
+- created_at: TIMESTAMPTZ
+UNIQUE (transfer_id, type)
+
+Index:
+ledger_entries(customer_id): Index for getting all ledger_entries for a customer
+ledger_entries(wallet_id): To display the wallets transaction history
+
+The FK on transfer_id means a ledger row can never exist without a transfer.
+The ledger is append only. We never update or delete a row. If something needs
+  correcting, it's a new transfer in the other direction.
+
+All unique constraints are automatically indexed by Postgres
+
+Idempotency is kept inside the transfers table rather than its own separate table because one more table
+means keeping one more thing in consistent. In the future, if more endpoints use the idempotency key then we can
+separate it out into its own table
+
+------------------------------------------------------------------------------------------------------------------------
+
+Concurrency
+
+Approach: pessimistic locking. PESSIMISTIC_WRITE (SELECT ... FOR UPDATE) on both wallet
+rows, always in the same order (smaller wallet id first), at the Postgres default isolation
+level (READ COMMITTED).
+
+lock_timeout is set to 3s with SET LOCAL at the start of the transaction,
+so a stuck holder can't queue every request behind it and exhaust the connection pool.
+A timeout rolls back before anything is written, so the client's retry with the same key is safe.
+
+Example, two transfers of 100 each debiting wallet_1 (balance 100) at the same time:
+- T1 locks wallet_1, reads 100, debits 100, commits
+- T2 was waiting on the lock. Once T1 commits, T2 gets the lock, reads 0, marks FAILED
+- no double spend, because the balance is read and updated while holding the lock
+
+
+Why lock both wallets and not only the source:
+The destination balance also gets updated. Without a lock, two credits landing at the same
+time can overwrite each other and one of them gets lost.
+
+Other options:
+- Optimistic locking (@Version column + retry on OptimisticLockException): works well when
+  conflicts are rare. A busy wallet getting many transfers at once is exactly when conflicts
+  are common, and it turns into a lot of retries. Pessimistic Locks are simpler here.
+- SERIALIZABLE isolation: also correct, but Postgres aborts transactions with serialization
+  errors and every call needs a retry loop around it. Explicit locks give the same safety,
+  and it's clear from the code where the locking happens.
+
+------------------------------------------------------------------------------------------------------------------------
+
+Idempotency
+- Where the key is stored: transfers.idempotency_key, with a UNIQUE constraint.
+
+- How a duplicate is detected: the native INSERT ON CONFLICT DO NOTHING in step 4
+  returns 0. The unique constraint turns the check and the insert into one atomic step.
+
+- How the original result is returned: By reading the transfer from the idempotency key and returning the status
+
+- Same key, different request: if the from wallet, to wallet or amount don't match the
+  saved transfer -> 409. A different request should never be treated as a replay.
+  The amount is compared with compareTo, not equals. NUMERIC(15,4) comes back as 100.0000
+  while the request parses to 100, and equals compares scale as well, so a valid replay
+  would otherwise get a wrong 409.
+
+- How duplicate side effects are prevented: balance updates and ledger inserts only happen
+  after the insert in step 4 returns 1, in the same transaction. A duplicate never gets
+  that far.
+
+------------------------------------------------------------------------------------------------------------------------
+
+Retry:
+
+- Client: on a timeout, network error or 500, retry with the same idempotencyKey. It's
+  always safe.
+- With the lock ordering there shouldn't be deadlocks. If Postgres still aborts a transaction for some reason, we
+  return 500 and the client retries.
+
+------------------------------------------------------------------------------------------------------------------------
+
+Transfer states
+
+PENDING -> PROCESSED
+PENDING -> FAILED
+
+- A transfer is always created as PENDING.
+- PROCESSED and FAILED are final. Nothing moves out of them.
+- The transitions are methods on the Transfer entity: markProcessed() and
+  markFailed(reason). Both throw IllegalStateException if the transfer is not PENDING.
+- TransferStatus is a Java enum, stored as a string (@Enumerated(EnumType.STRING)), and the
+  DB CHECK only allows these three values.
+
+------------------------------------------------------------------------------------------------------------------------
+
+Consistency:
+
+These should always hold:
+- no wallet balance goes below 0
+- a PROCESSED transfer has exactly 2 ledger rows: a DEBIT on the from wallet and a CREDIT on
+  the to wallet, both for the transfer amount
+- PENDING and FAILED transfers have 0 ledger rows
+- total DEBIT amount = total CREDIT amount across the ledger
+- total money across all wallets never changes because of transfers, it only moves around
+- for each wallet: current balance = starting balance + credits - debits
+- one idempotency key maps to at most one transfer
+
+This is strongly consistent. Balance, ledger and transfer status all change in the same
+commit, so any read after the commit sees all of them together.
+
+------------------------------------------------------------------------------------------------------------------------
+
+Testing Strategy and Assumptions:
+
+- I would be using testcontainers + Junit 5 for testing over here. Will add a complete testing doc
+when I hand over the code
+- single currency
+- wallets and their starting balances are seeded. There is no create wallet or top-up API
+- the API gateway authenticates the caller and passes the customer id. The ownership check
+  (the caller's customer id must match wallets.customer_id of the from wallet, otherwise 403)
+  is where auth plugs in, and is not implemented here
+- customer ids are external. There is no customers table and no foreign key on them
+- idempotency keys are global and do not expire
+- a reversal is a new transfer in the opposite direction, never an edit to an existing one
+
+
+Stored balance + ledger (instead of calculating balance from the ledger):
+Calculating from the ledger means summing every row on every read.
+With a stored balance, reads are cheap and the DB itself blocks
+negative balances. The downside is that balance and ledger could drift in theory. That's why
+both are updated in the same transaction and the tests check they match.
+
+Synchronous, one transaction:
+Simple and fully atomic, and no recovery job is needed. The downside is that under heavy
+load on one wallet, requests wait on the lock and latency goes up.
+
+Pessimistic locks:
+Less throughput on a busy wallet, but no double spend and no deadlocks.
+
+------------------------------------------------------------------------------------------------------------------------
+Failure Modes
+
+- invalid request -> nothing is touched -> 400
+- wallet does not exist -> rollback -> 404
+- not enough balance -> FAILED row is committed -> 422, same on every retry
+- same request sent again -> saved result is returned -> same status as the first call
+- same key, different request -> 409
+- two debits on the same wallet at once -> the second waits for the lock -> 201 or 422
+  depending on what is left
+- opposite direction transfers at once -> sorted locks, no deadlock -> both go through
+- crash mid transaction -> Postgres rolls it back -> the retry runs fresh
+- crash after commit but before the response -> the transfer is saved -> the retry replays it
+- DB down -> nothing is saved -> 500, safe to retry with the same key

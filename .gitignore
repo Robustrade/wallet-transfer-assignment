@@ -5,3 +5,10 @@ build/
 .tmp/
 .env
 .env.*
+target/
+
+# IDE (all of IntelliJ's config is XML)
+.idea/
+*.iml
+*.iws
+*.ipr
