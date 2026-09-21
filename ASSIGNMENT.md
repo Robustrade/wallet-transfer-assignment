@@ -25,6 +25,10 @@ Focus on **clarity, correctness, and robustness**, not feature completeness.
 
 ---
 
+## Swagger API Documentation 
+
+http://localhost:8080/swagger-ui.html
+
 ## Problem Statement
 
 Implement a service that supports **wallet transfers**.

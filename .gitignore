@@ -5,3 +5,6 @@ build/
 .tmp/
 .env
 .env.*
+.idea/
+target/
+*.iml
