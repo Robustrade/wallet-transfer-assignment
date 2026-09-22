@@ -14,9 +14,9 @@ jobs:
     name: lint-format-test
     runs-on: [actions_runner_dev_new]
     env:
-      LINT_CMD: ${{ vars.LINT_CMD }}
-      FORMAT_CHECK_CMD: ${{ vars.FORMAT_CHECK_CMD }}
-      TEST_CMD: ${{ vars.TEST_CMD }}
+      LINT_CMD: ${{ vars.LINT_CMD || 'golangci-lint run ./...' }}
+      FORMAT_CHECK_CMD: ${{ vars.FORMAT_CHECK_CMD || 'test -z "$(gofmt -l .)"' }}
+      TEST_CMD: ${{ vars.TEST_CMD || 'go test ./...' }}
       CGO_ENABLED: ${{ vars.CGO_ENABLED }}
     steps:
       - name: Checkout
@@ -31,7 +31,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.27.1'
 
       - name: Install golangci-lint
         run: |

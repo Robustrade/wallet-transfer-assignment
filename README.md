@@ -33,3 +33,69 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+## Implementation
+
+This repository contains a working Go implementation of the assignment.
+See [`docs/DESIGN.md`](docs/DESIGN.md) for schema, idempotency, and
+concurrency design notes.
+
+### Requirements
+
+- Go 1.27+
+- Docker (for local PostgreSQL and Testcontainers), or any reachable
+  PostgreSQL instance
+
+### Run locally
+
+```bash
+make up                       # starts Postgres on localhost:5432
+cp .env.example .env          # adjust if needed
+make run                      # runs the API on :8080, applying migrations on boot
+```
+
+```bash
+# create two wallets
+curl -X POST localhost:8080/wallets -d '{"id":"wallet_1","initialBalance":1000}'
+curl -X POST localhost:8080/wallets -d '{"id":"wallet_2","initialBalance":0}'
+
+# transfer funds
+curl -X POST localhost:8080/transfers -d '{
+  "idempotencyKey": "abc123",
+  "fromWalletId": "wallet_1",
+  "toWalletId": "wallet_2",
+  "amount": 100
+}'
+```
+
+### Test
+
+```bash
+make test              # service + HTTP tests with repository mocks
+make test-integration  # starts disposable Postgres with Testcontainers
+```
+
+The integration tests require a running Docker daemon and start a disposable
+PostgreSQL 16 container automatically. To use an already-running PostgreSQL
+instance instead, set `TEST_DATABASE_URL` before running `make test-integration`.
+
+### HTTPS configuration
+
+The server uses HTTP by default. Set `SSL_ENABLED=true` to serve HTTPS. When
+`TLS_CERT_FILE` and `TLS_KEY_FILE` are both provided, they configure the HTTPS
+certificate. When they are omitted, the server generates an ephemeral
+self-signed certificate for local development. The certificate and key must be
+configured together when either is provided.
+
+### Project layout
+
+```
+cmd/server                     entrypoint: config, wiring, HTTP server
+internal/controller             transport: routing, DTOs, error mapping
+internal/service                business logic: transfer workflow, idempotency
+internal/domain                 entities, state machine, validation
+internal/repository              repository interfaces + UnitOfWork
+internal/repository/postgres     pgx-based production implementation
+internal/migrations              embedded SQL schema migrations
+```
+
