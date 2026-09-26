@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: wallet-db
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet
+    ports:
+      # Host 5433: an unrelated local postgres already listens on 5432.
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - wallet-pgdata:/var/lib/postgresql/data
+
+volumes:
+  wallet-pgdata:

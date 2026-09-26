@@ -1,7 +1,9 @@
-.DS_Store
-coverage/
-dist/
-build/
-.tmp/
+/wallet-api
+/api
+/migrate
+/seed
+/cmd/api/api
+/cmd/migrate/migrate
+/cmd/seed/seed
+*.test
 .env
-.env.*
