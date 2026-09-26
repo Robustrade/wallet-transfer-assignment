@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wallet}
+      POSTGRES_USER: ${POSTGRES_USER:-wallet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wallet}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - wallet-postgres-data:/var/lib/postgresql/data
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-postgres://wallet:wallet@postgres:5432/wallet?sslmode=disable}
+      PORT: ${PORT:-8080}
+      SSL_ENABLED: ${SSL_ENABLED:-false}
+      MAX_CLAIM_ATTEMPTS: ${MAX_CLAIM_ATTEMPTS:-3}
+      TLS_CERT_FILE: ${TLS_CERT_FILE:-}
+      TLS_KEY_FILE: ${TLS_KEY_FILE:-}
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  wallet-postgres-data:
