@@ -1,0 +1,31 @@
+# golangci-lint v1 config (CI pins v1.64.8).
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    # defaults
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # formatting
+    - gofmt
+    - goimports
+    # correctness checks that matter for a DB + HTTP service
+    - errorlint      # errors compared with == instead of errors.Is/As
+    - bodyclose      # unclosed HTTP response bodies (tests)
+    - sqlclosecheck  # unclosed *sql.Rows / *sql.Stmt
+    - rowserrcheck   # missing rows.Err() check
+    - noctx          # HTTP requests without context
+    - misspell
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/LokilokeshM/wallet-transfer-assignment
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
