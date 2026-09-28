@@ -1,0 +1,106 @@
+# Runnable with the VS Code "REST Client" extension or the JetBrains HTTP Client.
+# The same walkthrough as docs/manual-testing.md, with the same keys and expected results.
+#
+# 1. Start the server on a fresh database: `make run` (see docs/manual-testing.md, step 0)
+# 2. Send the requests top to bottom.
+# Keys are permanent: on a second run, change the keys or reset the database.
+
+@baseUrl = http://localhost:8080
+
+### Health: 200 {"status":"ok"} (process up, never touches the DB)
+GET {{baseUrl}}/healthz
+
+### Readiness: 200 {"status":"ready"} (DB reachable; 503 if not)
+GET {{baseUrl}}/readyz
+
+### Starting balance: wallet_1 = 100000 SGD
+GET {{baseUrl}}/wallets/wallet_1
+
+### (1) Normal transfer -> 201 PROCESSED, failureReason null
+POST {{baseUrl}}/transfers
+Content-Type: application/json
+
+{"idempotencyKey": "my-test-1", "fromWalletId": "wallet_1", "toWalletId": "wallet_2", "amount": 500}
+
+### (2) Exact same request -> 201, header Idempotent-Replayed: true, SAME id as (1), no money moves
+POST {{baseUrl}}/transfers
+Content-Type: application/json
+
+{"idempotencyKey": "my-test-1", "fromWalletId": "wallet_1", "toWalletId": "wallet_2", "amount": 500}
+
+### (3) Same key, different amount -> 409 IDEMPOTENCY_KEY_REUSED
+POST {{baseUrl}}/transfers
+Content-Type: application/json
+
+{"idempotencyKey": "my-test-1", "fromWalletId": "wallet_1", "toWalletId": "wallet_2", "amount": 999}
+
+### (4) Insufficient funds (wallet_3 = 0) -> 422 FAILED / INSUFFICIENT_FUNDS (stored, replayable)
+POST {{baseUrl}}/transfers
+Content-Type: application/json
+
+{"idempotencyKey": "my-test-2", "fromWalletId": "wallet_3", "toWalletId": "wallet_1", "amount": 100}
+
+### (5) Currency mismatch SGD -> USD -> 422 FAILED / CURRENCY_MISMATCH
+POST {{baseUrl}}/transfers
+Content-Type: application/json
+
+{"idempotencyKey": "my-test-3", "fromWalletId": "wallet_1", "toWalletId": "wallet_usd", "amount": 100}
+
+### (6) Unknown wallet -> 404 WALLET_NOT_FOUND (nothing stored; the key stays usable)
+POST {{baseUrl}}/transfers
+Content-Type: application/json
+
+{"idempotencyKey": "my-test-4", "fromWalletId": "wallet_1", "toWalletId": "nobody", "amount": 100}
+
+### (7a) Float amount -> 400 "amount: must be an integer number of minor units"
+POST {{baseUrl}}/transfers
+Content-Type: application/json
+
+{"idempotencyKey": "my-test-5", "fromWalletId": "wallet_1", "toWalletId": "wallet_2", "amount": 10.5}
+
+### (7b) Amount as a string -> 400 "amount: must be an integer number of minor units"
+POST {{baseUrl}}/transfers
+Content-Type: application/json
+
+{"idempotencyKey": "my-test-5", "fromWalletId": "wallet_1", "toWalletId": "wallet_2", "amount": "100"}
+
+### (7c) Same wallet on both sides -> 400 "toWalletId: must differ from fromWalletId"
+POST {{baseUrl}}/transfers
+Content-Type: application/json
+
+{"idempotencyKey": "my-test-5", "fromWalletId": "wallet_1", "toWalletId": "wallet_1", "amount": 1}
+
+### (7d) Unknown field -> 400 "body: contains unknown field \"note\""
+POST {{baseUrl}}/transfers
+Content-Type: application/json
+
+{"idempotencyKey": "my-test-5", "fromWalletId": "wallet_1", "toWalletId": "wallet_2", "amount": 1, "note": "x"}
+
+### (7e) Wrong Content-Type -> 400 "Content-Type: must be application/json"
+POST {{baseUrl}}/transfers
+Content-Type: text/plain
+
+{"idempotencyKey": "my-test-5", "fromWalletId": "wallet_1", "toWalletId": "wallet_2", "amount": 1}
+
+### (8) Request id is echoed -> response header X-Request-Id: my-trace-123
+GET {{baseUrl}}/healthz
+X-Request-ID: my-trace-123
+
+### (9) Burst request. The 10-way parallel version (9 replays) needs curl: docs/manual-testing.md step 5.
+#     Sent once here -> 201 PROCESSED; send it again -> 201 + Idempotent-Replayed: true
+POST {{baseUrl}}/transfers
+Content-Type: application/json
+
+{"idempotencyKey": "my-burst-1", "fromWalletId": "wallet_2", "toWalletId": "wallet_3", "amount": 50}
+
+### (10) Final balances on a fresh database: wallet_1 = 99500
+GET {{baseUrl}}/wallets/wallet_1
+
+### wallet_2 = 50450  (50000 + 500 - 50)
+GET {{baseUrl}}/wallets/wallet_2
+
+### wallet_3 = 50
+GET {{baseUrl}}/wallets/wallet_3
+
+### History for wallet_1: 3 transfers, newest first: (5), (4), (1)
+GET {{baseUrl}}/wallets/wallet_1/transfers?limit=5

@@ -5,3 +5,14 @@ build/
 .tmp/
 .env
 .env.*
+!.env.example
+
+# Go build/test output
+/bin/
+*.test
+coverage.out
+
+# Local SQLite database (default DB_DSN) and its WAL/SHM files
+*.db
+*.db-shm
+*.db-wal
