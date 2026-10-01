@@ -33,3 +33,38 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+## Solution (this branch)
+
+Design: [`docs/DESIGN.md`](./docs/DESIGN.md).
+
+### Run
+
+```bash
+go run ./cmd/server
+```
+
+Defaults: `ADDR=:8080`, SQLite file `wallet.db`. Override with `ADDR` and `SQLITE_DSN` (example: `file:wallet.db`).
+
+```bash
+curl -s -X POST localhost:8080/wallets -H 'Content-Type: application/json' \
+  -d '{"id":"wallet_1","initialBalance":1000}'
+curl -s -X POST localhost:8080/wallets -H 'Content-Type: application/json' \
+  -d '{"id":"wallet_2","initialBalance":0}'
+curl -s -X POST localhost:8080/transfers -H 'Content-Type: application/json' \
+  -d '{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100}'
+```
+
+### Test / lint / format
+
+```bash
+go test ./...
+gofmt -l .
+golangci-lint run
+```
+
+Expected GitHub Actions repository variables:
+
+- `LINT_CMD=golangci-lint run`
+- `FORMAT_CHECK_CMD=test -z "$(gofmt -l .)"`
+- `TEST_CMD=go test ./...`
