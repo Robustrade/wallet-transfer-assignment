@@ -1,35 +1,36 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+A robust wallet transfer service in Go adhering to Clean Architecture principles. The service provides exactly-once API semantics, maintains a strict double-entry ledger, and guarantees ACID compliance and deadlock-prevention under high concurrency using PostgreSQL (and an alternative SQLite implementation). 
 
-## Included
+## Architecture & Schema Design
+The persistence layer is normalized and relies heavily on database-level constraints to prevent invalid states:
+- **`wallets`**: Contains `id` and `balance`. Includes a `CHECK (balance >= 0)` constraint to prevent negative balances at the lowest level.
+- **`transfers`**: Tracks the transfer request. Crucially includes a `UNIQUE NOT NULL` constraint on `idempotency_key`. It uses Foreign Keys linking to the `wallets` table.
+- **`ledger_entries`**: Maintains the double-entry ledger. Every transfer strictly results in two entries (DEBIT and CREDIT), protected by Foreign Keys linking back to `wallets` and `transfers`.
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+## Idempotency Strategy
+Idempotency is guaranteed via a mix of application logic and database constraints to handle retries safely:
+1. **Service Check**: The service explicitly checks `GetTransferByIdempotencyKey` before execution. If found, it returns the existing record without side effects.
+2. **Database Constraint**: If two identical requests hit the service at the exact same millisecond bypassing the initial check, the `UNIQUE` constraint on the `transfers.idempotency_key` column blocks the second insert. 
+3. **Graceful Fallback**: The repository intercepts this constraint failure, returning a custom `ErrDuplicateTransfer`, which the service catches to fetch and return the successful parallel record.
 
-## Intended use
+## Concurrency Strategy
+Race conditions and double spending are prevented entirely at the database layer using strict transactional boundaries:
+- The entire transfer (balance checks, balance updates, and ledger entry inserts) is wrapped in a single transaction. If any step fails, everything is rolled back.
+- **Read-then-Write Race Prevention:** In PostgreSQL, we use `SELECT ... FOR UPDATE` to exclusively lock the wallet rows during the balance check.
+- **Deadlock Prevention:** Before locking, the service sorts the two Wallet IDs lexicographically. Locks are always acquired in this deterministic order, ensuring that concurrent bi-directional transfers between the same two wallets can never cause a database deadlock.
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+## How to Run
+```bash
+go run cmd/server/main.go
+```
 
-## Notes
+## How to Test
+To run all tests including PostgreSQL integration tests, start a Postgres container and pass the connection string:
+```bash
+docker run --name wallet-postgres -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password -e POSTGRES_DB=walletdb -p 5434:5432 -d postgres:15
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
-
-## How to Submit Assignment
-
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
-
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+# On Windows PowerShell:
+$env:TEST_DB_URL="postgres://user:password@localhost:5434/walletdb?sslmode=disable"
+go test ./... -v -cover
+```
