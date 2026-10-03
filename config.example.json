@@ -1,0 +1,7 @@
+{
+  "service_name": "wallet-transfer-service",
+  "port": "8080",
+  "environment": "development",
+  "log_level": "info",
+  "database_url": "postgres://test:test@localhost:5432/wallet_transfer?sslmode=disable"
+}
