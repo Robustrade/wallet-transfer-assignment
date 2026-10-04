@@ -1,0 +1,40 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+    - misspell
+    - errorlint
+    - bodyclose
+    - nilerr
+    - unconvert
+    - gocyclo
+  settings:
+    gocyclo:
+      min-complexity: 20
+    errcheck:
+      exclude-functions:
+        - (net/http.ResponseWriter).Write
+        - (*encoding/json.Encoder).Encode
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+      - path: internal/testutil/
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gofmt

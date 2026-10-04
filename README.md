@@ -1,35 +1,85 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+A small Go service for wallet-to-wallet transfers. A transfer is idempotent, atomic, and recorded as a double-entry ledger posting.
 
-## Included
+Detailed design lives in [`docs/`](docs/architecture.md).
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+## What it guarantees
 
-## Intended use
+- `POST /transfers` with the same `idempotencyKey` and the same wallets and amount returns the original transfer and does not move money again.
+- The same key with a different payload is rejected.
+- Each processed transfer writes one debit and one credit for the same amount.
+- Concurrent debits of one wallet cannot drive the balance negative or lose an update.
+- Amounts are integers. The service does not use floating point for money.
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+## Quick start
 
-## Notes
+PostgreSQL 15+ and Go 1.25+ are required for a local process. Docker Compose is the other path.
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+```bash
+export WALLET_DB_PASSWORD=wallet
+createdb -U wallet wallet 2>/dev/null || true
+make run
+```
 
-## How to Submit Assignment
+`config.yaml` has no password. The process exits if `WALLET_DB_PASSWORD` and `DATABASE_URL` are both unset.
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+With Docker:
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+```bash
+docker compose up --build
+```
+
+Compose starts PostgreSQL and the API. The local database password in Compose is `wallet` and is only for this development stack.
+
+## Try a transfer
+
+```bash
+curl -s -X POST localhost:8080/wallets -H 'content-type: application/json' \
+  -d '{"id":"wallet_1","initialBalance":500}'
+
+curl -s -X POST localhost:8080/wallets -H 'content-type: application/json' \
+  -d '{"id":"wallet_2","initialBalance":0}'
+
+curl -s -X POST localhost:8080/transfers -H 'content-type: application/json' \
+  -d '{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100}'
+```
+
+Sending that transfer request again returns the same transfer id and does not debit `wallet_1` a second time.
+
+## Tests and checks
+
+```bash
+make test
+make test-race
+make vet
+make cover
+```
+
+Integration tests start a temporary PostgreSQL cluster when `initdb` is on `PATH` or under Homebrew. Set `WALLET_TEST_DATABASE_URL` to use a server you already have, or `WALLET_POSTGRES_BIN` to point at a `bin` directory that contains `initdb` and `pg_ctl`.
+
+`go test -short ./...` skips the database tests.
+
+Migrations run on startup. `make migrate` applies them and exits.
+
+## Layout
+
+```text
+cmd/wallet-service          composition root, HTTP server, shutdown
+internal/domain             wallets, transfers, ledger, state machine
+internal/app                use cases and ports
+internal/adapter/httpapi    REST handlers
+internal/adapter/postgres   SQL, locks, migrations
+internal/platform           config, logging, ids
+docs                        architecture, API, schema, ADRs
+```
+
+## Assumptions that affect the API
+
+- `idempotencyKey` is required.
+- Amounts are minor units of one implicit currency, from 1 to 1_000_000_000_000_000.
+- Opening a wallet with `initialBalance` is administrative funding. It is not a ledger transfer. Reconciliation adds that opening amount to the ledger net.
+- A missing wallet does not consume the idempotency key. Insufficient funds does, and the stored result is `FAILED`.
+- There is no authentication. Idempotency keys are global.
+
+See [docs/decisions](docs/decisions/0002-locking-and-transactions.md) for the lock and transaction strategy.

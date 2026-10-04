@@ -1,0 +1,27 @@
+server:
+  address: ":8080"
+  readHeaderTimeout: 5s
+  readTimeout: 15s
+  writeTimeout: 15s
+  idleTimeout: 60s
+  shutdownTimeout: 15s
+  requestTimeout: 10s
+
+database:
+  host: localhost
+  port: 5432
+  name: wallet
+  user: wallet
+  sslmode: disable
+  maxConns: 20
+  minConns: 2
+  maxConnLifetime: 30m
+  maxConnIdleTime: 5m
+  connectRetries: 10
+  connectRetryInterval: 1s
+  lockTimeout: 5s
+  statementTimeout: 8s
+
+log:
+  level: info
+  format: json
