@@ -1,7 +1,11 @@
-.DS_Store
-coverage/
+bin/
 dist/
-build/
-.tmp/
+coverage.out
+coverage.html
+*.out
 .env
 .env.*
+tmp/
+.idea/
+.vscode/
+.DS_Store
