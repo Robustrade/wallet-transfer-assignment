@@ -33,3 +33,24 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+## Local development
+
+The service uses Go 1.24 or newer and PostgreSQL. It uses Go's `net/http` and `database/sql` packages with the pgx PostgreSQL driver; no HTTP framework is used.
+
+1. Create a PostgreSQL database and a user that can create tables in it.
+2. Copy `.env.example` to `.env`, then set `DATABASE_URL` for your database. The application reads environment variables directly; load `.env` in your shell or IDE because no dotenv library is included.
+3. From the repository root, apply pending migrations:
+
+   ```powershell
+   $env:DATABASE_URL = "postgres://wallet_user:wallet_password@localhost:5432/wallet_transfer?sslmode=disable"
+   go run ./cmd/migrate
+   ```
+
+4. Start the HTTP server:
+
+   ```powershell
+   go run ./cmd/server
+   ```
+
+The server listens on `:8080` by default. Set `HTTP_ADDR` to change the address. `GET /healthz` checks the PostgreSQL connection. The migration command records applied files in `schema_migrations` and applies each file in a transaction; run it from the repository root.
