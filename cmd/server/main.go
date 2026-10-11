@@ -12,7 +12,10 @@ import (
 	"time"
 
 	"github.com/devkarrahul2610/wallet-transfer-assignment/internal/config"
+	"github.com/devkarrahul2610/wallet-transfer-assignment/internal/httpapi"
 	"github.com/devkarrahul2610/wallet-transfer-assignment/internal/postgres"
+	"github.com/devkarrahul2610/wallet-transfer-assignment/internal/transfer"
+	transferpostgres "github.com/devkarrahul2610/wallet-transfer-assignment/internal/transfer/postgres"
 )
 
 func main() {
@@ -38,6 +41,8 @@ func run() error {
 	defer db.Close()
 
 	mux := http.NewServeMux()
+	transferService := transfer.NewService(transferpostgres.NewRepository(db))
+	httpapi.NewTransferHandler(transferService).Register(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.PingContext(r.Context()); err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
