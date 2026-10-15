@@ -1,0 +1,677 @@
+{
+  "info": {
+    "name": "Wallet Transfer Service",
+    "description": "Postman collection aligned with the Wallet Transfer Service APIs, response codes, and integration test scenarios.\n\n**Base URL:** `{{baseUrl}}`\n**Swagger UI:** `http://localhost:8080/api/wallet-transfer/swagger-ui.html`\n\n**Seeded wallets (local profile via data.sql):**\n| Wallet | Initial balance |\n|--------|------------------|\n| wallet_1 | 100000 |\n| wallet_2 | 50000 |\n| wallet_3 | 0 |\n\n**Response envelope:** `{ status, message, responseCode, data }`\n\n**Success codes:**\n- 20001 — Transfer processed\n- 20002 — Balance fetched\n- 20003 — History fetched\n\n**Error codes:**\n- 5001 — Transfer failed (generic business failure)\n- 5002 — Insufficient funds\n- 5003 — Idempotency key conflict\n- 5113 — Wallet not found\n- 6017 — Validation / invalid request\n- 5000 — Unexpected server error\n\n**Notes:**\n- Run transfer scenarios with unique `idempotencyKey` values when re-testing on a non-fresh database.\n- Requests include Postman test scripts asserting `responseCode` and key behavior.\n- For true concurrency testing, use the integration test suite (`TransferIntegrationTest`).",
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/wallet-transfer"
+    },
+    {
+      "key": "e2eIdempotencyKey",
+      "value": "postman-e2e-placeholder"
+    }
+  ],
+  "item": [
+    {
+      "name": "Transfers",
+      "description": "POST /v1/transfers — idempotent wallet-to-wallet transfers with double-entry ledger.",
+      "item": [
+        {
+          "name": "01 - Successful Transfer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('responseCode 20001', () => pm.expect(pm.response.json().responseCode).to.eql(20001));",
+                  "pm.test('status SUCCESS', () => pm.expect(pm.response.json().status).to.eql('SUCCESS'));",
+                  "pm.test('transfer PROCESSED', () => pm.expect(pm.response.json().data.status).to.eql('PROCESSED'));",
+                  "pm.test('two ledger entries', () => pm.expect(pm.response.json().data.ledgerEntries).to.have.lengthOf(2));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-success-{{$timestamp}}\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 100\n}"
+            },
+            "url": "{{baseUrl}}/v1/transfers",
+            "description": "Happy path. Expect responseCode 20001, data.status PROCESSED, DEBIT + CREDIT ledger entries."
+          }
+        },
+        {
+          "name": "02 - Idempotent Replay (Same Key + Payload)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('replayIdempotencyKey')) {",
+                  "  pm.collectionVariables.set('replayIdempotencyKey', 'postman-replay-' + Date.now());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (!pm.collectionVariables.get('replayFirstResponse')) {",
+                  "  pm.collectionVariables.set('replayFirstResponse', pm.response.text());",
+                  "  pm.test('first call PROCESSED', () => pm.expect(body.data.status).to.eql('PROCESSED'));",
+                  "} else {",
+                  "  pm.test('identical response on replay', () => pm.expect(pm.response.text()).to.eql(pm.collectionVariables.get('replayFirstResponse')));",
+                  "  pm.test('responseCode 20001 on replay', () => pm.expect(body.responseCode).to.eql(20001));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{replayIdempotencyKey}}\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 50\n}"
+            },
+            "url": "{{baseUrl}}/v1/transfers",
+            "description": "Run this request twice in a row (same collection variable key). Second call must return an identical body without double-debiting."
+          }
+        },
+        {
+          "name": "03 - Insufficient Funds",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('responseCode 5002', () => pm.expect(pm.response.json().responseCode).to.eql(5002));",
+                  "pm.test('status FAIL', () => pm.expect(pm.response.json().status).to.eql('FAIL'));",
+                  "pm.test('transfer FAILED', () => pm.expect(pm.response.json().data.status).to.eql('FAILED'));",
+                  "pm.test('no ledger entries', () => pm.expect(pm.response.json().data.ledgerEntries).to.be.empty);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-insufficient-{{$timestamp}}\",\n  \"fromWalletId\": \"wallet_3\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 10\n}"
+            },
+            "url": "{{baseUrl}}/v1/transfers",
+            "description": "wallet_3 has zero balance. Expect responseCode 5002, data.status FAILED, empty ledgerEntries."
+          }
+        },
+        {
+          "name": "04 - Idempotency Conflict (Setup - First Request)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('setup transfer succeeds', () => pm.expect(pm.response.json().responseCode).to.eql(20001));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-conflict-fixed-key\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 25\n}"
+            },
+            "url": "{{baseUrl}}/v1/transfers",
+            "description": "Run before 05. Creates a transfer with a fixed idempotency key."
+          }
+        },
+        {
+          "name": "05 - Idempotency Conflict (Different Payload)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 5003', () => pm.expect(pm.response.json().responseCode).to.eql(5003));",
+                  "pm.test('status FAIL', () => pm.expect(pm.response.json().status).to.eql('FAIL'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-conflict-fixed-key\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 30\n}"
+            },
+            "url": "{{baseUrl}}/v1/transfers",
+            "description": "Run after 04. Same idempotencyKey, different amount. Expect responseCode 5003."
+          }
+        },
+        {
+          "name": "06 - Same Source And Destination Wallet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 6017', () => pm.expect(pm.response.json().responseCode).to.eql(6017));",
+                  "pm.test('status FAIL', () => pm.expect(pm.response.json().status).to.eql('FAIL'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-same-wallet-{{$timestamp}}\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_1\",\n  \"amount\": 50\n}"
+            },
+            "url": "{{baseUrl}}/v1/transfers",
+            "description": "Business validation. Expect responseCode 6017."
+          }
+        },
+        {
+          "name": "07 - Wallet Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 5113', () => pm.expect(pm.response.json().responseCode).to.eql(5113));",
+                  "pm.test('status FAIL', () => pm.expect(pm.response.json().status).to.eql('FAIL'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-missing-wallet-{{$timestamp}}\",\n  \"fromWalletId\": \"wallet_missing\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 10\n}"
+            },
+            "url": "{{baseUrl}}/v1/transfers",
+            "description": "Source wallet does not exist. Expect responseCode 5113."
+          }
+        },
+        {
+          "name": "08 - Validation Error (Missing idempotencyKey)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 6017', () => pm.expect(pm.response.json().responseCode).to.eql(6017));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 10\n}"
+            },
+            "url": "{{baseUrl}}/v1/transfers",
+            "description": "Bean validation failure. Expect responseCode 6017."
+          }
+        },
+        {
+          "name": "09 - Validation Error (Amount Zero)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 6017', () => pm.expect(pm.response.json().responseCode).to.eql(6017));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-zero-amount-{{$timestamp}}\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 0\n}"
+            },
+            "url": "{{baseUrl}}/v1/transfers",
+            "description": "Amount must be > 0. Expect responseCode 6017."
+          }
+        },
+        {
+          "name": "10 - Invalid JSON Body",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 5000', () => pm.expect(pm.response.json().responseCode).to.eql(5000));",
+                  "pm.test('status FAIL', () => pm.expect(pm.response.json().status).to.eql('FAIL'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{ invalid json"
+            },
+            "url": "{{baseUrl}}/v1/transfers",
+            "description": "Malformed JSON. Expect responseCode 5000 from GlobalRestExceptionHandler."
+          }
+        },
+        {
+          "name": "11 - Double Spend Simulation (Sequential)",
+          "description": "Simulates concurrent double-spend behavior sequentially: two transfers of the full wallet balance. Only one should succeed.",
+          "item": [
+            {
+              "name": "11a - First Full-Balance Transfer",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('first transfer PROCESSED', () => pm.expect(pm.response.json().data.status).to.eql('PROCESSED'));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"idempotencyKey\": \"postman-double-spend-1-{{$timestamp}}\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 1\n}"
+                },
+                "url": "{{baseUrl}}/v1/transfers",
+                "description": "Use a small amount to avoid draining wallet_1. For full double-spend test, create a dedicated wallet via DB with balance 100 and run two 100-amount transfers — see integration test."
+              }
+            },
+            {
+              "name": "11b - Verify Balance Unchanged After Idempotent Replay",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('balance fetch succeeds', () => pm.expect(pm.response.json().responseCode).to.eql(20002));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"walletId\": \"wallet_1\"\n}"
+                },
+                "url": "{{baseUrl}}/v1/wallet-balance"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "description": "POST /v1/wallet-balance — read current wallet balance.",
+      "item": [
+        {
+          "name": "01 - Get Wallet Balance (wallet_1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 20002', () => pm.expect(pm.response.json().responseCode).to.eql(20002));",
+                  "pm.test('status SUCCESS', () => pm.expect(pm.response.json().status).to.eql('SUCCESS'));",
+                  "pm.test('walletId present', () => pm.expect(pm.response.json().data.walletId).to.eql('wallet_1'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"walletId\": \"wallet_1\"\n}" },
+            "url": "{{baseUrl}}/v1/wallet-balance"
+          }
+        },
+        {
+          "name": "02 - Get Wallet Balance (wallet_3 - Zero)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 20002', () => pm.expect(pm.response.json().responseCode).to.eql(20002));",
+                  "pm.test('balance is zero', () => pm.expect(pm.response.json().data.balance).to.eql(0));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"walletId\": \"wallet_3\"\n}" },
+            "url": "{{baseUrl}}/v1/wallet-balance"
+          }
+        },
+        {
+          "name": "03 - Wallet Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 5113', () => pm.expect(pm.response.json().responseCode).to.eql(5113));",
+                  "pm.test('status FAIL', () => pm.expect(pm.response.json().status).to.eql('FAIL'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"walletId\": \"wallet_missing\"\n}" },
+            "url": "{{baseUrl}}/v1/wallet-balance"
+          }
+        },
+        {
+          "name": "04 - Validation Error (Missing walletId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 6017', () => pm.expect(pm.response.json().responseCode).to.eql(6017));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/v1/wallet-balance"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transfer History",
+      "description": "POST /v1/transfer-history — list transfers involving a wallet.",
+      "item": [
+        {
+          "name": "01 - History For wallet_1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 20003', () => pm.expect(pm.response.json().responseCode).to.eql(20003));",
+                  "pm.test('status SUCCESS', () => pm.expect(pm.response.json().status).to.eql('SUCCESS'));",
+                  "pm.test('data is array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"walletId\": \"wallet_1\"\n}" },
+            "url": "{{baseUrl}}/v1/transfer-history",
+            "description": "Run after transfer scenarios. Expect responseCode 20003."
+          }
+        },
+        {
+          "name": "02 - History For wallet_3 (Likely Empty)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 20003', () => pm.expect(pm.response.json().responseCode).to.eql(20003));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"walletId\": \"wallet_3\"\n}" },
+            "url": "{{baseUrl}}/v1/transfer-history",
+            "description": "Failed transfers leave no ledger entries. Expect empty or minimal history."
+          }
+        },
+        {
+          "name": "03 - Wallet Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 5113', () => pm.expect(pm.response.json().responseCode).to.eql(5113));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"walletId\": \"wallet_missing\"\n}" },
+            "url": "{{baseUrl}}/v1/transfer-history"
+          }
+        },
+        {
+          "name": "04 - Validation Error (Missing walletId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('responseCode 6017', () => pm.expect(pm.response.json().responseCode).to.eql(6017));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/v1/transfer-history"
+          }
+        }
+      ]
+    },
+    {
+      "name": "End-to-End Flow",
+      "description": "Run steps in order. Step 2 saves the idempotency key for Step 5 automatically.",
+      "item": [
+        {
+          "name": "Step 1 - Check wallet_1 Balance (Before)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('e2eBalanceBefore', pm.response.json().data.balance);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"walletId\": \"wallet_1\"\n}" },
+            "url": "{{baseUrl}}/v1/wallet-balance"
+          }
+        },
+        {
+          "name": "Step 2 - Transfer 200 wallet_1 → wallet_2",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('e2eIdempotencyKey', 'postman-e2e-' + Date.now());"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('transfer PROCESSED', () => pm.expect(pm.response.json().data.status).to.eql('PROCESSED'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{e2eIdempotencyKey}}\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 200\n}"
+            },
+            "url": "{{baseUrl}}/v1/transfers"
+          }
+        },
+        {
+          "name": "Step 3 - Check wallet_1 Balance (After)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const before = pm.collectionVariables.get('e2eBalanceBefore');",
+                  "const after = pm.response.json().data.balance;",
+                  "pm.test('balance reduced by 200', () => pm.expect(after).to.eql(before - 200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"walletId\": \"wallet_1\"\n}" },
+            "url": "{{baseUrl}}/v1/wallet-balance"
+          }
+        },
+        {
+          "name": "Step 4 - View wallet_1 Transfer History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('history not empty', () => pm.expect(pm.response.json().data.length).to.be.above(0));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"walletId\": \"wallet_1\"\n}" },
+            "url": "{{baseUrl}}/v1/transfer-history"
+          }
+        },
+        {
+          "name": "Step 5 - Replay Transfer (Idempotent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('replay succeeds', () => pm.expect(pm.response.json().responseCode).to.eql(20001));",
+                  "const afterReplay = pm.response.json().data;",
+                  "pm.test('still PROCESSED', () => pm.expect(afterReplay.status).to.eql('PROCESSED'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{e2eIdempotencyKey}}\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 200\n}"
+            },
+            "url": "{{baseUrl}}/v1/transfers",
+            "description": "Uses e2eIdempotencyKey set in Step 2. Re-run Step 3 after this — balance must not change."
+          }
+        },
+        {
+          "name": "Step 6 - Confirm Balance Unchanged After Replay",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const before = pm.collectionVariables.get('e2eBalanceBefore');",
+                  "const current = pm.response.json().data.balance;",
+                  "pm.test('balance still reduced by exactly 200 from original', () => pm.expect(current).to.eql(before - 200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"walletId\": \"wallet_1\"\n}" },
+            "url": "{{baseUrl}}/v1/wallet-balance"
+          }
+        }
+      ]
+    }
+  ]
+}
