@@ -2,6 +2,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+  sql:
+    init:
+      mode: never
   h2:
     console:
       enabled: false
