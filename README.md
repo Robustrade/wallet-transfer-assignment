@@ -33,3 +33,62 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+---
+
+## Wallet Transfer Service — Implementation
+
+This branch contains a working implementation of the assignment. See
+[`solution.md`](./solution.md) for the architecture, schema, idempotency,
+and concurrency design.
+
+### Requirements
+
+- Go 1.24+
+- Docker (for local PostgreSQL)
+
+### How to Run
+
+```bash
+# start Postgres and apply migrations/001_init.sql on first boot
+docker compose up -d postgres
+
+# run the HTTP server (defaults to :8080, DATABASE_URL below)
+go run ./cmd/server
+```
+
+Environment variables (both optional, shown with their defaults):
+
+```text
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/wallet_transfer?sslmode=disable
+HTTP_ADDR=:8080
+```
+
+Example requests:
+
+```bash
+curl -X POST localhost:8080/wallets -d '{"id":"wallet_1","startingBalance":1000}'
+curl -X POST localhost:8080/wallets -d '{"id":"wallet_2","startingBalance":0}'
+curl -X POST localhost:8080/transfers -d '{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100}'
+curl localhost:8080/wallets/wallet_1
+curl localhost:8080/transfers/<id>
+```
+
+### How to Test
+
+Tests run against a real PostgreSQL instance (they `t.Skip` automatically if
+one isn't reachable):
+
+```bash
+docker compose up -d postgres
+go test ./... -v
+```
+
+Set `TEST_DATABASE_URL` to point at a different database if needed.
+
+### Lint / Format
+
+```bash
+go vet ./...
+gofmt -l .      # should print nothing
+```
