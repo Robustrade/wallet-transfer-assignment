@@ -5,3 +5,13 @@ build/
 .tmp/
 .env
 .env.*
+
+# Go binaries and artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+bin/
