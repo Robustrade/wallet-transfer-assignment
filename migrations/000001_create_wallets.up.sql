@@ -1,0 +1,8 @@
+CREATE TABLE wallets (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    balance BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chk_wallet_balance CHECK (balance >= 0)
+);

@@ -1,0 +1,111 @@
+# One command brings everything up:  docker compose up -d --build
+#
+#   postgres  -> creates the database (POSTGRES_DB) on first start
+#   migrate   -> applies ./migrations with golang-migrate, then exits
+#   seed      -> inserts 100 wallets with random balances (only if none exist), then exits
+#   api       -> the Go service, started after migrate and seed succeed
+#
+# Settings come from the shell or a project-level .env file; every value has a default.
+
+name: wallet-transfer
+
+x-db-env: &db-env
+  DB_USER: ${DB_USER:-wallet}
+  DB_PASSWORD: ${DB_PASSWORD:-wallet}
+  DB_NAME: ${DB_NAME:-wallet_db}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-wallet}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-wallet}
+      POSTGRES_DB: ${DB_NAME:-wallet_db}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    image: migrate/migrate:v4.18.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://${DB_USER:-wallet}:${DB_PASSWORD:-wallet}@postgres:5432/${DB_NAME:-wallet_db}?sslmode=disable"
+      - "up"
+
+  seed:
+    image: postgres:17-alpine
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: postgres
+      PGUSER: ${DB_USER:-wallet}
+      PGPASSWORD: ${DB_PASSWORD:-wallet}
+      PGDATABASE: ${DB_NAME:-wallet_db}
+    volumes:
+      - ./docker/seed:/seed:ro
+    entrypoint:
+      ["psql", "-v", "ON_ERROR_STOP=1", "-f", "/seed/seed_wallets.sql"]
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
+    environment:
+      <<: *db-env
+      APP_PORT: "8080"
+      APP_ENV: ${APP_ENV:-production}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_SSLMODE: disable
+    ports:
+      - "${API_HOST_PORT:-8090}:8080"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # --- Optional code-quality tooling (not started by a plain `docker compose up`) ---
+  # Runs the SonarScanner CLI against SonarQube Cloud (sonarcloud.io).
+  # make sonar-scan   needs SONAR_TOKEN and SONAR_ORGANIZATION
+  sonar-scanner:
+    image: sonarsource/sonar-scanner-cli:11
+    profiles: [sonar]
+    environment:
+      SONAR_HOST_URL: https://sonarcloud.io
+      SONAR_TOKEN: ${SONAR_TOKEN:-}
+    # The project key comes from sonar-project.properties.
+    command:
+      - "-Dsonar.organization=${SONAR_ORGANIZATION:-}"
+    volumes:
+      - ./:/usr/src
+
+volumes:
+  pgdata:

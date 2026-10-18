@@ -1,7 +1,19 @@
+# OS / editor
 .DS_Store
+
+# Build and tooling output
+tmp/
+.tmp/
 coverage/
 dist/
 build/
-.tmp/
+*.test
+*.out
+coverage.out
+.scannerwork/
+node_modules/
+
+# Local environment (the template .env.example is tracked)
 .env
 .env.*
+!.env.example

@@ -1,0 +1,10 @@
+.git
+.github
+.env
+.env.*
+tmp
+docs
+tests
+*.md
+*.js
+node_modules
