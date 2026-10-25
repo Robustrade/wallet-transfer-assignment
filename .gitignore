@@ -1,7 +1,29 @@
+# Environment & OS
 .DS_Store
-coverage/
+.env
+.env.*
+.idea/
+.vscode/
+
+# Binaries and build artifacts
+bin/
 dist/
 build/
 .tmp/
-.env
-.env.*
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# SQLite local databases and logs
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Test and coverage artifacts
+coverage/
+*.out
+coverage.html
