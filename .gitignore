@@ -5,3 +5,8 @@ build/
 .tmp/
 .env
 .env.*
+
+# Go
+/bin/
+*.test
+*.out
