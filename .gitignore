@@ -1,7 +1,17 @@
-.DS_Store
-coverage/
-dist/
-build/
-.tmp/
+# Local environment and credentials
 .env
 .env.*
+!.env.example
+*.local
+
+# Go build/test outputs
+*.exe
+*.test
+*.out
+coverage.*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
