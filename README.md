@@ -33,3 +33,13 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+## Solution: Wallet Transfer Service
+
+Java 17 / Spring Boot 3 / PostgreSQL / Flyway. Design: [`docs/DESIGN.md`](docs/DESIGN.md),
+PR text: [`PR_DESCRIPTION.md`](PR_DESCRIPTION.md).
+
+```bash
+mvn spring-boot:run       # API on :8080, needs local PostgreSQL (db/user/password: wallet)
+mvn verify                # tests (Docker needed for Testcontainers)
+```
