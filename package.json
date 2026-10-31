@@ -1,0 +1,20 @@
+{
+  "name": "wallet-transfer-service",
+  "version": "1.0.0",
+  "description": "Wallet-to-wallet transfers with idempotency, double-entry ledger and safe concurrency (PostgreSQL)",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "migrate": "node scripts/migrate.js",
+    "seed": "node scripts/seed.js",
+    "seed:reset": "node scripts/seed.js --reset",
+    "start": "node src/main.js",
+    "test": "node --test \"tests/**/*.test.js\""
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
+  }
+}
