@@ -2,6 +2,7 @@
 coverage/
 dist/
 build/
+bin/
 .tmp/
 .env
 .env.*
