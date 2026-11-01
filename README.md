@@ -2,6 +2,46 @@
 
 This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
 
+## Running the solution
+
+The service is a Go 1.24 module at the repository root. Design notes are in [`docs/DESIGN.md`](docs/DESIGN.md).
+
+PostgreSQL 16 is required for the integration tests and for `cmd/server`. Domain, service, and HTTP tests do not need a database.
+
+```sh
+make db-up
+make test-integration
+make run
+```
+
+`make test` runs `go test ./... -race -count=1` and skips the PostgreSQL tests when `DATABASE_URL` is unset. `make test-integration` starts Postgres on `127.0.0.1:5432` and runs the full suite.
+
+Default database URL:
+
+```text
+postgres://wallet:wallet@127.0.0.1:5432/wallet?sslmode=disable
+```
+
+Override it with `DATABASE_URL`. Override the listen port with `PORT` (default `8080`).
+
+Create a wallet, then transfer:
+
+```sh
+curl -s -X POST localhost:8080/wallets \
+  -H 'content-type: application/json' \
+  -d '{"id":"wallet_1","initialBalance":500}'
+
+curl -s -X POST localhost:8080/wallets \
+  -H 'content-type: application/json' \
+  -d '{"id":"wallet_2","initialBalance":200}'
+
+curl -s -D - -X POST localhost:8080/transfers \
+  -H 'content-type: application/json' \
+  -d '{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100}'
+```
+
+Send the same transfer body again. The status and body match the first response, and the header `Idempotent-Replayed: true` is set. Balances move only on the first call.
+
 ## Included
 
 - `ASSIGNMENT.md` - candidate-facing prompt
