@@ -17,6 +17,17 @@ import (
 	"wallet-transfer-assignment/migrations"
 )
 
+const (
+	readHeaderTimeout = 5 * time.Second
+	readTimeout       = 10 * time.Second
+	writeTimeout      = 10 * time.Second
+	// requestTimeout is shorter than writeTimeout. The socket timeout does not
+	// cancel r.Context(), so a transfer waiting on a wallet lock would keep its
+	// database connection and could commit after the client gave up.
+	requestTimeout = 8 * time.Second
+	idleTimeout    = 60 * time.Second
+)
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 	if err := run(); err != nil {
@@ -50,11 +61,11 @@ func run() error {
 	api := service.New(postgres.New(pool))
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           httpapi.New(api),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		Handler:           httpapi.WithTimeout(httpapi.New(api), requestTimeout),
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 
 	errCh := make(chan error, 1)
@@ -64,13 +75,25 @@ func run() error {
 
 	select {
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return server.Shutdown(shutdownCtx)
+		return shutdownServer(server, 5*time.Second)
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
 		return err
 	}
+}
+
+// shutdownServer waits for in-flight handlers, then closes them if they are
+// still running. Shutdown leaves those connections open when its deadline
+// passes. Close cancels their request contexts so the database work rolls
+// back before the pool is closed.
+func shutdownServer(server *http.Server, timeout time.Duration) error {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		_ = server.Close()
+		return err
+	}
+	return nil
 }

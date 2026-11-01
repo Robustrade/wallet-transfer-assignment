@@ -42,6 +42,10 @@ Otherwise the service inserts the debit and the credit. It subtracts the amount 
 
 Callers never observe `PENDING`. The status change is part of the same transaction. If the process stops before commit, the database rolls every write back, including the key. The client retries that key.
 
+Each request context expires after 8 seconds. That is shorter than the 10 second write timeout. A transfer still waiting on a wallet lock is canceled, and the open transaction rolls back. The handler returns 504 when it can still write the response.
+
+On process stop, the server waits 5 seconds for handlers to finish. If one is still running, it closes the connection. That cancels the request context before the database pool closes.
+
 `CHECK (balance >= 0)` rejects an overdraft when a writer skips the lock.
 
 ## Idempotency
@@ -60,7 +64,7 @@ Domain tests cover invalid amounts, equal wallet ids, and illegal status changes
 
 Service tests use an in-memory store. They cover a processed transfer, a failed transfer with an empty ledger, a replay, a hash mismatch, overflow, and a missing wallet that does not consume the key.
 
-PostgreSQL tests run when `DATABASE_URL` is set. They cover the same outcomes on a real database, plus parallel debits, parallel copies of one key, and opposing transfers. When `DATABASE_URL` is unset, those tests skip. `go test ./...` still passes.
+PostgreSQL tests run when `DATABASE_URL` is set. They open a separate database named `{database}_test`, then cover the same outcomes on that database, plus parallel debits, parallel copies of one key, and opposing transfers. Truncation stays in the test database. When `DATABASE_URL` is unset, those tests skip. `go test ./...` still passes.
 
 ## Assumptions
 

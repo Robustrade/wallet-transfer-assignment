@@ -14,7 +14,7 @@ make test-integration
 make run
 ```
 
-`make test` runs `go test ./... -race -count=1` and skips the PostgreSQL tests when `DATABASE_URL` is unset. `make test-integration` starts Postgres on `127.0.0.1:5432` and runs the full suite.
+`make test` runs `go test ./... -race -count=1` and skips the PostgreSQL tests when `DATABASE_URL` is unset. `make test-integration` starts Postgres on `127.0.0.1:5432` and runs the full suite. Those database tests create and clear `{database}_test` (by default `wallet_test`). They do not truncate the database used by `make run`.
 
 Default database URL:
 

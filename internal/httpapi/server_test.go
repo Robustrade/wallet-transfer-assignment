@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"wallet-transfer-assignment/internal/domain"
 	"wallet-transfer-assignment/internal/service"
@@ -51,6 +52,41 @@ func TestCreateTransferRejectsUnknownField(t *testing.T) {
 	}
 	if api.transferCalls != 0 {
 		t.Fatal("unknown field reached the service")
+	}
+}
+
+func TestCreateRoutesRejectTrailingData(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		body string
+	}{
+		{
+			name: "transfer followed by JSON",
+			path: "/transfers",
+			body: `{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100} {}`,
+		},
+		{
+			name: "wallet followed by oversized whitespace",
+			path: "/wallets",
+			body: `{"id":"wallet_1","initialBalance":100}` + strings.Repeat(" ", maxBodyBytes),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &stubAPI{}
+			srv := httptest.NewServer(New(api))
+			t.Cleanup(srv.Close)
+
+			res := postJSON(t, srv.URL+tc.path, tc.body)
+			if res.StatusCode != http.StatusBadRequest {
+				t.Fatalf("status = %d", res.StatusCode)
+			}
+			if api.transferCalls != 0 || api.createWalletCalls != 0 {
+				t.Fatal("trailing data reached the service")
+			}
+		})
 	}
 }
 
@@ -141,6 +177,35 @@ func TestGetWallet(t *testing.T) {
 	}
 }
 
+func TestRequestDeadlineIsShorterThanWriteTimeout(t *testing.T) {
+	api := &deadlineAPI{}
+	handler := WithTimeout(New(api), 8*time.Second)
+	req := httptest.NewRequest(http.MethodGet, "/wallets/wallet_1", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if !api.hasDeadline {
+		t.Fatal("request context has no deadline")
+	}
+	remaining := time.Until(api.deadline)
+	if remaining <= 0 || remaining >= 10*time.Second {
+		t.Fatalf("deadline remaining = %s", remaining)
+	}
+}
+
+func TestDeadlineExceededReturnsGatewayTimeout(t *testing.T) {
+	api := &stubAPI{
+		transfer: func(service.Request) (service.Result, error) {
+			return service.Result{}, context.DeadlineExceeded
+		},
+	}
+	srv := httptest.NewServer(New(api))
+	t.Cleanup(srv.Close)
+	res := postJSON(t, srv.URL+"/transfers", `{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100}`)
+	if res.StatusCode != http.StatusGatewayTimeout {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+}
+
 func postJSON(t *testing.T, url, body string) *http.Response {
 	t.Helper()
 	res, err := http.Post(url, "application/json", strings.NewReader(body))
@@ -151,12 +216,24 @@ func postJSON(t *testing.T, url, body string) *http.Response {
 	return res
 }
 
+type deadlineAPI struct {
+	stubAPI
+	deadline    time.Time
+	hasDeadline bool
+}
+
+func (d *deadlineAPI) GetWallet(ctx context.Context, id string) (service.WalletView, error) {
+	d.deadline, d.hasDeadline = ctx.Deadline()
+	return service.WalletView{ID: id, Balance: 1, InitialBalance: 1}, nil
+}
+
 type stubAPI struct {
-	transfer      func(service.Request) (service.Result, error)
-	createWallet  func(string, int64) (service.WalletView, error)
-	getWallet     func(string) (service.WalletView, error)
-	getTransfer   func(string) (service.TransferDetails, error)
-	transferCalls int
+	transfer          func(service.Request) (service.Result, error)
+	createWallet      func(string, int64) (service.WalletView, error)
+	getWallet         func(string) (service.WalletView, error)
+	getTransfer       func(string) (service.TransferDetails, error)
+	transferCalls     int
+	createWalletCalls int
 }
 
 func (s *stubAPI) CreateTransfer(_ context.Context, req service.Request) (service.Result, error) {
@@ -168,6 +245,7 @@ func (s *stubAPI) CreateTransfer(_ context.Context, req service.Request) (servic
 }
 
 func (s *stubAPI) CreateWallet(_ context.Context, id string, initial int64) (service.WalletView, error) {
+	s.createWalletCalls++
 	if s.createWallet == nil {
 		return service.WalletView{}, domain.ErrNotFound
 	}

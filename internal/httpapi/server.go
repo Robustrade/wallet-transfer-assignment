@@ -25,6 +25,16 @@ type API interface {
 	GetTransfer(ctx context.Context, id string) (service.TransferDetails, error)
 }
 
+// WithTimeout cancels the request context after d. Database calls use that
+// context, so a stalled lock is rolled back instead of committing later.
+func WithTimeout(next http.Handler, d time.Duration) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), d)
+		defer cancel()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // New returns the HTTP handler for the wallet service.
 func New(api API) http.Handler {
 	h := &handler{api: api}
@@ -144,6 +154,13 @@ func decodeJSON(r *http.Request, dst any) error {
 	if err := dec.Decode(dst); err != nil {
 		return jsonInputError(err)
 	}
+	var trailing any
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return jsonInputError(err)
+		}
+		return &domain.InputError{Message: "request body must contain exactly one JSON object"}
+	}
 	return nil
 }
 
@@ -178,6 +195,8 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "idempotency_conflict", "idempotency key was used with a different request")
 	case errors.Is(err, domain.ErrBusy):
 		writeError(w, http.StatusServiceUnavailable, "idempotency_busy", "retry the same idempotency key")
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		writeError(w, http.StatusGatewayTimeout, "timeout", "the request timed out")
 	default:
 		slog.Error("request failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")

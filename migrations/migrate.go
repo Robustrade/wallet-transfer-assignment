@@ -27,6 +27,11 @@ func Apply(ctx context.Context, db DB) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// This transaction-scoped lock also protects creation of schema_migrations.
+	// A concurrent server waits here and then observes the committed migrations.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('wallet-transfer-assignment:migrations')::bigint)`); err != nil {
+		return fmt.Errorf("lock migrations: %w", err)
+	}
 	if _, err := tx.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version TEXT PRIMARY KEY,
