@@ -18,7 +18,7 @@ export DB_MAX_IDLE_CONNS=5
 export DB_CONN_MAX_LIFETIME=5m
 ```
 
-The database package validates these settings and provides an `Open` helper that configures and pings a `database/sql` connection pool. The application composition layer registers the chosen PostgreSQL driver before calling it; the repository accepts the standard `database/sql` query interface and does not own driver registration.
+The database package validates these settings and provides an `Open` helper that configures and pings a `database/sql` connection pool. The application composition layer registers the chosen PostgreSQL driver before calling it. Repositories depend on an interface implemented by both `*sql.DB` and `*sql.Tx`.
 
 ## Migrations
 
@@ -36,6 +36,10 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/000001_create_wallet_trans
 
 The up migration creates wallets, transfers, ledger entries, and idempotency records. It includes database constraints for non-negative wallet balances, positive transfer/ledger amounts, valid transfer and ledger states, distinct transfer wallets, and unique debit/credit entry types per transfer.
 
-The unique ledger constraint prevents duplicate entries of the same type for a transfer. The service transaction must still guarantee that a processed transfer has both entries, that their amounts match, and that their wallet IDs match the transfer endpoints; ordinary row constraints cannot enforce that cross-row invariant by themselves.
+Wallet, transfer, and ledger repositories can all be constructed with the same `*sql.Tx`. The service layer must use that transaction for the complete transfer operation so wallet balance changes, the terminal transfer status, and both ledger entries commit or roll back together.
+
+The transfer repository only permits `PENDING -> PROCESSED` and `PENDING -> FAILED`. Ledger entries are append-only through the repository API; the database's unique `(transfer_id, entry_type)` constraint prevents duplicate debit or credit entries for a transfer.
+
+The service transaction must still guarantee that a processed transfer has exactly one debit and one credit, that their amounts match, and that their wallet IDs match the transfer endpoints; ordinary row constraints cannot enforce those cross-row invariants.
 
 The idempotency response columns may be temporarily null while a request is being processed inside a transaction. The check constraint requires the response status and body to be either both null or both present. The application must populate both before committing, so an incomplete record is never committed.

@@ -10,17 +10,14 @@ import (
 	"github.com/abhiabhi0/wallet-transfer-assignment/internal/domain"
 )
 
-var (
-	ErrWalletNotFound = errors.New("wallet not found")
-)
+var ErrWalletNotFound = errors.New("wallet not found")
 
-// DBTX is implemented by both *sql.DB and *sql.Tx. A repository created with
-// a transaction therefore participates in the caller's transaction boundary.
+// DBTX is implemented by both *sql.DB and *sql.Tx.
 type DBTX interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-// WalletStore describes the persistence operations needed by wallet services.
 type WalletStore interface {
 	Create(ctx context.Context, wallet domain.Wallet) (domain.Wallet, error)
 	GetByID(ctx context.Context, id string) (domain.Wallet, error)
@@ -29,25 +26,18 @@ type WalletStore interface {
 	Credit(ctx context.Context, id string, amount domain.Amount) (domain.Wallet, error)
 }
 
-// WalletRepository persists wallets in PostgreSQL.
-type WalletRepository struct {
-	db DBTX
-}
+type WalletRepository struct{ db DBTX }
 
-func NewWalletRepository(db DBTX) *WalletRepository {
-	return &WalletRepository{db: db}
-}
+func NewWalletRepository(db DBTX) *WalletRepository { return &WalletRepository{db: db} }
 
 func (r *WalletRepository) Create(ctx context.Context, wallet domain.Wallet) (domain.Wallet, error) {
 	if err := wallet.Validate(); err != nil {
 		return domain.Wallet{}, fmt.Errorf("validate wallet: %w", err)
 	}
-
 	const query = `
 		INSERT INTO wallets (id, currency, balance)
 		VALUES ($1, $2, $3)
 		RETURNING id, currency, balance`
-
 	created, err := scanWallet(r.db.QueryRowContext(ctx, query, wallet.ID, wallet.Currency, int64(wallet.Balance)))
 	if err != nil {
 		return domain.Wallet{}, fmt.Errorf("create wallet: %w", err)
@@ -59,8 +49,8 @@ func (r *WalletRepository) GetByID(ctx context.Context, id string) (domain.Walle
 	return r.get(ctx, id, false)
 }
 
-// GetByIDForUpdate must be called through a repository backed by *sql.Tx.
-// PostgreSQL holds the row lock until that transaction commits or rolls back.
+// GetByIDForUpdate requires a repository backed by *sql.Tx; the row lock is
+// held until that transaction commits or rolls back.
 func (r *WalletRepository) GetByIDForUpdate(ctx context.Context, id string) (domain.Wallet, error) {
 	return r.get(ctx, id, true)
 }
@@ -73,7 +63,6 @@ func (r *WalletRepository) get(ctx context.Context, id string, forUpdate bool) (
 	if forUpdate {
 		query += " FOR UPDATE"
 	}
-
 	wallet, err := scanWallet(r.db.QueryRowContext(ctx, query, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Wallet{}, fmt.Errorf("%w: %s", ErrWalletNotFound, id)
@@ -84,8 +73,8 @@ func (r *WalletRepository) get(ctx context.Context, id string, forUpdate bool) (
 	return wallet, nil
 }
 
-// Debit performs the balance check and update in one SQL statement. It is safe
-// against concurrent debits and never permits a negative balance.
+// Debit checks and updates the balance in one statement, preventing overdrafts
+// even when multiple requests debit the same wallet concurrently.
 func (r *WalletRepository) Debit(ctx context.Context, id string, amount domain.Amount) (domain.Wallet, error) {
 	if id == "" {
 		return domain.Wallet{}, domain.ErrInvalidWalletID
@@ -93,7 +82,6 @@ func (r *WalletRepository) Debit(ctx context.Context, id string, amount domain.A
 	if amount <= 0 {
 		return domain.Wallet{}, domain.ErrInvalidAmount
 	}
-
 	const query = `
 		UPDATE wallets
 		SET balance = balance - $1, updated_at = NOW()
@@ -109,7 +97,7 @@ func (r *WalletRepository) Debit(ctx context.Context, id string, amount domain.A
 	return wallet, nil
 }
 
-// Credit performs an overflow check and update in one SQL statement.
+// Credit checks for BIGINT overflow and updates the balance atomically.
 func (r *WalletRepository) Credit(ctx context.Context, id string, amount domain.Amount) (domain.Wallet, error) {
 	if id == "" {
 		return domain.Wallet{}, domain.ErrInvalidWalletID
@@ -117,7 +105,6 @@ func (r *WalletRepository) Credit(ctx context.Context, id string, amount domain.
 	if amount <= 0 {
 		return domain.Wallet{}, domain.ErrInvalidAmount
 	}
-
 	const query = `
 		UPDATE wallets
 		SET balance = balance + $1, updated_at = NOW()
@@ -133,8 +120,6 @@ func (r *WalletRepository) Credit(ctx context.Context, id string, amount domain.
 	return wallet, nil
 }
 
-// A failed conditional UPDATE can mean either a missing wallet or a rejected
-// balance change. Check existence to return the more useful domain error.
 func (r *WalletRepository) classifyMissingUpdate(ctx context.Context, id string, rejected error) error {
 	var exists bool
 	err := r.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM wallets WHERE id = $1)`, id).Scan(&exists)
