@@ -1,0 +1,241 @@
+openapi: 3.0.3
+info:
+  title: Wallet Transfer API
+  version: 1.0.0
+  description: |
+    HTTP API for creating wallets, retrieving balances, and transferring funds between wallets.
+    Money is stored as integer minor units internally, but the API accepts and returns decimal values.
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local development server
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /wallets:
+    post:
+      summary: Create wallet
+      operationId: createWallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWalletRequest'
+      responses:
+        '201':
+          description: Wallet created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+        '400':
+          description: Invalid request or malformed JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Wallet ID already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /wallets/{walletId}:
+    get:
+      summary: Get wallet by ID
+      operationId: getWallet
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          description: Wallet identifier
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Wallet details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid wallet identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /transfers:
+    post:
+      summary: Create transfer
+      operationId: createTransfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransferRequest'
+      responses:
+        '201':
+          description: Transfer processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResult'
+        '422':
+          description: Transfer failed due to insufficient funds or balance limits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResult'
+        '400':
+          description: Invalid request body or malformed amount
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Source or destination wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Idempotency key reused with a different request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: ok
+
+    CreateWalletRequest:
+      type: object
+      properties:
+        walletId:
+          type: string
+          description: Optional wallet identifier. If omitted, the service generates one.
+          example: source
+        initialBalance:
+          type: number
+          description: Optional initial balance in decimal form.
+          example: 100
+
+    Wallet:
+      type: object
+      required:
+        - walletId
+        - balance
+        - createdAt
+      properties:
+        walletId:
+          type: string
+          example: source
+        balance:
+          type: number
+          description: Current wallet balance in decimal form.
+          example: 37.5
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-11-03T14:48:24.012Z'
+
+    CreateTransferRequest:
+      type: object
+      required:
+        - idempotencyKey
+        - fromWalletId
+        - toWalletId
+        - amount
+      properties:
+        idempotencyKey:
+          type: string
+          description: Unique key used to ensure idempotent transfer submission.
+          example: transfer-1
+        fromWalletId:
+          type: string
+          example: source
+        toWalletId:
+          type: string
+          example: destination
+        amount:
+          type: number
+          description: Amount to transfer in decimal form.
+          example: 25.5
+
+    TransferResult:
+      type: object
+      required:
+        - transferId
+        - idempotencyKey
+        - fromWalletId
+        - toWalletId
+        - amount
+        - status
+        - createdAt
+      properties:
+        transferId:
+          type: string
+          format: uuid
+          example: 8dda90b7-f630-4ee6-9e38-f6d96570bfab
+        idempotencyKey:
+          type: string
+          example: transfer-1
+        fromWalletId:
+          type: string
+          example: source
+        toWalletId:
+          type: string
+          example: destination
+        amount:
+          type: number
+          description: Transfer amount in decimal form.
+          example: 25.5
+        status:
+          type: string
+          enum: [PROCESSED, FAILED]
+          example: PROCESSED
+        failureCode:
+          type: string
+          nullable: true
+          description: Failure reason when the transfer is rejected.
+          example: INSUFFICIENT_FUNDS
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-11-03T14:48:24.012Z'
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: wallet not found

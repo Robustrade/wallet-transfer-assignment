@@ -1,35 +1,90 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer API
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+This project exposes a small HTTP service for creating wallets and transferring funds between them using SQLite as the durable backing store.
 
-## Included
+## Project goals
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+- Create wallets with an optional opening balance
+- Fetch wallet balances by ID
+- Transfer funds between wallets with idempotency protection
+- Record immutable ledger entries for each transfer
+- Reject invalid requests and failed transfers with explicit status codes
 
-## Intended use
+## Service at a glance
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+The service is split into three layers:
 
-## Notes
+- HTTP layer: request validation and JSON responses in `internal/wallet/http.go`
+- Service layer: business rules and transfer orchestration in `internal/wallet/service.go`
+- Repository layer: SQLite persistence and atomic transaction handling in `internal/wallet/repository.go`
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+## Running the service
 
-## How to Submit Assignment
+From the repository root:
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+```bash
+go run ./cmd/wallet-transfer
+```
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+The application reads these environment variables:
+
+- `HOST` — bind address, default `127.0.0.1`
+- `PORT` — HTTP port, default `8000`
+- `WALLET_DB_PATH` — SQLite file path, default `wallets.sqlite3`
+- `LOG_LEVEL` — `DEBUG`, `INFO`, `WARN`, or `ERROR`
+
+Example:
+
+```bash
+HOST=0.0.0.0 PORT=8080 WALLET_DB_PATH=/tmp/wallets.sqlite3 LOG_LEVEL=INFO go run ./cmd/wallet-transfer
+```
+
+## API documentation
+
+See [docs/api.md](./docs/api.md) for endpoint contracts, request examples, and response codes.
+
+The OpenAPI/Swagger specification is available in [docs/swagger.yaml](./docs/swagger.yaml).
+
+## Implementation and logic notes
+
+See [docs/implementation.md](./docs/implementation.md) for the request flow, transaction rules, and business logic.
+
+## Database documentation
+
+See [docs/database.md](./docs/database.md) for the SQLite schema, triggers, invariants, and data model.
+
+## Example curl calls
+
+Create a wallet:
+
+```bash
+curl -X POST http://127.0.0.1:8000/wallets \
+  -H 'Content-Type: application/json' \
+  -d '{"walletId":"source","initialBalance":100}'
+```
+
+View a wallet:
+
+```bash
+curl http://127.0.0.1:8000/wallets/source
+```
+
+Transfer money:
+
+```bash
+curl -X POST http://127.0.0.1:8000/transfers \
+  -H 'Content-Type: application/json' \
+  -d '{"idempotencyKey":"transfer-1","fromWalletId":"source","toWalletId":"destination","amount":25.5}'
+```
+
+## Notes on money handling
+
+The API accepts and returns decimal amounts, while the service stores money as
+integer minor units (cents). For example:
+
+- `12.5` becomes `1250`
+- `1.230` is normalized to `123`
+- amounts must be positive and support at most two decimal places
+
+The response serializes `1250` minor units as `12.5`. This keeps money
+arithmetic exact in SQLite and avoids floating-point precision issues.

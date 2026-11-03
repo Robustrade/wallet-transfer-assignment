@@ -5,3 +5,7 @@ build/
 .tmp/
 .env
 .env.*
+wallets.sqlite3
+wallets.sqlite3-shm
+wallets.sqlite3-wal
+*.test
