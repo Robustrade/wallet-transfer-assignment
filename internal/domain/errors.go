@@ -11,6 +11,7 @@ var (
 	ErrInvalidTransferTransition = errors.New("invalid transfer state transition")
 	ErrInvalidFailureCode        = errors.New("failure code is required")
 	ErrInvalidCurrency           = errors.New("currency is required")
+	ErrCurrencyMismatch          = errors.New("wallet currencies do not match")
 	ErrInvalidBalance            = errors.New("wallet balance cannot be negative")
 	ErrInsufficientFunds         = errors.New("insufficient funds")
 	ErrBalanceOverflow           = errors.New("wallet balance overflow")
