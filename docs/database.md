@@ -18,7 +18,7 @@ export DB_MAX_IDLE_CONNS=5
 export DB_CONN_MAX_LIFETIME=5m
 ```
 
-The database package validates these settings and provides an `Open` helper that configures and pings a `database/sql` connection pool. The application must register its PostgreSQL driver before calling it; driver selection and dependency wiring will be done with the repository layer.
+The database package validates these settings and provides an `Open` helper that configures and pings a `database/sql` connection pool. The application composition layer registers the chosen PostgreSQL driver before calling it; the repository accepts the standard `database/sql` query interface and does not own driver registration.
 
 ## Migrations
 
