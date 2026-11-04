@@ -33,3 +33,15 @@ This repository is a reusable coding assignment template for evaluating backend 
 3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
 
 Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+
+## Database implementation status
+
+The SQLite persistence layer initializes its schema on startup and provides wallet creation and balance lookup, transactional transfers, double-entry ledger writes, and a dedicated `idempotency_records` table. The idempotency table is the canonical request-key record and stores the original request payload, status, failure reason, and (only after success) the resulting transfer ID.
+
+Idempotency states are `PROCESSING`, `RETRYABLE_FAILED`, and `COMPLETED`. An insufficient-funds attempt is committed as `RETRYABLE_FAILED` with reason `INSUFFICIENT_FUNDS` and no transfer or ledger entries. A later request with the same key and identical payload re-evaluates the current balance. Once a transfer succeeds, the record becomes `COMPLETED`; all later retries return that same transfer. Reusing a key with a different payload is rejected.
+
+Concurrency is protected at the database layer, not with a process-local Go mutex. SQLite writes are serialized through a single configured connection, each transfer runs in a transaction, and the source debit uses a conditional SQL update (`balance >= amount`) so the database itself prevents overdrafts. Transfer, wallet updates, two ledger rows, and the completed idempotency record commit atomically. Concurrent requests using the same key therefore produce one transfer and one pair of ledger entries; concurrent different-key debits cannot spend more than the available balance.
+
+Balances are stored as integer minor currency units (for example, paise or cents). The HTTP handler remains a TODO in this branch; the persistence and service-layer work does not make `POST /transfers` fully operational yet.
+
+> **Existing local database:** This schema changes the idempotency table shape. If you are upgrading from an earlier ZIP, stop the service and remove the old `wallet.db` (and its `-shm` / `-wal` files) once before starting this version. The database is recreated from the embedded schema. Do not do this if you need to preserve existing data.

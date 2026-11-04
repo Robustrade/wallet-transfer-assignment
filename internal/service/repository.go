@@ -7,6 +7,5 @@ import (
 )
 
 type TransferRepository interface {
-	CreateTransfer(ctx context.Context, transfer *domain.Transfer) error
-	GetTransferByIdempotencyKey(ctx context.Context, key string) (*domain.Transfer, error)
+	TransferFunds(ctx context.Context, transfer *domain.Transfer) (*domain.Transfer, error)
 }
