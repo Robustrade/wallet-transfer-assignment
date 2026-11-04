@@ -38,7 +38,7 @@ At startup the application:
 4. Constructs the transfer service and registers the HTTP handler.
 5. Starts listening on `HTTP_ADDR` (default `:8080`).
 
-The server exposes `GET /healthz` as a database readiness check and `POST /transfers` for transfers.
+The server exposes `GET /healthz` as a database readiness check and `POST /transfers` for transfers. Transfer attempts that reach the service emit structured `slog` records to standard error; see [observability.md](observability.md) for the logged fields and privacy rules.
 
 **Existing schema note:** The startup migration runner records applied migration versions in `schema_migrations`. If you created the application tables manually rather than by applying the repository migration, do not start the server until the existing schema has been reconciled with the migration history. The initial migration creates the `wallets`, `transfers`, `ledger_entries`, and `idempotency_records` tables.
 
