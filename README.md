@@ -87,6 +87,7 @@ The test database role must be allowed to create and drop schemas. Use a disposa
 - [Database schema and constraints](docs/database.md)
 - [Transfer service workflow](docs/transfer-service.md)
 - [Local setup, migrations, health checks and shutdown](docs/run-local.md)
+- [Structured logs and operational signals](docs/observability.md)
 
 ## Scope and limitations
 
