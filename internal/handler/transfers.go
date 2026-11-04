@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"strings"
@@ -113,6 +114,11 @@ func (h *transferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		status, responseError := mapTransferError(err)
+		if status == http.StatusInternalServerError {
+			// Keep implementation details out of the HTTP response, but retain
+			// the underlying error in server logs for operational diagnosis.
+			log.Printf("transfer request failed: %v", err)
+		}
 		response := transferAPIResponse{Error: responseError}
 		if transfer.ID != "" {
 			response.Transfer = toTransferResponse(transfer)
