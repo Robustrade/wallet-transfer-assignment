@@ -108,7 +108,7 @@ func (r *WalletRepository) Credit(ctx context.Context, id string, amount domain.
 	const query = `
 		UPDATE wallets
 		SET balance = balance + $1, updated_at = NOW()
-		WHERE id = $2 AND balance <= $3 - $1
+		WHERE id = $2 AND balance <= $3::BIGINT - $1::BIGINT
 		RETURNING id, currency, balance`
 	wallet, err := scanWallet(r.db.QueryRowContext(ctx, query, int64(amount), id, int64(math.MaxInt64)))
 	if errors.Is(err, sql.ErrNoRows) {
