@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -189,6 +190,131 @@ func TestPostgresConcurrentDebitsCannotOverdrawWallet(t *testing.T) {
 	}
 	if got := countAllLedgerEntries(t, db); got != 2 {
 		t.Fatalf("ledger entry count = %d, want 2", got)
+	}
+}
+
+func TestPostgresTransferRollsBackOnLedgerFailureAndCanRetry(t *testing.T) {
+	db := newPostgresTestDB(t)
+	insertWallet(t, db, "rollback-source", 500)
+	insertWallet(t, db, "rollback-destination", 0)
+	api := newTransferAPI(db)
+
+	_, err := db.Exec(`
+		CREATE FUNCTION reject_credit_ledger_entry()
+		RETURNS trigger
+		LANGUAGE plpgsql
+		AS $
+		BEGIN
+			IF NEW.entry_type = 'CREDIT' THEN
+				RAISE EXCEPTION 'injected credit ledger failure';
+			END IF;
+			RETURN NEW;
+		END;
+		$
+	`)
+	if err != nil {
+		t.Fatalf("create ledger failure function: %v", err)
+	}
+	_, err = db.Exec(`
+		CREATE TRIGGER reject_credit_ledger_entry
+		BEFORE INSERT ON ledger_entries
+		FOR EACH ROW EXECUTE FUNCTION reject_credit_ledger_entry()
+	`)
+	if err != nil {
+		t.Fatalf("create ledger failure trigger: %v", err)
+	}
+
+	failed := sendTransfer(api, "rollback-retry-key", transferInput{"rollback-source", "rollback-destination", 100})
+	if failed.Code != http.StatusInternalServerError {
+		t.Fatalf("injected failure status = %d, body = %s", failed.Code, failed.Body.String())
+	}
+	if got := walletBalance(t, db, "rollback-source"); got != 500 {
+		t.Fatalf("source balance after rollback = %d, want 500", got)
+	}
+	if got := walletBalance(t, db, "rollback-destination"); got != 0 {
+		t.Fatalf("destination balance after rollback = %d, want 0", got)
+	}
+	for _, table := range []string{"transfers", "ledger_entries", "idempotency_records"} {
+		if got := countRows(t, db, table); got != 0 {
+			t.Fatalf("%s rows after rollback = %d, want 0", table, got)
+		}
+	}
+
+	if _, err := db.Exec("DROP TRIGGER reject_credit_ledger_entry ON ledger_entries"); err != nil {
+		t.Fatalf("drop ledger failure trigger: %v", err)
+	}
+	if _, err := db.Exec("DROP FUNCTION reject_credit_ledger_entry()"); err != nil {
+		t.Fatalf("drop ledger failure function: %v", err)
+	}
+
+	retry := sendTransfer(api, "rollback-retry-key", transferInput{"rollback-source", "rollback-destination", 100})
+	if retry.Code != http.StatusCreated {
+		t.Fatalf("retry status = %d, body = %s", retry.Code, retry.Body.String())
+	}
+	if got := walletBalance(t, db, "rollback-source"); got != 400 {
+		t.Fatalf("source balance after retry = %d, want 400", got)
+	}
+	if got := walletBalance(t, db, "rollback-destination"); got != 100 {
+		t.Fatalf("destination balance after retry = %d, want 100", got)
+	}
+	if got := countRows(t, db, "transfers"); got != 1 {
+		t.Fatalf("transfer count after retry = %d, want 1", got)
+	}
+	if got := countAllLedgerEntries(t, db); got != 2 {
+		t.Fatalf("ledger entries after retry = %d, want 2", got)
+	}
+	if got := countRows(t, db, "idempotency_records"); got != 1 {
+		t.Fatalf("idempotency records after retry = %d, want 1", got)
+	}
+}
+
+func TestPostgresOppositeDirectionTransfersDoNotDeadlock(t *testing.T) {
+	db := newPostgresTestDB(t)
+	insertWallet(t, db, "opposite-wallet-a", 1000)
+	insertWallet(t, db, "opposite-wallet-b", 1000)
+	api := newTransferAPI(db)
+
+	const requestCount = 20
+	start := make(chan struct{})
+	results := make(chan *httptest.ResponseRecorder, requestCount)
+	var wait sync.WaitGroup
+	for i := 0; i < requestCount; i++ {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			<-start
+			from, to := "opposite-wallet-a", "opposite-wallet-b"
+			if index%2 == 1 {
+				from, to = to, from
+			}
+			key := fmt.Sprintf("opposite-direction-%d", index)
+			results <- sendTransfer(api, key, transferInput{from, to, 10})
+		}(i)
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+
+	for response := range results {
+		if response.Code != http.StatusCreated {
+			t.Fatalf("opposite-direction transfer status = %d, body = %s", response.Code, response.Body.String())
+		}
+		body := decodeResponse(t, response)
+		if body.Transfer == nil || body.Transfer.Status != domain.TransferProcessed {
+			t.Fatalf("unexpected opposite-direction response: %+v", body)
+		}
+	}
+	if got := walletBalance(t, db, "opposite-wallet-a"); got != 1000 {
+		t.Fatalf("wallet A balance = %d, want 1000", got)
+	}
+	if got := walletBalance(t, db, "opposite-wallet-b"); got != 1000 {
+		t.Fatalf("wallet B balance = %d, want 1000", got)
+	}
+	if got := countRows(t, db, "transfers"); got != requestCount {
+		t.Fatalf("transfer count = %d, want %d", got, requestCount)
+	}
+	if got := countAllLedgerEntries(t, db); got != requestCount*2 {
+		t.Fatalf("ledger entry count = %d, want %d", got, requestCount*2)
 	}
 }
 
