@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -245,5 +247,51 @@ func TestTransferHandlerRejectsOversizedBody(t *testing.T) {
 
 	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusRequestEntityTooLarge)
+	}
+}
+
+
+func TestCreateTransferEmitsStructuredLogWithoutRawIdempotencyKey(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	const idempotencyKey = "private-idempotency-key"
+	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
+		return validTransfer(), nil
+	}))
+	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(
+		`{"fromWalletId":"wallet-a","toWalletId":"wallet-b","amount":100}`,
+	))
+	request.Header.Set("Idempotency-Key", idempotencyKey)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	logOutput := output.String()
+	for _, expected := range []string{
+		"transfer request completed",
+		"outcome=PROCESSED",
+		"http_status=201",
+		"transfer_id=transfer-1",
+		"from_wallet_id=wallet-a",
+		"to_wallet_id=wallet-b",
+		"amount=100",
+		"idempotency_key_hash=",
+		"duration_ms=",
+	} {
+		if !strings.Contains(logOutput, expected) {
+			t.Errorf("structured log does not contain %q: %s", expected, logOutput)
+		}
+	}
+	if strings.Contains(logOutput, idempotencyKey) {
+		t.Errorf("raw idempotency key was logged: %s", logOutput)
 	}
 }
