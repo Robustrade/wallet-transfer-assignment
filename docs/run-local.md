@@ -3,30 +3,27 @@
 ## Prerequisites
 
 - Go 1.23 or newer
-- Docker with the Compose plugin, or a reachable PostgreSQL instance
-
-## Start PostgreSQL
-
-From the repository root:
-
-```sh
-docker compose up -d --wait postgres
-```
-
-The Compose service creates a local database named `wallet_transfer` with user `wallet` and development password `wallet_dev`.
+- PostgreSQL installed and running locally, or a reachable PostgreSQL instance
+- The PostgreSQL database and application role created
 
 ## Configure the application
 
-Copy the example environment file:
+Set `DATABASE_URL` to the connection URL for your existing PostgreSQL database. For example:
 
 ```sh
-cp .env.example .env
-set -a
-. ./.env
-set +a
+export DATABASE_URL='postgres://<user>:<password>@localhost:5432/<database>?sslmode=disable'
+export HTTP_ADDR=':8080'
 ```
 
-The application reads environment variables directly; it does not load `.env` automatically. The commands above export the values into the current shell.
+Replace the placeholders with the PostgreSQL role, password, and database you already created. The application reads environment variables directly; it does not load a `.env` file automatically.
+
+Optional connection-pool settings:
+
+```sh
+export DB_MAX_OPEN_CONNS=25
+export DB_MAX_IDLE_CONNS=5
+export DB_CONN_MAX_LIFETIME=5m
+```
 
 ## Start the server
 
@@ -43,9 +40,11 @@ At startup the application:
 
 The server exposes `GET /healthz` as a database readiness check and `POST /transfers` for transfers.
 
+**Existing schema note:** The startup migration runner records applied migration versions in `schema_migrations`. If you created the application tables manually rather than by applying the repository migration, do not start the server until the existing schema has been reconciled with the migration history. The initial migration creates the `wallets`, `transfers`, `ledger_entries`, and `idempotency_records` tables.
+
 ## Send a transfer
 
-Create two wallets first. For example, using `psql`:
+Create two wallets first if they do not already exist. For example, using `psql`:
 
 ```sh
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
@@ -81,7 +80,7 @@ The PostgreSQL integration tests are opt-in and use a temporary isolated schema.
 TEST_DATABASE_URL="$DATABASE_URL" go test -v ./internal/integration
 ```
 
-The integration tests create and drop a uniquely named schema. Do not point `TEST_DATABASE_URL` at a database where the test role cannot create schemas. The test role also needs permission to create and drop objects in that database.
+The integration tests create and drop a uniquely named schema. The test role needs permission to create and drop schemas and objects in that database. Use a disposable test database, not a production database.
 
 ## Shutdown
 
