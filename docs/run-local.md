@@ -10,7 +10,7 @@
 From the repository root:
 
 ```sh
-docker compose up -d postgres
+docker compose up -d --wait postgres
 ```
 
 The Compose service creates a local database named `wallet_transfer` with user `wallet` and development password `wallet_dev`.
