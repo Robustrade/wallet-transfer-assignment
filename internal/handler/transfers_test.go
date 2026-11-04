@@ -295,3 +295,49 @@ func TestCreateTransferEmitsStructuredLogWithoutRawIdempotencyKey(t *testing.T) 
 		t.Errorf("raw idempotency key was logged: %s", logOutput)
 	}
 }
+
+
+func TestCreateTransferLogsFailedBusinessOutcome(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	failedTransfer := domain.Transfer{
+		ID:           "transfer-failed",
+		FromWalletID: "wallet-a",
+		ToWalletID:   "wallet-b",
+		Amount:       200,
+		Status:       domain.TransferFailed,
+		FailureCode:  "INSUFFICIENT_FUNDS",
+	}
+	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
+		return failedTransfer, domain.ErrInsufficientFunds
+	}))
+	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(
+		`{"fromWalletId":"wallet-a","toWalletId":"wallet-b","amount":200}`,
+	))
+	request.Header.Set("Idempotency-Key", "failed-request-key")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	logOutput := output.String()
+	for _, expected := range []string{
+		"transfer request rejected",
+		"outcome=FAILED",
+		"http_status=422",
+		"transfer_id=transfer-failed",
+		"failure_code=INSUFFICIENT_FUNDS",
+		"error_code=insufficient_funds",
+	} {
+		if !strings.Contains(logOutput, expected) {
+			t.Errorf("structured log does not contain %q: %s", expected, logOutput)
+		}
+	}
+}
