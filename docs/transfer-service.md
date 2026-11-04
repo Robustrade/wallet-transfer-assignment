@@ -31,4 +31,4 @@ A matching key and request replays the original transfer result. Reusing a key w
 
 The key claim uses PostgreSQL's unique constraint and `INSERT ... ON CONFLICT DO NOTHING`. Concurrent requests using the same key serialize on that unique key. See [idempotency.md](idempotency.md) for the request hash and concurrency details.
 
-The service uses the same transaction for idempotency claim, wallet locks, transfer state, balance changes, ledger entries, and stored response. The HTTP layer will map these service results to the external API response format.
+The service uses the same transaction for idempotency claim, wallet locks, transfer state, balance changes, ledger entries, and stored response. The HTTP handler maps service and domain errors to the documented HTTP status codes and response envelope. See [http-api.md](http-api.md) for the external contract.
