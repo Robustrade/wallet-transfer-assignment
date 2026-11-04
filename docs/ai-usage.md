@@ -15,7 +15,7 @@ ChatGPT was used as an interactive engineering assistant during the assignment. 
 - reviewing API behavior, documentation accuracy, operational concerns, and assignment coverage;
 - preparing and reviewing tests and documentation.
 
-The developer reviewed the changes, pulled commits locally, configured PostgreSQL, ran the tests, and supplied the resulting output for diagnosis. The final reported local verification included:
+The developer reviewed the changes, pulled commits locally, configured PostgreSQL, ran the tests, and supplied the resulting output for diagnosis. The developer reported that the following commands passed on the revision before the documentation, structured-logging, and additional integration-test changes in this review:
 
 ```sh
 go test -v ./internal/integration
@@ -24,7 +24,7 @@ go test -race -cover ./...
 go vet ./...
 ```
 
-The PostgreSQL integration tests passed after the explicit BIGINT casts were added to the wallet credit query. These results were run by the developer in their local environment; this document does not claim an independent CI run.
+The PostgreSQL integration tests passed after explicit BIGINT casts were added to the wallet credit query. The newly added structured-logging test and rollback/opposite-direction integration tests have not yet been run by the developer. Rerun the commands above after pulling the latest branch before submission. These results are developer-run local checks; this document does not claim an independent CI run.
 
 ## Prompt and transcript record
 
