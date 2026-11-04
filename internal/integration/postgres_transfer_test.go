@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"database/sql"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -323,4 +322,3 @@ func countAllLedgerEntries(t *testing.T, db *sql.DB) int {
 	return count
 }
 
-var _ = fmt.Sprintf

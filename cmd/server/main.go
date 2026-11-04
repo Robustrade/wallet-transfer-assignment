@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/abhiabhi0/wallet-transfer-assignment/internal/database"
 	"github.com/abhiabhi0/wallet-transfer-assignment/internal/handler"
@@ -40,7 +40,7 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("load database configuration: %w", err)
 	}
 
-	db, err := database.Open(ctx, stdlib.GetDefaultDriver(), dbConfig)
+	db, err := database.Open(ctx, "pgx", dbConfig)
 	if err != nil {
 		return fmt.Errorf("connect to PostgreSQL: %w", err)
 	}
