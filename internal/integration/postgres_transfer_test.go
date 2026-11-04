@@ -200,28 +200,12 @@ func TestPostgresTransferRollsBackOnLedgerFailureAndCanRetry(t *testing.T) {
 	api := newTransferAPI(db)
 
 	_, err := db.Exec(`
-		CREATE FUNCTION reject_credit_ledger_entry()
-		RETURNS trigger
-		LANGUAGE plpgsql
-		AS $
-		BEGIN
-			IF NEW.entry_type = 'CREDIT' THEN
-				RAISE EXCEPTION 'injected credit ledger failure';
-			END IF;
-			RETURN NEW;
-		END;
-		$
+		ALTER TABLE ledger_entries
+		ADD CONSTRAINT reject_credit_ledger_entry
+		CHECK (entry_type <> 'CREDIT')
 	`)
 	if err != nil {
-		t.Fatalf("create ledger failure function: %v", err)
-	}
-	_, err = db.Exec(`
-		CREATE TRIGGER reject_credit_ledger_entry
-		BEFORE INSERT ON ledger_entries
-		FOR EACH ROW EXECUTE FUNCTION reject_credit_ledger_entry()
-	`)
-	if err != nil {
-		t.Fatalf("create ledger failure trigger: %v", err)
+		t.Fatalf("create ledger failure constraint: %v", err)
 	}
 
 	failed := sendTransfer(api, "rollback-retry-key", transferInput{"rollback-source", "rollback-destination", 100})
@@ -240,11 +224,8 @@ func TestPostgresTransferRollsBackOnLedgerFailureAndCanRetry(t *testing.T) {
 		}
 	}
 
-	if _, err := db.Exec("DROP TRIGGER reject_credit_ledger_entry ON ledger_entries"); err != nil {
-		t.Fatalf("drop ledger failure trigger: %v", err)
-	}
-	if _, err := db.Exec("DROP FUNCTION reject_credit_ledger_entry()"); err != nil {
-		t.Fatalf("drop ledger failure function: %v", err)
+	if _, err := db.Exec("ALTER TABLE ledger_entries DROP CONSTRAINT reject_credit_ledger_entry"); err != nil {
+		t.Fatalf("drop ledger failure constraint: %v", err)
 	}
 
 	retry := sendTransfer(api, "rollback-retry-key", transferInput{"rollback-source", "rollback-destination", 100})
