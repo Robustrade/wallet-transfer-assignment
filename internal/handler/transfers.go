@@ -2,13 +2,16 @@ package handler
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/abhiabhi0/wallet-transfer-assignment/internal/domain"
 	"github.com/abhiabhi0/wallet-transfer-assignment/internal/repository"
@@ -107,18 +110,21 @@ func (h *transferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		key = bodyKey
 	}
 
-	transfer, err := h.transfers.ExecuteIdempotent(r.Context(), key, service.TransferRequest{
+	transferRequest := service.TransferRequest{
 		FromWalletID: input.FromWalletID,
 		ToWalletID:   input.ToWalletID,
 		Amount:       domain.Amount(input.Amount),
-	})
+	}
+	startedAt := time.Now()
+	transfer, err := h.transfers.ExecuteIdempotent(r.Context(), key, transferRequest)
+	status := http.StatusCreated
+	var responseError *apiError
 	if err != nil {
-		status, responseError := mapTransferError(err)
-		if status == http.StatusInternalServerError {
-			// Keep implementation details out of the HTTP response, but retain
-			// the underlying error in server logs for operational diagnosis.
-			log.Printf("transfer request failed: %v", err)
-		}
+		status, responseError = mapTransferError(err)
+	}
+	logTransferOutcome(startedAt, key, transferRequest, transfer, status, responseError, err)
+
+	if err != nil {
 		response := transferAPIResponse{Error: responseError}
 		if transfer.ID != "" {
 			response.Transfer = toTransferResponse(transfer)
@@ -128,6 +134,51 @@ func (h *transferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, transferAPIResponse{Transfer: toTransferResponse(transfer)})
+}
+
+func logTransferOutcome(
+	startedAt time.Time,
+	idempotencyKey string,
+	request service.TransferRequest,
+	transfer domain.Transfer,
+	status int,
+	responseError *apiError,
+	err error,
+) {
+	outcome := string(transfer.Status)
+	if outcome == "" {
+		outcome = "REJECTED"
+	}
+
+	attrs := []any{
+		"outcome", outcome,
+		"http_status", status,
+		"transfer_id", transfer.ID,
+		"from_wallet_id", request.FromWalletID,
+		"to_wallet_id", request.ToWalletID,
+		"amount", int64(request.Amount),
+		"duration_ms", time.Since(startedAt).Milliseconds(),
+	}
+	if idempotencyKey != "" {
+		keyHash := sha256.Sum256([]byte(idempotencyKey))
+		attrs = append(attrs, "idempotency_key_hash", hex.EncodeToString(keyHash[:]))
+	}
+	if transfer.FailureCode != "" {
+		attrs = append(attrs, "failure_code", transfer.FailureCode)
+	}
+	if responseError != nil {
+		attrs = append(attrs, "error_code", responseError.Code)
+	}
+
+	switch {
+	case err == nil:
+		slog.Info("transfer request completed", attrs...)
+	case status >= http.StatusInternalServerError:
+		attrs = append(attrs, "error", err)
+		slog.Error("transfer request failed", attrs...)
+	default:
+		slog.Warn("transfer request rejected", attrs...)
+	}
 }
 
 func writeDecodeError(w http.ResponseWriter, err error) {
