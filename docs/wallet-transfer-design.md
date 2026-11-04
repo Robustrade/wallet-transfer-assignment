@@ -135,9 +135,9 @@ Expected business failures should be distinguishable from unexpected infrastruct
 
 The test suite includes domain, service, repository, handler, migration, application health, and opt-in PostgreSQL integration tests. PostgreSQL integration tests use a temporary isolated schema.
 
-Verified scenarios include successful transfer/replay/payload conflict, concurrent same-key requests executing once, and competing debits not overdrawing a wallet. Unit tests cover domain validation and guarded state transitions. The full suite, race-enabled suite, and `go vet` have passed in the developer's local environment.
+The integration suite covers successful transfer/replay/payload conflict, concurrent same-key requests executing once, competing debits not overdrawing a wallet, rollback after an injected ledger-write failure followed by a retry with the same idempotency key, and concurrent transfers in opposite directions. Unit tests cover domain validation, rollback orchestration, and guarded state transitions. The developer previously reported that the full suite, race-enabled suite, and `go vet` passed; the newly added logging and integration tests must be rerun locally before treating the updated branch as verified.
 
-Additional useful hardening cases before a production system would include fault-injected rollback tests, opposite-direction contention, and explicit assertions that terminal states cannot transition again at the repository/database boundary.
+Further production hardening could include repository-level tests for invalid terminal-state updates, fault/timeout testing around database commit acknowledgement, and operational metrics/tracing. These are beyond the assignment's required scope.
 
 ## 11. Implementation sequence
 
