@@ -1,34 +1,27 @@
 # Wallet Transfer Service — Design
 
-## 1. Scope and goals
+## 1. Problem statement and scope
 
-Implement the synchronous `POST /transfers` use case with:
+Implement a synchronous `POST /transfers` use case that moves funds between two existing wallets. The service must provide retry-safe request handling, atomic balance updates, a double-entry ledger for successful transfers, correct balances under concurrency, and guarded transfer state transitions.
 
-- retry-safe request handling when an `idempotencyKey` is supplied;
-- atomic movement of funds between two wallets;
-- a double-entry ledger for every successful transfer;
-- correct balances under concurrent requests;
-- explicit, guarded transfer state transitions.
+The design favors correctness and a small, understandable implementation over optional product features. Wallet creation/funding, balance/history read APIs, authentication, currency conversion, asynchronous processing, metrics, and tracing are outside the current scope.
 
-The implementation should favor correctness and a small, understandable design over optional product features. Balance/history read APIs, authentication, multi-currency support, asynchronous processing, and operational dashboards are out of scope unless the existing project or reviewer requires them.
+## 2. Assumptions
 
-## 2. Assumptions to confirm during implementation
-
-1. PostgreSQL is the target database, as preferred by the assignment.
-2. A wallet belongs to one currency. This assignment does not define currency conversion; transfers between wallets of different currencies are rejected if currency is represented in the schema.
-3. Amounts are positive integers in the smallest supported currency unit. Floating-point arithmetic is not used for money.
-4. A transfer is synchronous: the API returns after its database transaction commits.
+1. PostgreSQL is the target database.
+2. Each wallet has one currency. Transfers between different currencies are rejected; no currency conversion is performed.
+3. Amounts are positive integers in the smallest supported currency unit. Floating-point arithmetic is not used.
+4. Transfers are synchronous. The API responds after the database transaction commits.
 5. A transfer from a wallet to itself is invalid.
-6. Insufficient funds and other business-rule failures are deterministic results and are stored against the idempotency key. Malformed requests are rejected before a transfer is started.
-7. Wallet creation and funding are setup concerns for this assignment. Tests need a reliable way to create wallets with initial balances.
-
-These assumptions should be revisited if the starter project or interviewer provides a different contract.
+6. Insufficient funds, currency mismatch, and destination-balance overflow are deterministic business failures. They are recorded as `FAILED` transfers and replayed for the same idempotency key.
+7. Malformed requests and request-level validation failures are rejected before a transfer is created. Missing-wallet and infrastructure errors roll back the transaction, including the uncompleted idempotency claim.
+8. Wallet creation and funding are setup concerns; tests seed wallets directly.
 
 ## 3. API contract
 
-### Request
+The endpoint is `POST /transfers`. The idempotency key is required and may be supplied in the `Idempotency-Key` header or the JSON `idempotencyKey` field. If both are supplied, they must match.
 
-`POST /transfers`
+Example:
 
 ```json
 {
@@ -39,172 +32,122 @@ These assumptions should be revisited if the starter project or interviewer prov
 }
 ```
 
-Validation:
+The amount is a positive integer in the wallet's smallest currency unit.
 
-- all fields are required;
-- the idempotency key and wallet IDs must be non-empty and within documented length limits;
-- amount must be greater than zero;
-- source and destination wallets must differ;
-- the request must not use floating-point or fractional amounts.
-
-### Successful response
-
-Return `201 Created` after commit. The response should contain a stable transfer identifier, source and destination wallet IDs, amount, state, and creation timestamp.
+A successful new transfer returns `201 Created`:
 
 ```json
 {
-  "transferId": "transfer_123",
-  "fromWalletId": "wallet_1",
-  "toWalletId": "wallet_2",
-  "amount": 100,
-  "status": "PROCESSED",
-  "createdAt": "2026-01-01T12:00:00Z"
+  "transfer": {
+    "id": "transfer-id",
+    "fromWalletId": "wallet_1",
+    "toWalletId": "wallet_2",
+    "amount": 100,
+    "status": "PROCESSED"
+  }
 }
 ```
 
-A replay with the same key and same request payload returns the originally stored HTTP status and response body. It must not create another transfer or ledger entries.
+A replay with the same key and same normalized request returns the same transfer result and status. Reusing a key with a different request returns `409 Conflict`.
 
-Reusing a key with a different payload returns `409 Conflict` and does not execute the new request.
-
-### Business failures
-
-- `400 Bad Request`: malformed input or invalid amount.
-- `404 Not Found`: source or destination wallet does not exist.
-- `409 Conflict`: insufficient funds, same-wallet transfer, currency mismatch, or idempotency-key reuse with a different payload.
-- `500 Internal Server Error`: unexpected persistence or infrastructure failure.
-
-The exact error response shape will be standardized when the HTTP handler is implemented. A deterministic business failure associated with an accepted idempotency key is stored and replayed; an unexpected database failure rolls back the transaction so a retry can safely attempt the operation again.
+Deterministic business failures return `422 Unprocessable Entity` and include the persisted `FAILED` transfer. Invalid input returns `400`; a missing wallet returns `404`; unexpected infrastructure errors return a generic `500` response without exposing internal details. See [http-api.md](http-api.md) for the complete mapping.
 
 ## 4. Data model
 
-Use four tables. Names and types can be adjusted to match the repository's conventions.
+The schema contains four application tables:
 
-### `wallets`
+- `wallets`: wallet ID, currency, stored non-negative integer balance, timestamps.
+- `transfers`: source and destination wallet IDs, positive amount, status, optional failure code, timestamps.
+- `ledger_entries`: transfer ID, wallet ID, entry type (`DEBIT` or `CREDIT`), positive amount, timestamp.
+- `idempotency_records`: primary-key idempotency key, canonical request hash, transfer ID, stored response status/body, timestamp.
 
-- `id` — primary key.
-- `currency` — currency code, if currency is represented.
-- `balance` — non-negative integer amount in the smallest currency unit.
-- `created_at`, `updated_at`.
+The database enforces primary/foreign keys, positive amounts, non-negative wallet balances, distinct transfer wallets, valid statuses/types, and at most one debit and one credit entry per transfer. The service validates that the two ledger entries form a matching pair for the transfer. Cross-row invariants are protected by the service transaction; they are not all independently enforced by SQL constraints.
 
-The balance is stored for efficient reads and updated in the same transaction as the ledger. The ledger remains the audit trail.
-
-### `transfers`
-
-- `id` — primary key.
-- `from_wallet_id`, `to_wallet_id` — foreign keys to wallets.
-- `amount` — positive integer amount.
-- `status` — constrained to `PENDING`, `PROCESSED`, or `FAILED`.
-- `failure_code` — nullable machine-readable reason for a failed transfer.
-- `created_at`, `updated_at`.
-
-Add checks for positive amount and different source/destination wallet IDs. Index wallet IDs and creation time for future history queries if useful.
-
-### `ledger_entries`
-
-- `id` — primary key.
-- `transfer_id` — foreign key to transfers.
-- `wallet_id` — foreign key to wallets.
-- `entry_type` — constrained to `DEBIT` or `CREDIT`.
-- `amount` — positive integer amount.
-- `created_at`.
-
-Add a unique constraint on `(transfer_id, entry_type)`, so a transfer cannot have two debit entries or two credit entries. Successful transfers must have exactly one debit and one credit of equal amount. Ledger entries are append-only; corrections should use compensating entries rather than editing historical entries.
-
-### `idempotency_records`
-
-- `idempotency_key` — primary key or unique key.
-- `request_hash` — hash of the canonical request fields.
-- `transfer_id` — nullable foreign key if the request produced a transfer record.
-- `response_status` — stored HTTP status.
-- `response_body` — stored response payload.
-- `created_at`.
-
-The request hash covers the source wallet, destination wallet, and amount. The key is scoped to this service; if account or tenant scoping is introduced later, that scope must be part of the unique key.
+Wallet balances are stored for efficient access and updated in the same transaction as ledger entries. Ledger entries are append-only through the repository API; corrections would require compensating entries rather than editing historical entries.
 
 ## 5. Transaction and concurrency strategy
 
-Use one PostgreSQL transaction for idempotency handling, wallet locking, transfer state, balance changes, ledger entries, and the stored response.
+One PostgreSQL transaction covers the idempotency claim, wallet locks, transfer row, balance changes, ledger entries, final response persistence, and commit.
 
-1. Validate the request shape before opening the transaction.
-2. Start a transaction and attempt to insert the idempotency record using its unique key.
-3. If the key already exists, read the existing record:
-   - matching request hash: return its stored status and body without side effects;
-   - different request hash: return `409 Conflict`.
-   Concurrent inserts for the same key are serialized by the unique constraint. The losing request reads the committed record after the winning transaction finishes.
-4. Lock both wallet rows using `SELECT ... FOR UPDATE`, always in deterministic wallet-ID order. Consistent ordering reduces deadlock risk when transfers run in opposite directions.
-5. Verify both wallets exist, are eligible, and have compatible currencies if applicable.
-6. Insert the transfer in `PENDING` state.
-7. Check available funds while holding the source wallet lock:
-   - insufficient funds: mark the transfer `FAILED`, store the deterministic failure response, and commit without balance or ledger changes;
-   - sufficient funds: debit the source and credit the destination, insert one `DEBIT` and one `CREDIT` ledger entry, then mark the transfer `PROCESSED`.
-8. Store the final response in the idempotency record and commit.
-9. Return only after commit succeeds.
+1. Validate the idempotency key and request fields.
+2. Begin a transaction and claim the key with `INSERT ... ON CONFLICT DO NOTHING`.
+3. If the key already exists, load the existing record. A matching request hash replays the stored result; a different hash returns `409 Conflict`. Concurrent inserts serialize on the unique key.
+4. Lock both wallet rows using `SELECT ... FOR UPDATE`, always in lexicographically sorted wallet-ID order.
+5. Validate the wallets and create a `PENDING` transfer.
+6. Check currency compatibility, available source funds, and destination balance overflow.
+7. For a deterministic business failure, transition the transfer to `FAILED`, persist its replayable result, and commit without balance or ledger changes.
+8. Otherwise debit the source, credit the destination, insert one `DEBIT` and one `CREDIT` ledger entry, and transition the transfer to `PROCESSED`.
+9. Persist the response status/body in the idempotency record and commit.
+10. Return the result only after commit succeeds.
 
-All writes for a successful transfer commit together or roll back together. A database error must never leave only one balance update or one ledger entry committed.
+The wallet row locks serialize competing transfers involving the same wallet. The non-negative balance constraint and conditional balance update provide additional protection. Deterministic lock ordering reduces deadlock risk for opposite-direction transfers.
 
-The wallet row locks serialize competing transfers that touch the same wallet. The non-negative balance check provides an additional database-level invariant. Locking both wallets in sorted order avoids the common A-to-B versus B-to-A lock-order deadlock.
+A successful transfer's balance changes, ledger entries, terminal status, and idempotency response commit together or roll back together. A database error must not leave a partial transfer committed.
 
-The `PENDING` state is an internal state within the transaction for this synchronous workflow; it should not be visible as a committed intermediate state. State changes are limited to `PENDING -> PROCESSED` and `PENDING -> FAILED`. Terminal states cannot transition again.
+## 6. State transitions
 
-## 6. Idempotency and retry behavior
+Allowed transitions are:
 
-- The database unique constraint is the authority for deduplication; an in-memory cache is not sufficient.
-- Store a canonical request hash so the same key cannot silently represent two different operations.
-- Store the final response status and body so a replay returns the original result.
-- Keep the idempotency record and transfer effects in the same transaction. If the transaction rolls back, neither the transfer nor its idempotency result is committed.
-- A client timeout after commit is safe: retrying the same key returns the committed result.
-- Concurrent requests with the same key must produce at most one transfer.
-- Idempotency-record retention is not specified by the assignment; records should not be expired during the assignment's evaluation period.
+```text
+PENDING -> PROCESSED
+PENDING -> FAILED
+```
 
-## 7. Failure modes and consistency expectations
+Repository updates include `WHERE status = 'PENDING'`, preventing terminal states from being changed by a repeated transition. `PENDING` is created and transitioned inside the same transaction; it is not a durable asynchronous/in-progress state visible after commit.
 
-| Scenario | Expected behavior |
+## 7. Idempotency and retry behavior
+
+- The database primary key on `idempotency_key` is the deduplication authority.
+- A SHA-256 hash is computed from canonical source wallet ID, destination wallet ID, and integer amount. The raw JSON representation is not hashed.
+- A matching key and hash return the stored transfer result without repeating side effects.
+- A matching key with a different hash returns `409 Conflict`.
+- Successful results are stored with status `201`; deterministic business failures are stored with status `422`.
+- The idempotency claim, transfer effects, and final response are committed in one transaction. If the transaction rolls back, the claim and effects roll back together.
+- A client timeout after commit is safe: retrying with the same key returns the committed result.
+- Idempotency records are not expired by this assignment implementation.
+
+This is effectively-once processing within the PostgreSQL transaction and idempotency-key boundary. It is not a claim of universal exactly-once delivery across arbitrary distributed systems.
+
+## 8. Failure modes and consistency expectations
+
+| Scenario | Behavior |
 | --- | --- |
-| Invalid request | Reject before starting a transfer; no database side effects. |
-| Unknown wallet | Return not found; no balance or ledger changes. |
-| Insufficient funds | Persist a `FAILED` transfer and replayable failure result; no balance or ledger changes. |
-| Same key, same payload | Return the stored original result; no new side effects. |
-| Same key, different payload | Return conflict; preserve the original result. |
+| Malformed JSON, invalid key, invalid wallet ID, same wallet, or non-positive amount | Reject before transfer creation; no transfer side effects. |
+| Unknown wallet | Roll back the transaction; return `404`; no committed idempotency result. |
+| Insufficient funds | Persist `FAILED` transfer and replayable `422` result; no balance or ledger changes. |
+| Currency mismatch or destination overflow | Persist `FAILED` transfer and replayable `422` result; no balance or ledger changes. |
+| Same key, same payload | Return the original result; no new transfer or ledger entries. |
+| Same key, different payload | Return `409`; preserve the original result. |
 | Concurrent debits | Wallet row locks serialize updates; no negative balance or double spend. |
-| Opposite-direction transfers | Lock wallets in the same sorted order to reduce deadlocks. |
-| Failure before commit | Roll back all writes; a retry can safely execute. |
+| Opposite-direction transfers | Sorted lock order reduces deadlock risk. |
+| Failure before commit | Roll back all writes; retry with the same key can safely attempt the operation. |
 | Response lost after commit | Retry returns the stored response. |
 
-For every `PROCESSED` transfer, the source balance decreases by the transfer amount, the destination balance increases by the same amount, and exactly two equal-and-opposite ledger entries exist. Failed transfers do not change balances or create successful-transfer ledger entries.
+For every `PROCESSED` transfer, the source balance decreases and destination balance increases by the transfer amount, and exactly two equal-amount ledger entries exist: one debit from the source and one credit to the destination. A `FAILED` transfer changes neither balance and creates no ledger entries.
 
-## 8. Observability
+## 9. Observability expectations
 
-Use structured logs for transfer ID, idempotency-key hash (not the raw key), source/destination wallet IDs, outcome, failure code, and transaction errors. Do not log sensitive request data unnecessarily.
+The HTTP boundary should emit structured logs for completed transfer attempts and unexpected failures. Logs should include outcome, HTTP status, transfer ID when available, source/destination wallet IDs, amount, failure code when applicable, elapsed time, and a SHA-256 hash of the idempotency key. Never log the raw idempotency key or credentials.
 
-At minimum, make unexpected errors distinguishable from expected business failures. Metrics and tracing are optional; useful future metrics include transfer success/failure counts, idempotency replays, transaction failures, and transaction duration.
+Expected business failures should be distinguishable from unexpected infrastructure failures. The service currently exposes generic internal errors to clients; server logs may include the underlying error for diagnosis. Metrics and distributed tracing are optional and are not implemented.
 
-## 9. Testing strategy
+## 10. Testing strategy
 
-Use behavioral tests and a real PostgreSQL instance for transaction and locking behavior where practical.
+The test suite includes domain, service, repository, handler, migration, application health, and opt-in PostgreSQL integration tests. PostgreSQL integration tests use a temporary isolated schema.
 
-- successful transfer updates both balances and creates exactly two balanced ledger entries;
-- invalid amount and same-wallet requests are rejected;
-- insufficient funds produce a failed result without changing balances;
-- duplicate requests return the original response and do not repeat side effects;
-- same key with a different payload returns conflict;
-- concurrent requests with the same key create only one transfer;
-- concurrent debits cannot overspend a wallet;
-- opposite-direction transfers preserve balances and do not leave partial ledger entries;
-- injected database failures roll back all transfer effects;
-- terminal transfer states cannot transition again.
+Verified scenarios include successful transfer/replay/payload conflict, concurrent same-key requests executing once, and competing debits not overdrawing a wallet. Unit tests cover domain validation and guarded state transitions. The full suite, race-enabled suite, and `go vet` have passed in the developer's local environment.
 
-Run the full test suite and the language-appropriate formatter, linter, and race/concurrency checks before submission.
+Additional useful hardening cases before a production system would include fault-injected rollback tests, opposite-direction contention, and explicit assertions that terminal states cannot transition again at the repository/database boundary.
 
-## 10. Implementation sequence
+## 11. Implementation sequence
 
-1. Inspect the starter repository and confirm language, framework, and existing conventions.
-2. Add domain types and validation.
-3. Add PostgreSQL migrations and database setup.
-4. Implement wallet, transfer, ledger, and idempotency persistence.
-5. Implement the atomic transfer service.
-6. Add idempotency replay and payload-conflict handling.
-7. Expose `POST /transfers`.
-8. Add integration and concurrency tests.
-9. Complete operational documentation and the pull request explanation.
+1. Inspect the assignment and repository conventions.
+2. Record the design and API contract.
+3. Implement domain types and validation.
+4. Add PostgreSQL schema and database setup.
+5. Implement repositories and the atomic transfer service.
+6. Add idempotency handling and HTTP exposure.
+7. Add unit, integration, and concurrency tests.
+8. Verify logs, migrations, health checks, and graceful shutdown.
 
-This document records the proposed design. Implementation details should be adjusted only when repository inspection or tests reveal a concrete reason, and the rationale should be documented.
+This document describes the implemented synchronous design and identifies remaining hardening opportunities separately from current guarantees.
