@@ -127,7 +127,7 @@ For every `PROCESSED` transfer, the source balance decreases and destination bal
 
 ## 9. Observability expectations
 
-The HTTP boundary should emit structured logs for completed transfer attempts and unexpected failures. Logs should include outcome, HTTP status, transfer ID when available, source/destination wallet IDs, amount, failure code when applicable, elapsed time, and a SHA-256 hash of the idempotency key. Never log the raw idempotency key or credentials.
+The HTTP boundary emits structured logs for completed transfer attempts and unexpected failures. Logs should include outcome, HTTP status, transfer ID when available, source/destination wallet IDs, amount, failure code when applicable, elapsed time, and a SHA-256 hash of the idempotency key. Never log the raw idempotency key or credentials.
 
 Expected business failures should be distinguishable from unexpected infrastructure failures. The service currently exposes generic internal errors to clients; server logs may include the underlying error for diagnosis. Metrics and distributed tracing are optional and are not implemented.
 
