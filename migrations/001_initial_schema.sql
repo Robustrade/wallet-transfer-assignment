@@ -1,0 +1,8 @@
+-- TODO: Add SQLite table definitions for:
+-- wallets
+-- transfers
+-- ledger_entries
+-- idempotency_records
+--
+-- Add appropriate primary keys, foreign keys, CHECK constraints,
+-- and UNIQUE constraints as part of the database-design step.
