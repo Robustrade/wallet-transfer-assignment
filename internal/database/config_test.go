@@ -71,7 +71,6 @@ func TestLoadConfigRejectsInvalidSettings(t *testing.T) {
 	}
 }
 
-
 func TestLoadConfigMalformedURLDoesNotExposeCredentials(t *testing.T) {
 	const databaseURL = "postgres://wallet:secret%ZZ@localhost:5432/wallets"
 	t.Setenv("DATABASE_URL", databaseURL)
