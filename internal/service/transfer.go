@@ -160,23 +160,21 @@ func (s *TransferService) ExecuteIdempotent(
 		}
 		var transfer domain.Transfer
 		if len(record.TransferID) > 0 {
-			// Transfer data is not used to rebuild the response. It is loaded only
-			// for structured logging and business-outcome classification.
+			// Reconstruct only the domain metadata needed for logging and error
+			// classification. The persisted response bytes remain opaque and are
+			// returned unchanged to the HTTP handler.
+			transfer = domain.Transfer{
+				ID: record.TransferID, FromWalletID: request.FromWalletID,
+				ToWalletID: request.ToWalletID, Amount: request.Amount,
+			}
 			if raw, ok := envelope["transfer"]; ok {
 				var response struct {
-					ID string `json:"id"`
-					FromWalletID string `json:"fromWalletId"`
-					ToWalletID string `json:"toWalletId"`
-					Amount domain.Amount `json:"amount"`
 					Status domain.TransferStatus `json:"status"`
 					FailureCode string `json:"failureCode"`
 				}
 				if err := json.Unmarshal(raw, &response); err == nil {
-					transfer = domain.Transfer{
-						ID: response.ID, FromWalletID: response.FromWalletID,
-						ToWalletID: response.ToWalletID, Amount: response.Amount,
-						Status: response.Status, FailureCode: response.FailureCode,
-					}
+					transfer.Status = response.Status
+					transfer.FailureCode = response.FailureCode
 				}
 			}
 		}
