@@ -18,7 +18,10 @@ import (
 	"github.com/abhiabhi0/wallet-transfer-assignment/internal/service"
 )
 
-const maxTransferRequestBytes = 1 << 20
+const (
+	maxTransferRequestBytes = 1 << 20
+	transferExecutionTimeout = 20 * time.Second
+)
 
 // TransferExecutor is the service capability required by the HTTP handler.
 type TransferExecutor interface {
@@ -116,7 +119,9 @@ func (h *transferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Amount:       domain.Amount(input.Amount),
 	}
 	startedAt := time.Now()
-	transfer, err := h.transfers.ExecuteIdempotent(r.Context(), key, transferRequest)
+	ctx, cancel := context.WithTimeout(r.Context(), transferExecutionTimeout)
+	defer cancel()
+	transfer, err := h.transfers.ExecuteIdempotent(ctx, key, transferRequest)
 	status := http.StatusCreated
 	var responseError *apiError
 	if err != nil {
