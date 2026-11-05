@@ -129,8 +129,12 @@ func (h *transferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	transfer := result.Transfer
 	status := result.StatusCode
 	var responseError *apiError
-	if err != nil && len(result.Body) == 0 {
-		status, responseError = mapTransferError(err)
+	if err != nil {
+		mappedStatus, mappedError := mapTransferError(err)
+		responseError = mappedError
+		if len(result.Body) == 0 {
+			status = mappedStatus
+		}
 	}
 	logTransferOutcome(startedAt, key, transferRequest, transfer, status, responseError, err)
 
@@ -139,7 +143,10 @@ func (h *transferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeJSON(w, status, transferAPIResponse{Error: responseError})
+		writeJSON(w, status, transferAPIResponse{
+			Transfer: transferResponseOrNil(transfer),
+			Error: responseError,
+		})
 		return
 	}
 
@@ -251,6 +258,13 @@ func mapTransferError(err error) (int, *apiError) {
 	default:
 		return http.StatusInternalServerError, &apiError{Code: "internal_error", Message: "an internal error occurred"}
 	}
+}
+
+func transferResponseOrNil(transfer domain.Transfer) *transferResponse {
+	if transfer.ID == "" {
+		return nil
+	}
+	return toTransferResponse(transfer)
 }
 
 func toTransferResponse(transfer domain.Transfer) *transferResponse {
