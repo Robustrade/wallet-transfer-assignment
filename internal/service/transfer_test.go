@@ -190,6 +190,26 @@ func TestHashRequestIsDeterministic(t *testing.T) {
 	if first == changed { t.Fatal("different amount produced the same request hash") }
 }
 
+func testResponseEncoder(transfer domain.Transfer, transferErr error) (int, []byte, error) {
+	status := 201
+	if transferErr != nil {
+		status = 422
+	}
+	body, err := json.Marshal(map[string]any{
+		"transfer": map[string]any{
+			"id": transfer.ID, "status": transfer.Status,
+			"failureCode": transfer.FailureCode,
+		},
+		"error": errorString(transferErr),
+	})
+	return status, body, err
+}
+
+func errorString(err error) string {
+	if err == nil { return "" }
+	return err.Error()
+}
+
 func TestExecuteIdempotentReplaysOriginalTransfer(t *testing.T) {
 	from := domain.Wallet{ID:"wallet-a", Currency:"INR", Balance:1000}
 	to := domain.Wallet{ID:"wallet-b", Currency:"INR", Balance:200}
@@ -198,11 +218,17 @@ func TestExecuteIdempotentReplaysOriginalTransfer(t *testing.T) {
 	svc.newIdempotencyStore = func(repository.DBTX) idempotencyStore { return keys }
 	request := TransferRequest{FromWalletID:from.ID, ToWalletID:to.ID, Amount:300}
 
-	first, err := svc.ExecuteIdempotent(context.Background(), "request-1", request)
+	first, err := svc.ExecuteIdempotent(context.Background(), "request-1", request, testResponseEncoder)
 	if err != nil { t.Fatal(err) }
-	second, err := svc.ExecuteIdempotent(context.Background(), "request-1", request)
+	second, err := svc.ExecuteIdempotent(context.Background(), "request-1", request, func(domain.Transfer, error) (int, []byte, error) {
+		t.Fatal("replay must not rebuild the stored response")
+		return 0, nil, nil
+	})
 	if err != nil { t.Fatal(err) }
-	if first != second { t.Fatalf("replay = %+v, original = %+v", second, first) }
+	if first.StatusCode != 201 || second.StatusCode != first.StatusCode || string(second.Body) != string(first.Body) {
+		t.Fatalf("replay response = status %d body %s; original = status %d body %s", second.StatusCode, second.Body, first.StatusCode, first.Body)
+	}
+	if first.Transfer != second.Transfer { t.Fatalf("replay transfer = %+v, original = %+v", second.Transfer, first.Transfer) }
 	if stores.transfers.creates != 1 || len(stores.ledger.entries) != 2 {
 		t.Fatalf("duplicate request executed again: transfers=%d ledger=%d", stores.transfers.creates, len(stores.ledger.entries))
 	}
@@ -217,9 +243,9 @@ func TestExecuteIdempotentRejectsDifferentPayload(t *testing.T) {
 	svc, _, stores := newTestService(t, from, to, 0)
 	keys := newFakeIdempotencyStore()
 	svc.newIdempotencyStore = func(repository.DBTX) idempotencyStore { return keys }
-	_, err := svc.ExecuteIdempotent(context.Background(), "request-1", TransferRequest{FromWalletID:from.ID, ToWalletID:to.ID, Amount:300})
+	_, err := svc.ExecuteIdempotent(context.Background(), "request-1", TransferRequest{FromWalletID:from.ID, ToWalletID:to.ID, Amount:300}, testResponseEncoder)
 	if err != nil { t.Fatal(err) }
-	_, err = svc.ExecuteIdempotent(context.Background(), "request-1", TransferRequest{FromWalletID:from.ID, ToWalletID:to.ID, Amount:301})
+	_, err = svc.ExecuteIdempotent(context.Background(), "request-1", TransferRequest{FromWalletID:from.ID, ToWalletID:to.ID, Amount:301}, testResponseEncoder)
 	if !errors.Is(err, ErrIdempotencyConflict) { t.Fatalf("error = %v", err) }
 	if stores.transfers.creates != 1 { t.Fatalf("transfer created %d times", stores.transfers.creates) }
 }
@@ -232,17 +258,23 @@ func TestExecuteIdempotentReplaysBusinessFailure(t *testing.T) {
 	svc.newIdempotencyStore = func(repository.DBTX) idempotencyStore { return keys }
 	request := TransferRequest{FromWalletID:from.ID, ToWalletID:to.ID, Amount:300}
 
-	first, err := svc.ExecuteIdempotent(context.Background(), "request-failed", request)
+	first, err := svc.ExecuteIdempotent(context.Background(), "request-failed", request, testResponseEncoder)
 	if !errors.Is(err, domain.ErrInsufficientFunds) { t.Fatalf("first error = %v", err) }
-	second, err := svc.ExecuteIdempotent(context.Background(), "request-failed", request)
+	second, err := svc.ExecuteIdempotent(context.Background(), "request-failed", request, func(domain.Transfer, error) (int, []byte, error) {
+		t.Fatal("replay must return the persisted business-failure response")
+		return 0, nil, nil
+	})
 	if !errors.Is(err, domain.ErrInsufficientFunds) { t.Fatalf("replay error = %v", err) }
-	if first != second || second.Status != domain.TransferFailed { t.Fatalf("replayed transfer = %+v, original = %+v", second, first) }
+	if first.Transfer != second.Transfer || second.Transfer.Status != domain.TransferFailed ||
+		first.StatusCode != 422 || second.StatusCode != first.StatusCode || string(second.Body) != string(first.Body) {
+		t.Fatalf("replayed response = %+v, original = %+v", second, first)
+	}
 	if stores.transfers.creates != 1 { t.Fatalf("transfer created %d times", stores.transfers.creates) }
 }
 
 func TestExecuteIdempotentValidatesKey(t *testing.T) {
 	svc := &TransferService{}
-	_, err := svc.ExecuteIdempotent(context.Background(), "  ", TransferRequest{FromWalletID:"a", ToWalletID:"b", Amount:1})
+	_, err := svc.ExecuteIdempotent(context.Background(), "  ", TransferRequest{FromWalletID:"a", ToWalletID:"b", Amount:1}, testResponseEncoder)
 	if !errors.Is(err, ErrInvalidIdempotencyKey) { t.Fatalf("error = %v", err) }
 }
 
