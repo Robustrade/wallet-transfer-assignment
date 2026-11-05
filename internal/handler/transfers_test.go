@@ -265,6 +265,31 @@ func TestTransferHandlerRejectsWrongMethod(t *testing.T) {
 	}
 }
 
+func TestTransferHandlerRejectsOversizedTrailingWhitespace(t *testing.T) {
+	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
+		t.Fatal("service must not be called")
+		return domain.Transfer{}, nil
+	}))
+	validJSON := `{"fromWalletId":"wallet-a","toWalletId":"wallet-b","amount":100}`
+	body := validJSON + strings.Repeat(" ", maxTransferRequestBytes-len(validJSON)+1)
+	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(body))
+	request.Header.Set("Idempotency-Key", "key-123")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d, body = %s", response.Code, http.StatusRequestEntityTooLarge, response.Body.String())
+	}
+	var bodyResponse transferAPIResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &bodyResponse); err != nil {
+		t.Fatal(err)
+	}
+	if bodyResponse.Error == nil || bodyResponse.Error.Code != "request_too_large" {
+		t.Fatalf("error = %+v, want request_too_large", bodyResponse.Error)
+	}
+}
+
 func TestTransferHandlerRejectsOversizedBody(t *testing.T) {
 	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
 		t.Fatal("service must not be called")
