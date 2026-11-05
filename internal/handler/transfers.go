@@ -94,6 +94,10 @@ func (h *transferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err != nil {
+			writeDecodeError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusBadRequest, transferAPIResponse{
 			Error: &apiError{Code: "invalid_json", Message: "request body must contain exactly one JSON object"},
 		})
