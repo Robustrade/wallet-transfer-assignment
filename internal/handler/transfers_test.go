@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/abhiabhi0/wallet-transfer-assignment/internal/domain"
 	"github.com/abhiabhi0/wallet-transfer-assignment/internal/repository"
@@ -29,6 +30,37 @@ func validTransfer() domain.Transfer {
 		ToWalletID:   "wallet-b",
 		Amount:       100,
 		Status:       domain.TransferProcessed,
+	}
+}
+
+func TestCreateTransferUsesBoundedExecutionContext(t *testing.T) {
+	var gotDeadline bool
+	handler := NewTransferHandler(transferExecutorFunc(func(ctx context.Context, _ string, _ service.TransferRequest) (domain.Transfer, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("transfer context has no deadline")
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 || remaining > transferExecutionTimeout {
+			t.Fatalf("unexpected transfer deadline remaining: %v", remaining)
+		}
+		gotDeadline = true
+		return validTransfer(), nil
+	}))
+	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(
+		`{"fromWalletId":"wallet-a","toWalletId":"wallet-b","amount":100}`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "key-123")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if !gotDeadline {
+		t.Fatal("service was not called")
+	}
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 
