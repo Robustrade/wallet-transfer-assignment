@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -67,6 +68,20 @@ func TestLoadConfigRejectsInvalidSettings(t *testing.T) {
 				t.Fatal("LoadConfig() error = nil, want error")
 			}
 		})
+	}
+}
+
+
+func TestLoadConfigMalformedURLDoesNotExposeCredentials(t *testing.T) {
+	const databaseURL = "postgres://wallet:secret%ZZ@localhost:5432/wallets"
+	t.Setenv("DATABASE_URL", databaseURL)
+
+	_, err := LoadConfig()
+	if err == nil {
+		t.Fatal("LoadConfig() error = nil, want malformed URL error")
+	}
+	if strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), databaseURL) {
+		t.Fatalf("LoadConfig() error exposes database credentials: %v", err)
 	}
 }
 
