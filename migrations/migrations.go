@@ -16,20 +16,14 @@ var migrationFiles embed.FS
 
 const advisoryLockID int64 = 741852963
 
-// Apply applies embedded up migrations in version order. A PostgreSQL
-// transaction-scoped advisory lock prevents concurrent application instances
-// from running the same migration at startup.
+// Apply applies embedded up migrations in version order. A transaction-scoped
+// advisory lock serializes migration bootstrap and execution across instances.
 func Apply(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return fmt.Errorf("database is required")
 	}
-	if _, err := db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version BIGINT PRIMARY KEY,
-			name TEXT NOT NULL,
-			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)`); err != nil {
-		return fmt.Errorf("create schema migrations table: %w", err)
+	if err := bootstrap(ctx, db); err != nil {
+		return err
 	}
 
 	names, err := fs.Glob(migrationFiles, "*.up.sql")
@@ -46,6 +40,33 @@ func Apply(ctx context.Context, db *sql.DB) error {
 		if err := applyOne(ctx, db, version, name); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// bootstrap creates the migration-history table while holding the same
+// transaction-scoped advisory lock used by applyOne. The transaction is
+// committed before applyOne starts, so each migration can acquire the lock.
+func bootstrap(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin migration bootstrap: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, advisoryLockID); err != nil {
+		return fmt.Errorf("lock migration bootstrap: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version BIGINT PRIMARY KEY,
+			name TEXT NOT NULL,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return fmt.Errorf("create schema migrations table: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit migration bootstrap: %w", err)
 	}
 	return nil
 }
