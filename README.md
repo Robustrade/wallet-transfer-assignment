@@ -80,9 +80,7 @@ The transfer idempotency key is stored with the original request details. Reusin
 
 ## Database
 
-The schema is embedded in `internal/platform/schema.sql` and applied when the service starts. The repository also upgrades databases created by the earlier schema: it adds wallet status and `updated_at`, and rebuilds the ledger table so wallet credits can be recorded without a transfer ID. Existing ledger rows are copied during this migration.
-
-The matching SQL migration is documented in `migrations/002_wallet_status_and_funding.sql`. Do not delete `wallet.db` to upgrade; the startup migration preserves existing wallet, transfer, idempotency and ledger data.
+All table definitions are kept in one place: `internal/platform/schema.sql`. The service applies this schema when it starts. Since this project is not deployed yet, the schema is kept as the initial database definition rather than carrying forward migration code for an older, unused schema.
 
 ## Tests
 
