@@ -52,6 +52,19 @@ type idempotencyStore interface {
 	Complete(ctx context.Context, key, requestHash, transferID string, status int, body []byte) error
 }
 
+// IdempotentResponse contains the persisted HTTP status and serialized response
+// envelope. The service treats the body as opaque bytes and does not depend on
+// HTTP handler DTOs.
+type IdempotentResponse struct {
+	Transfer domain.Transfer
+	StatusCode int
+	Body []byte
+}
+
+// ResponseEncoder builds the API response for a completed transfer. It is
+// called before the transaction commits so the exact response can be persisted.
+type ResponseEncoder func(domain.Transfer, error) (int, []byte, error)
+
 type repositoryFactory func(repository.DBTX) (walletStore, transferStore, ledgerStore)
 
 type TransferService struct {
@@ -80,10 +93,6 @@ type TransferRequest struct {
 	Amount domain.Amount
 }
 
-type storedTransferResponse struct {
-	Transfer domain.Transfer `json:"transfer"`
-}
-
 // Execute performs a transfer without an idempotency key. API callers should
 // use ExecuteIdempotent so retries cannot create additional transfers.
 func (s *TransferService) Execute(ctx context.Context, request TransferRequest) (domain.Transfer, error) {
@@ -100,50 +109,106 @@ func (s *TransferService) Execute(ctx context.Context, request TransferRequest) 
 // ExecuteIdempotent claims the key and performs the transfer in one transaction.
 // A conflicting insert waits for the concurrent owner to commit or roll back;
 // a subsequent SELECT at READ COMMITTED then observes the committed response.
-func (s *TransferService) ExecuteIdempotent(ctx context.Context, key string, request TransferRequest) (domain.Transfer, error) {
+func (s *TransferService) ExecuteIdempotent(
+	ctx context.Context,
+	key string,
+	request TransferRequest,
+	encode ResponseEncoder,
+) (IdempotentResponse, error) {
 	if strings.TrimSpace(key) == "" || len(key) > 255 {
-		return domain.Transfer{}, ErrInvalidIdempotencyKey
+		return IdempotentResponse{}, ErrInvalidIdempotencyKey
 	}
-	if err := validateRequest(request); err != nil { return domain.Transfer{}, err }
+	if err := validateRequest(request); err != nil {
+		return IdempotentResponse{}, err
+	}
+	if encode == nil {
+		return IdempotentResponse{}, fmt.Errorf("idempotency response encoder is required")
+	}
 	requestHash, err := hashRequest(request)
-	if err != nil { return domain.Transfer{}, fmt.Errorf("hash transfer request: %w", err) }
+	if err != nil {
+		return IdempotentResponse{}, fmt.Errorf("hash transfer request: %w", err)
+	}
 
 	tx, err := s.txManager.Begin(ctx)
-	if err != nil { return domain.Transfer{}, fmt.Errorf("begin idempotent transfer transaction: %w", err) }
+	if err != nil {
+		return IdempotentResponse{}, fmt.Errorf("begin idempotent transfer transaction: %w", err)
+	}
 	defer func() { _ = tx.Rollback() }()
 
 	keys := s.newIdempotencyStore(tx)
 	claimed, err := keys.Claim(ctx, key, requestHash)
-	if err != nil { return domain.Transfer{}, fmt.Errorf("claim idempotency key: %w", err) }
+	if err != nil {
+		return IdempotentResponse{}, fmt.Errorf("claim idempotency key: %w", err)
+	}
 	if !claimed {
 		record, err := keys.Get(ctx, key)
-		if err != nil { return domain.Transfer{}, fmt.Errorf("load idempotency record: %w", err) }
-		if record.RequestHash != requestHash { return domain.Transfer{}, ErrIdempotencyConflict }
+		if err != nil {
+			return IdempotentResponse{}, fmt.Errorf("load idempotency record: %w", err)
+		}
+		if record.RequestHash != requestHash {
+			return IdempotentResponse{}, ErrIdempotencyConflict
+		}
 		if record.ResponseStatus == 0 || len(record.ResponseBody) == 0 {
-			return domain.Transfer{}, ErrIncompleteIdempotencyRecord
+			return IdempotentResponse{}, ErrIncompleteIdempotencyRecord
 		}
-		var response storedTransferResponse
-		if err := json.Unmarshal(record.ResponseBody, &response); err != nil {
-			return domain.Transfer{}, fmt.Errorf("decode stored idempotency response: %w", err)
+		var envelope map[string]json.RawMessage
+		if err := json.Unmarshal(record.ResponseBody, &envelope); err != nil {
+			return IdempotentResponse{}, fmt.Errorf("validate stored idempotency response: %w", err)
 		}
-		if err := response.Transfer.Validate(); err != nil {
-			return domain.Transfer{}, fmt.Errorf("validate stored idempotency response: %w", err)
+		if len(envelope) == 0 {
+			return IdempotentResponse{}, fmt.Errorf("validate stored idempotency response: empty response envelope")
 		}
-		if err := tx.Commit(); err != nil { return domain.Transfer{}, fmt.Errorf("commit idempotent replay: %w", err) }
-		return response.Transfer, businessErrorForTransfer(response.Transfer)
+		var transfer domain.Transfer
+		if len(record.TransferID) > 0 {
+			// Transfer data is not used to rebuild the response. It is loaded only
+			// for structured logging and business-outcome classification.
+			if raw, ok := envelope["transfer"]; ok {
+				var response struct {
+					ID string `json:"id"`
+					FromWalletID string `json:"fromWalletId"`
+					ToWalletID string `json:"toWalletId"`
+					Amount domain.Amount `json:"amount"`
+					Status domain.TransferStatus `json:"status"`
+					FailureCode string `json:"failureCode"`
+				}
+				if err := json.Unmarshal(raw, &response); err == nil {
+					transfer = domain.Transfer{
+						ID: response.ID, FromWalletID: response.FromWalletID,
+						ToWalletID: response.ToWalletID, Amount: response.Amount,
+						Status: response.Status, FailureCode: response.FailureCode,
+					}
+				}
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return IdempotentResponse{}, fmt.Errorf("commit idempotent replay: %w", err)
+		}
+		return IdempotentResponse{
+			Transfer: transfer, StatusCode: record.ResponseStatus,
+			Body: append([]byte(nil), record.ResponseBody...),
+		}, businessErrorForTransfer(transfer)
 	}
 
 	transfer, operationErr := s.executeInTransaction(ctx, tx, request)
-	if transfer.ID == "" { return domain.Transfer{}, operationErr }
-	status := 201
-	if operationErr != nil { status = 422 }
-	body, err := json.Marshal(storedTransferResponse{Transfer: transfer})
-	if err != nil { return domain.Transfer{}, fmt.Errorf("encode idempotency response: %w", err) }
-	if err := keys.Complete(ctx, key, requestHash, transfer.ID, status, body); err != nil {
-		return domain.Transfer{}, fmt.Errorf("store idempotency response: %w", err)
+	if transfer.ID == "" {
+		return IdempotentResponse{}, operationErr
 	}
-	if err := tx.Commit(); err != nil { return domain.Transfer{}, fmt.Errorf("commit idempotent transfer: %w", err) }
-	return transfer, operationErr
+	status, body, err := encode(transfer, operationErr)
+	if err != nil {
+		return IdempotentResponse{}, fmt.Errorf("encode idempotency response: %w", err)
+	}
+	if status < 100 || status > 599 || len(body) == 0 {
+		return IdempotentResponse{}, fmt.Errorf("encode idempotency response: invalid status or empty body")
+	}
+	if err := keys.Complete(ctx, key, requestHash, transfer.ID, status, body); err != nil {
+		return IdempotentResponse{}, fmt.Errorf("store idempotency response: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return IdempotentResponse{}, fmt.Errorf("commit idempotent transfer: %w", err)
+	}
+	return IdempotentResponse{
+		Transfer: transfer, StatusCode: status, Body: append([]byte(nil), body...),
+	}, operationErr
 }
 
 func (s *TransferService) executeInTransaction(ctx context.Context, tx Transaction, request TransferRequest) (domain.Transfer, error) {
