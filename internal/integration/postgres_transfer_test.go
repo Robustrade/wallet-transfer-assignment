@@ -64,6 +64,10 @@ func TestPostgresTransferHTTPAndIdempotency(t *testing.T) {
 	if replayBody.Transfer == nil || replayBody.Transfer.ID != firstBody.Transfer.ID {
 		t.Fatalf("replay did not return original transfer: first=%+v replay=%+v", firstBody, replayBody)
 	}
+	if replay.Code != first.Code || replay.Body.String() != first.Body.String() {
+		t.Fatalf("replay response differs from original: first=(%d %s) replay=(%d %s)",
+			first.Code, first.Body.String(), replay.Code, replay.Body.String())
+	}
 
 	conflict := sendTransfer(api, "replay-key", transferInput{"replay-source", "replay-destination", 126})
 	if conflict.Code != http.StatusConflict {
