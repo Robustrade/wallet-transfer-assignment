@@ -1,7 +1,9 @@
 CREATE TABLE IF NOT EXISTS wallets (
     id TEXT PRIMARY KEY,
     balance INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS transfers (
@@ -14,8 +16,6 @@ CREATE TABLE IF NOT EXISTS transfers (
     CHECK (from_wallet_id <> to_wallet_id)
 );
 
--- A key represents one logical client request. Insufficient-funds failures are
--- retryable: the record remains, but no transfer is attached until success.
 CREATE TABLE IF NOT EXISTS idempotency_records (
     idempotency_key TEXT PRIMARY KEY,
     from_wallet_id TEXT NOT NULL,
@@ -32,10 +32,11 @@ CREATE TABLE IF NOT EXISTS idempotency_records (
         OR (status = 'PROCESSING' AND transfer_id IS NULL))
 );
 
+-- A NULL transfer_id identifies a wallet credit (opening balance or added funds).
 CREATE TABLE IF NOT EXISTS ledger_entries (
     id TEXT PRIMARY KEY,
     wallet_id TEXT NOT NULL REFERENCES wallets(id),
-    transfer_id TEXT NOT NULL REFERENCES transfers(id),
+    transfer_id TEXT REFERENCES transfers(id),
     type TEXT NOT NULL CHECK (type IN ('DEBIT', 'CREDIT')),
     amount INTEGER NOT NULL CHECK (amount > 0),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

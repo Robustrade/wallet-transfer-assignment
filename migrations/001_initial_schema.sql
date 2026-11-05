@@ -14,8 +14,6 @@ CREATE TABLE IF NOT EXISTS transfers (
     CHECK (from_wallet_id <> to_wallet_id)
 );
 
--- A key represents one logical client request. Insufficient-funds failures are
--- retryable: the record remains, but no transfer is attached until success.
 CREATE TABLE IF NOT EXISTS idempotency_records (
     idempotency_key TEXT PRIMARY KEY,
     from_wallet_id TEXT NOT NULL,

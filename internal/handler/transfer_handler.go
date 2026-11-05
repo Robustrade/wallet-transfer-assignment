@@ -19,7 +19,22 @@ func (h *TransferHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (h *TransferHandler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
-	// TODO: Decode and validate the HTTP request, call the service,
-	// and map the result or error to an HTTP response.
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	var request CreateTransferRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	transfer, err := h.transferService.CreateTransfer(r.Context(), service.CreateTransferInput{
+		IdempotencyKey: request.IdempotencyKey,
+		FromWalletID:   request.FromWalletID,
+		ToWalletID:     request.ToWalletID,
+		Amount:         request.Amount,
+	})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, TransferResponse{
+		TransferID: transfer.ID,
+		Status:     string(transfer.Status),
+	})
 }

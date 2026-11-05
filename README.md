@@ -1,47 +1,95 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+A small Go HTTP service for wallet creation, funding and wallet-to-wallet transfers. It uses SQLite and keeps wallet balances and ledger entries in the same database transactions.
 
-## Included
+## Run
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+```bash
+go run ./cmd/api
+```
 
-## Intended use
+The API listens on `:8081` and creates `wallet.db` in the working directory.
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+## API
 
-## Notes
+Amounts are integer minor currency units (for example, paise or cents).
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+### Create a wallet
 
-## How to Submit Assignment
+`POST /wallets`
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+```json
+{
+  "walletId": "wallet_1",
+  "initialBalance": 1000
+}
+```
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+`initialBalance` can be zero or greater. New wallets are `ACTIVE` by default. You can optionally set `"status": "INACTIVE"` when creating a wallet.
 
-## Database implementation status
+### Get a wallet
 
-The SQLite persistence layer initializes its schema on startup and provides wallet creation and balance lookup, transactional transfers, double-entry ledger writes, and a dedicated `idempotency_records` table. The idempotency table is the canonical request-key record and stores the original request payload, status, failure reason, and (only after success) the resulting transfer ID.
+`GET /wallets/{walletId}`
 
-Idempotency states are `PROCESSING`, `RETRYABLE_FAILED`, and `COMPLETED`. An insufficient-funds attempt is committed as `RETRYABLE_FAILED` with reason `INSUFFICIENT_FUNDS` and no transfer or ledger entries. A later request with the same key and identical payload re-evaluates the current balance. Once a transfer succeeds, the record becomes `COMPLETED`; all later retries return that same transfer. Reusing a key with a different payload is rejected.
+Returns the current balance, status, creation time and last update time.
 
-Concurrency is protected at the database layer, not with a process-local Go mutex. SQLite writes are serialized through a single configured connection, each transfer runs in a transaction, and the source debit uses a conditional SQL update (`balance >= amount`) so the database itself prevents overdrafts. Transfer, wallet updates, two ledger rows, and the completed idempotency record commit atomically. Concurrent requests using the same key therefore produce one transfer and one pair of ledger entries; concurrent different-key debits cannot spend more than the available balance.
+### Add funds
 
-Balances are stored as integer minor currency units (for example, paise or cents). The HTTP handler remains a TODO in this branch; the persistence and service-layer work does not make `POST /transfers` fully operational yet.
+`POST /wallets/{walletId}/funds`
 
-> **Existing local database:** This schema changes the idempotency table shape. If you are upgrading from an earlier ZIP, stop the service and remove the old `wallet.db` (and its `-shm` / `-wal` files) once before starting this version. The database is recreated from the embedded schema. Do not do this if you need to preserve existing data.
+```json
+{
+  "amount": 500
+}
+```
+
+Funding is deliberately simple: the wallet ID is in the URL and the request contains only the amount. Each successful call adds funds once. The balance update and credit ledger entry are committed together. Funding does not use an idempotency key.
+
+### View wallet ledger
+
+`GET /wallets/{walletId}/ledger`
+
+Returns the wallet's opening-balance credit, later funding credits and transfer entries. A missing `transferId` means the entry is a wallet credit rather than part of a transfer.
+
+### Transfer funds
+
+`POST /transfers`
+
+```json
+{
+  "idempotencyKey": "transfer-request-001",
+  "fromWalletId": "wallet_1",
+  "toWalletId": "wallet_2",
+  "amount": 250
+}
+```
+
+A successful transfer debits the source wallet, credits the destination wallet and writes exactly two transfer ledger entries in one transaction. Both wallets must exist and be `ACTIVE`.
+
+The transfer idempotency key is stored with the original request details. Reusing the key with a different payload returns a conflict. If a request fails because the source wallet has insufficient funds, that failure is retryable: add funds to the wallet and submit the original transfer again with the same key and payload. Once the transfer succeeds, later retries return the original transfer.
+
+## Wallet and ledger rules
+
+- Wallet balances are non-negative integer amounts.
+- Wallet status is `ACTIVE` or `INACTIVE`; inactive wallets cannot send, receive or add funds.
+- Wallet creation with a positive opening balance writes a credit ledger entry.
+- Adding funds writes a credit ledger entry.
+- Each completed transfer writes one debit and one credit entry.
+- Balance changes and their ledger entries are committed atomically.
+- `updatedAt` changes whenever a wallet balance changes.
+
+## Database
+
+The schema is embedded in `internal/platform/schema.sql` and applied when the service starts. The repository also upgrades databases created by the earlier schema: it adds wallet status and `updated_at`, and rebuilds the ledger table so wallet credits can be recorded without a transfer ID. Existing ledger rows are copied during this migration.
+
+The matching SQL migration is documented in `migrations/002_wallet_status_and_funding.sql`. Do not delete `wallet.db` to upgrade; the startup migration preserves existing wallet, transfer, idempotency and ledger data.
+
+## Tests
+
+Run:
+
+```bash
+go test ./...
+```
+
+The repository tests cover transfer balances and ledger entries, duplicate transfer requests, idempotency conflicts, insufficient-funds retries, and concurrent debits. Wallet tests cover creation, opening balances, funding, invalid amounts and inactive wallets.

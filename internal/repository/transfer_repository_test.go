@@ -68,8 +68,25 @@ func TestTransferFundsUpdatesBalancesAndLedgerAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(debits) != 1 || debits[0].Type != domain.LedgerEntryDebit || len(credits) != 1 || credits[0].Type != domain.LedgerEntryCredit {
-		t.Fatalf("unexpected ledger entries: debit=%+v credit=%+v", debits, credits)
+	if len(debits) != 2 || len(credits) != 2 {
+		t.Fatalf("expected opening balance and transfer entries: debit wallet=%+v credit wallet=%+v", debits, credits)
+	}
+	var sourceDebit, sourceCredit, destinationCredits int
+	for _, entry := range debits {
+		if entry.Type == domain.LedgerEntryDebit {
+			sourceDebit++
+		}
+		if entry.Type == domain.LedgerEntryCredit {
+			sourceCredit++
+		}
+	}
+	for _, entry := range credits {
+		if entry.Type == domain.LedgerEntryCredit {
+			destinationCredits++
+		}
+	}
+	if sourceDebit != 1 || sourceCredit != 1 || destinationCredits != 2 {
+		t.Fatalf("unexpected ledger entries: source=%+v destination=%+v", debits, credits)
 	}
 }
 
@@ -189,8 +206,8 @@ func TestInsufficientFundsRetryWithSameKeyReevaluatesBalance(t *testing.T) {
 	if !errors.Is(err, domain.ErrInsufficientFunds) {
 		t.Fatalf("first attempt error = %v", err)
 	}
-	if _, err := repo.db.ExecContext(ctx, `UPDATE wallets SET balance = 100 WHERE id = 'source'`); err != nil {
-		t.Fatal(err)
+	if _, err := repo.AddFunds(ctx, "source", 50); err != nil {
+		t.Fatalf("add funds before retry: %v", err)
 	}
 
 	completed, err := repo.TransferFunds(ctx, request)
@@ -215,8 +232,17 @@ func TestInsufficientFundsRetryWithSameKeyReevaluatesBalance(t *testing.T) {
 		t.Fatalf("balances = %d/%d, want 25/75", source.Balance, destination.Balance)
 	}
 	entries, _ := repo.ListLedgerEntries(ctx, "source")
-	if len(entries) != 1 {
-		t.Fatalf("ledger entries = %d, want exactly one debit", len(entries))
+	var retryDebits, retryCredits int
+	for _, entry := range entries {
+		if entry.Type == domain.LedgerEntryDebit {
+			retryDebits++
+		}
+		if entry.Type == domain.LedgerEntryCredit {
+			retryCredits++
+		}
+	}
+	if len(entries) != 3 || retryDebits != 1 || retryCredits != 2 {
+		t.Fatalf("unexpected source ledger entries after funding and retry: %+v", entries)
 	}
 }
 
@@ -261,11 +287,90 @@ func TestConcurrentSameIdempotencyKeyCreatesOneTransfer(t *testing.T) {
 	var transferCount, ledgerCount int
 	_ = repo.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM transfers`).Scan(&transferCount)
 	_ = repo.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ledger_entries`).Scan(&ledgerCount)
-	if transferCount != 1 || ledgerCount != 2 {
-		t.Fatalf("transfers/ledger = %d/%d, want 1/2", transferCount, ledgerCount)
+	if transferCount != 1 || ledgerCount != 3 {
+		t.Fatalf("transfers/ledger = %d/%d, want 1/3 including opening balance", transferCount, ledgerCount)
 	}
 	source, _ := repo.GetWallet(ctx, "source")
 	if source.Balance != 125 {
 		t.Fatalf("source balance = %d, want 125", source.Balance)
+	}
+}
+
+func TestCreateWalletAndAddFundsRecordCredits(t *testing.T) {
+	ctx := context.Background()
+	repo := newTestRepository(t)
+
+	if err := repo.CreateWallet(ctx, &domain.Wallet{ID: "funded", Balance: 250}); err != nil {
+		t.Fatal(err)
+	}
+	wallet, err := repo.GetWallet(ctx, "funded")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wallet.Balance != 250 || wallet.Status != domain.WalletStatusActive || wallet.CreatedAt == "" || wallet.UpdatedAt == "" {
+		t.Fatalf("unexpected created wallet: %+v", wallet)
+	}
+
+	wallet, err = repo.AddFunds(ctx, "funded", 150)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wallet.Balance != 400 || wallet.UpdatedAt == "" {
+		t.Fatalf("unexpected wallet after funding: %+v", wallet)
+	}
+	entries, err := repo.ListLedgerEntries(ctx, "funded")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 || entries[0].Type != domain.LedgerEntryCredit || entries[1].Type != domain.LedgerEntryCredit {
+		t.Fatalf("opening balance and funding should both be ledger credits: %+v", entries)
+	}
+	if entries[0].TransferID != "" || entries[1].TransferID != "" {
+		t.Fatalf("wallet credits should not be linked to transfers: %+v", entries)
+	}
+}
+
+func TestAddFundsRejectsInvalidAndInactiveWallets(t *testing.T) {
+	ctx := context.Background()
+	repo := newTestRepository(t)
+
+	if _, err := repo.AddFunds(ctx, "missing", 10); !errors.Is(err, domain.ErrWalletNotFound) {
+		t.Fatalf("missing wallet error = %v", err)
+	}
+	if _, err := repo.AddFunds(ctx, "missing", 0); !errors.Is(err, domain.ErrInvalidWallet) {
+		t.Fatalf("invalid amount error = %v", err)
+	}
+	if err := repo.CreateWallet(ctx, &domain.Wallet{ID: "inactive", Balance: 10, Status: domain.WalletStatusInactive}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AddFunds(ctx, "inactive", 10); !errors.Is(err, domain.ErrWalletInactive) {
+		t.Fatalf("inactive wallet error = %v", err)
+	}
+	if err := repo.CreateWallet(ctx, &domain.Wallet{ID: "inactive-source", Balance: 100, Status: domain.WalletStatusInactive}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CreateWallet(ctx, &domain.Wallet{ID: "active-destination", Balance: 0}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := repo.TransferFunds(ctx, &domain.Transfer{
+		IdempotencyKey: "inactive-wallet-transfer", FromWalletID: "inactive-source",
+		ToWalletID: "active-destination", Amount: 10,
+	})
+	if !errors.Is(err, domain.ErrWalletInactive) {
+		t.Fatalf("transfer from inactive wallet error = %v", err)
+	}
+}
+
+func TestCreateWalletRejectsDuplicateAndNegativeBalance(t *testing.T) {
+	ctx := context.Background()
+	repo := newTestRepository(t)
+	if err := repo.CreateWallet(ctx, &domain.Wallet{ID: "wallet", Balance: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CreateWallet(ctx, &domain.Wallet{ID: "wallet", Balance: 20}); !errors.Is(err, domain.ErrWalletAlreadyExists) {
+		t.Fatalf("duplicate wallet error = %v", err)
+	}
+	if err := repo.CreateWallet(ctx, &domain.Wallet{ID: "negative", Balance: -1}); !errors.Is(err, domain.ErrInvalidWallet) {
+		t.Fatalf("negative balance error = %v", err)
 	}
 }
