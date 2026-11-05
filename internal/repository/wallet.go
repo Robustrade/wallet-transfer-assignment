@@ -55,10 +55,15 @@ func (WalletRepository) FindByID(ctx context.Context, q db.Querier, id string) (
 
 // LockByIDs takes a row lock on every wallet, always in id order.
 // A fixed lock order means two transfers touching the same wallets can never deadlock.
+//
+// FOR NO KEY UPDATE (not FOR UPDATE): it still blocks other transfers from changing
+// the balance, but it does not conflict with the FOR KEY SHARE locks that Postgres takes
+// for foreign-key checks when another request inserts a transfer row. With FOR UPDATE,
+// such an insert (B->A, key-share on B then A) could deadlock with a transfer that holds A.
 // Must be called inside a transaction.
 func (WalletRepository) LockByIDs(ctx context.Context, q db.Querier, ids []string) ([]domain.Wallet, error) {
 	return queryWallets(ctx, q,
-		`SELECT `+walletColumns+` FROM wallets WHERE id = ANY($1) ORDER BY id FOR UPDATE`,
+		`SELECT `+walletColumns+` FROM wallets WHERE id = ANY($1) ORDER BY id FOR NO KEY UPDATE`,
 		pq.Array(ids))
 }
 

@@ -104,7 +104,7 @@ state and makes a crash in the middle safe.
 
 1. `SELECT ... FROM transfers WHERE id = $1 FOR UPDATE`.
 2. If status is not `PENDING` → it is already done; return the stored result.
-3. Lock both wallets with `SELECT ... FOR UPDATE ORDER BY id` (fixed order → no deadlocks).
+3. Lock both wallets with `SELECT ... ORDER BY id FOR NO KEY UPDATE` (fixed order → no deadlocks).
 4. If source balance < amount → `UPDATE transfers SET status='FAILED' WHERE id=$1 AND status='PENDING'`.
 5. Else → update both balances, insert DEBIT + CREDIT, set status `PROCESSED`
    (same guarded `WHERE status='PENDING'` update).
@@ -124,11 +124,17 @@ state and makes a crash in the middle safe.
 
 ## 7. Concurrency strategy
 
-- **Pessimistic row locks** (`SELECT ... FOR UPDATE`) on both wallets inside one transaction,
+- **Pessimistic row locks** (`SELECT ... FOR NO KEY UPDATE`) on both wallets inside one transaction,
   at the default `READ COMMITTED` level. The balance check and the balance update happen
   while holding the lock, so there is no read-then-write race.
 - Locks are always taken in **sorted wallet id order**, so A→B and B→A at the same time
   cannot deadlock.
+- `FOR NO KEY UPDATE`, not `FOR UPDATE`: inserting a transfer makes Postgres take
+  `FOR KEY SHARE` locks on both wallets (foreign-key check), in from→to order. `FOR UPDATE`
+  conflicts with `FOR KEY SHARE`, so a B→A insert could deadlock with a transfer holding A.
+  This was found by the concurrency test under load (about 1 run in 13) and is now covered by a
+  deterministic regression test. `FOR NO KEY UPDATE` still serialises balance changes and is the
+  lock Postgres itself takes for an `UPDATE` that does not change the key.
 - Why not optimistic locking: transfers from a hot wallet would keep failing and retrying.
   Row locks queue them instead and keep the code simple.
 - Why not `SERIALIZABLE`: it would also be correct, but needs retry loops on
