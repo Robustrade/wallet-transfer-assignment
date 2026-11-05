@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	maxTransferRequestBytes = 1 << 20
+	maxTransferRequestBytes  = 1 << 20
 	transferExecutionTimeout = 20 * time.Second
 )
 

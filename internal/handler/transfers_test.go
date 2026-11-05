@@ -282,7 +282,6 @@ func TestTransferHandlerRejectsOversizedBody(t *testing.T) {
 	}
 }
 
-
 func TestCreateTransferEmitsStructuredLogWithoutRawIdempotencyKey(t *testing.T) {
 	var output bytes.Buffer
 	previousLogger := slog.Default()
@@ -327,7 +326,6 @@ func TestCreateTransferEmitsStructuredLogWithoutRawIdempotencyKey(t *testing.T) 
 		t.Errorf("raw idempotency key was logged: %s", logOutput)
 	}
 }
-
 
 func TestCreateTransferLogsFailedBusinessOutcome(t *testing.T) {
 	var output bytes.Buffer
