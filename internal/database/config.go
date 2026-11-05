@@ -33,7 +33,7 @@ func LoadConfig() (Config, error) {
 
 	parsedURL, err := url.Parse(databaseURL)
 	if err != nil {
-		return Config{}, fmt.Errorf("parse DATABASE_URL: %w", err)
+		return Config{}, fmt.Errorf("parse DATABASE_URL: invalid connection URL")
 	}
 	if (parsedURL.Scheme != "postgres" && parsedURL.Scheme != "postgresql") ||
 		parsedURL.Host == "" || parsedURL.Path == "" || parsedURL.Path == "/" {
