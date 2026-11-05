@@ -49,7 +49,7 @@ A newly processed transfer returns `201 Created`:
 }
 ```
 
-A repeated request with the same key and same normalized payload returns the original transfer representation and the same HTTP status. It does not create another transfer or ledger entries.
+A repeated request with the same key and same normalized payload returns the persisted HTTP status and complete response envelope from the original request. The response is not rebuilt using current handler mappings, and no additional transfer or ledger entries are created.
 
 ## Error response
 
