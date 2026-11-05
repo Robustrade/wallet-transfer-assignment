@@ -10,6 +10,8 @@ import (
 	"github.com/Robustrade/wallet-transfer-assignment/internal/db"
 )
 
+const testLockID = 4242
+
 const defaultTestURL = "postgres://postgres:postgres@localhost:5432/wallet_test?sslmode=disable"
 
 // DB connects to TEST_DATABASE_URL, applies migrations and empties every table.
@@ -30,6 +32,20 @@ func DB(t *testing.T) *sql.DB {
 		t.Fatalf("connect to test database (%s): %v", url, err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
+
+	// `go test ./...` runs packages in parallel, and they share this database.
+	// A session advisory lock makes integration tests from different packages take turns.
+	lockConn, err := conn.Conn(ctx)
+	if err != nil {
+		t.Fatalf("get lock connection: %v", err)
+	}
+	if _, err := lockConn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, testLockID); err != nil {
+		t.Fatalf("take test lock: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = lockConn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, testLockID)
+		_ = lockConn.Close()
+	})
 
 	if err := db.Migrate(ctx, conn); err != nil {
 		t.Fatalf("migrate: %v", err)
