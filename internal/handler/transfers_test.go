@@ -17,10 +17,15 @@ import (
 	"github.com/abhiabhi0/wallet-transfer-assignment/internal/service"
 )
 
-type transferExecutorFunc func(context.Context, string, service.TransferRequest) (domain.Transfer, error)
+type transferExecutorFunc func(context.Context, string, service.TransferRequest, service.ResponseEncoder) (service.IdempotentResponse, error)
 
-func (f transferExecutorFunc) ExecuteIdempotent(ctx context.Context, key string, request service.TransferRequest) (domain.Transfer, error) {
-	return f(ctx, key, request)
+func (f transferExecutorFunc) ExecuteIdempotent(ctx context.Context, key string, request service.TransferRequest, encode service.ResponseEncoder) (service.IdempotentResponse, error) {
+	return f(ctx, key, request, encode)
+}
+
+func completedResponse(transfer domain.Transfer) service.IdempotentResponse {
+	body, _ := encodeTransferResponse(transfer, nil)
+	return service.IdempotentResponse{Transfer: transfer, StatusCode: http.StatusCreated, Body: body}
 }
 
 func validTransfer() domain.Transfer {
@@ -35,7 +40,7 @@ func validTransfer() domain.Transfer {
 
 func TestCreateTransferUsesBoundedExecutionContext(t *testing.T) {
 	var gotDeadline bool
-	handler := NewTransferHandler(transferExecutorFunc(func(ctx context.Context, _ string, _ service.TransferRequest) (domain.Transfer, error) {
+	handler := NewTransferHandler(transferExecutorFunc(func(ctx context.Context, _ string, _ service.TransferRequest, encode service.ResponseEncoder) (service.IdempotentResponse, error) {
 		deadline, ok := ctx.Deadline()
 		if !ok {
 			t.Fatal("transfer context has no deadline")
@@ -45,7 +50,7 @@ func TestCreateTransferUsesBoundedExecutionContext(t *testing.T) {
 			t.Fatalf("unexpected transfer deadline remaining: %v", remaining)
 		}
 		gotDeadline = true
-		return validTransfer(), nil
+		return completedResponse(validTransfer()), nil
 	}))
 	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(
 		`{"fromWalletId":"wallet-a","toWalletId":"wallet-b","amount":100}`,
@@ -66,7 +71,7 @@ func TestCreateTransferUsesBoundedExecutionContext(t *testing.T) {
 
 func TestCreateTransferUsesIdempotencyHeader(t *testing.T) {
 	called := false
-	handler := NewTransferHandler(transferExecutorFunc(func(_ context.Context, key string, request service.TransferRequest) (domain.Transfer, error) {
+	handler := NewTransferHandler(transferExecutorFunc(func(_ context.Context, key string, request service.TransferRequest, encode service.ResponseEncoder) (service.IdempotentResponse, error) {
 		called = true
 		if key != "key-123" {
 			t.Fatalf("idempotency key = %q", key)
@@ -74,7 +79,7 @@ func TestCreateTransferUsesIdempotencyHeader(t *testing.T) {
 		if request.FromWalletID != "wallet-a" || request.ToWalletID != "wallet-b" || request.Amount != 100 {
 			t.Fatalf("request = %+v", request)
 		}
-		return validTransfer(), nil
+		return completedResponse(validTransfer()), nil
 	}))
 
 	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(
@@ -102,11 +107,11 @@ func TestCreateTransferUsesIdempotencyHeader(t *testing.T) {
 }
 
 func TestCreateTransferAcceptsIdempotencyKeyInBody(t *testing.T) {
-	handler := NewTransferHandler(transferExecutorFunc(func(_ context.Context, key string, _ service.TransferRequest) (domain.Transfer, error) {
+	handler := NewTransferHandler(transferExecutorFunc(func(_ context.Context, key string, _ service.TransferRequest, encode service.ResponseEncoder) (service.IdempotentResponse, error) {
 		if key != "body-key" {
 			t.Fatalf("idempotency key = %q", key)
 		}
-		return validTransfer(), nil
+		return completedResponse(validTransfer()), nil
 	}))
 	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(
 		`{"idempotencyKey":"body-key","fromWalletId":"wallet-a","toWalletId":"wallet-b","amount":100}`,
@@ -122,9 +127,9 @@ func TestCreateTransferAcceptsIdempotencyKeyInBody(t *testing.T) {
 
 func TestCreateTransferRejectsMismatchedIdempotencyKeys(t *testing.T) {
 	called := false
-	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
+	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest, service.ResponseEncoder) (service.IdempotentResponse, error) {
 		called = true
-		return domain.Transfer{}, nil
+		return service.IdempotentResponse{}, nil
 	}))
 	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(
 		`{"idempotencyKey":"body-key","fromWalletId":"wallet-a","toWalletId":"wallet-b","amount":100}`,
@@ -171,8 +176,8 @@ func TestCreateTransferMapsServiceErrors(t *testing.T) {
 					FailureCode:  "INSUFFICIENT_FUNDS",
 				}
 			}
-			handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
-				return transfer, test.err
+			handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest, service.ResponseEncoder) (service.IdempotentResponse, error) {
+				return service.IdempotentResponse{Transfer: transfer}, test.err
 			}))
 			request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(
 				`{"fromWalletId":"wallet-a","toWalletId":"wallet-b","amount":100}`,
@@ -214,9 +219,9 @@ func TestCreateTransferRejectsInvalidJSONAndUnknownFields(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			called := false
-			handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
+			handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest, service.ResponseEncoder) (service.IdempotentResponse, error) {
 				called = true
-				return domain.Transfer{}, nil
+				return service.IdempotentResponse{}, nil
 			}))
 			request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(test.body))
 			request.Header.Set("Idempotency-Key", "key-123")
@@ -232,9 +237,9 @@ func TestCreateTransferRejectsInvalidJSONAndUnknownFields(t *testing.T) {
 }
 
 func TestCreateTransferRejectsUnsupportedContentType(t *testing.T) {
-	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
+	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest, service.ResponseEncoder) (service.IdempotentResponse, error) {
 		t.Fatal("service must not be called")
-		return domain.Transfer{}, nil
+		return service.IdempotentResponse{}, nil
 	}))
 	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(`{}`))
 	request.Header.Set("Content-Type", "text/plain")
@@ -248,9 +253,9 @@ func TestCreateTransferRejectsUnsupportedContentType(t *testing.T) {
 }
 
 func TestTransferHandlerRejectsWrongMethod(t *testing.T) {
-	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
+	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest, service.ResponseEncoder) (service.IdempotentResponse, error) {
 		t.Fatal("service must not be called")
-		return domain.Transfer{}, nil
+		return service.IdempotentResponse{}, nil
 	}))
 	request := httptest.NewRequest(http.MethodGet, "/transfers", nil)
 	response := httptest.NewRecorder()
@@ -266,9 +271,9 @@ func TestTransferHandlerRejectsWrongMethod(t *testing.T) {
 }
 
 func TestTransferHandlerRejectsOversizedTrailingWhitespace(t *testing.T) {
-	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
+	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest, service.ResponseEncoder) (service.IdempotentResponse, error) {
 		t.Fatal("service must not be called")
-		return domain.Transfer{}, nil
+		return service.IdempotentResponse{}, nil
 	}))
 	validJSON := `{"fromWalletId":"wallet-a","toWalletId":"wallet-b","amount":100}`
 	body := validJSON + strings.Repeat(" ", maxTransferRequestBytes-len(validJSON)+1)
@@ -291,9 +296,9 @@ func TestTransferHandlerRejectsOversizedTrailingWhitespace(t *testing.T) {
 }
 
 func TestTransferHandlerRejectsOversizedBody(t *testing.T) {
-	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
+	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest, service.ResponseEncoder) (service.IdempotentResponse, error) {
 		t.Fatal("service must not be called")
-		return domain.Transfer{}, nil
+		return service.IdempotentResponse{}, nil
 	}))
 	body := strings.Repeat(" ", maxTransferRequestBytes+1)
 	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(body))
@@ -316,8 +321,8 @@ func TestCreateTransferEmitsStructuredLogWithoutRawIdempotencyKey(t *testing.T) 
 	})
 
 	const idempotencyKey = "private-idempotency-key"
-	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
-		return validTransfer(), nil
+	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest, service.ResponseEncoder) (service.IdempotentResponse, error) {
+		return completedResponse(validTransfer()), nil
 	}))
 	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(
 		`{"fromWalletId":"wallet-a","toWalletId":"wallet-b","amount":100}`,
@@ -368,8 +373,10 @@ func TestCreateTransferLogsFailedBusinessOutcome(t *testing.T) {
 		Status:       domain.TransferFailed,
 		FailureCode:  "INSUFFICIENT_FUNDS",
 	}
-	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest) (domain.Transfer, error) {
-		return failedTransfer, domain.ErrInsufficientFunds
+	handler := NewTransferHandler(transferExecutorFunc(func(context.Context, string, service.TransferRequest, service.ResponseEncoder) (service.IdempotentResponse, error) {
+		bodyStatus, body, encodeErr := encodeTransferResponse(failedTransfer, domain.ErrInsufficientFunds)
+		if encodeErr != nil { return service.IdempotentResponse{}, encodeErr }
+		return service.IdempotentResponse{Transfer: failedTransfer, StatusCode: bodyStatus, Body: body}, domain.ErrInsufficientFunds
 	}))
 	request := httptest.NewRequest(http.MethodPost, "/transfers", strings.NewReader(
 		`{"fromWalletId":"wallet-a","toWalletId":"wallet-b","amount":200}`,
