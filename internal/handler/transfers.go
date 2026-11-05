@@ -25,7 +25,7 @@ const (
 
 // TransferExecutor is the service capability required by the HTTP handler.
 type TransferExecutor interface {
-	ExecuteIdempotent(ctx context.Context, key string, request service.TransferRequest) (domain.Transfer, error)
+	ExecuteIdempotent(ctx context.Context, key string, request service.TransferRequest, encode service.ResponseEncoder) (service.IdempotentResponse, error)
 }
 
 // NewTransferHandler creates an HTTP handler for POST /transfers.
@@ -125,20 +125,21 @@ func (h *transferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	startedAt := time.Now()
 	ctx, cancel := context.WithTimeout(r.Context(), transferExecutionTimeout)
 	defer cancel()
-	transfer, err := h.transfers.ExecuteIdempotent(ctx, key, transferRequest)
-	status := http.StatusCreated
+	result, err := h.transfers.ExecuteIdempotent(ctx, key, transferRequest, encodeTransferResponse)
+	transfer := result.Transfer
+	status := result.StatusCode
 	var responseError *apiError
-	if err != nil {
+	if err != nil && len(result.Body) == 0 {
 		status, responseError = mapTransferError(err)
 	}
 	logTransferOutcome(startedAt, key, transferRequest, transfer, status, responseError, err)
 
+	if len(result.Body) > 0 {
+		writeStoredJSON(w, status, result.Body)
+		return
+	}
 	if err != nil {
-		response := transferAPIResponse{Error: responseError}
-		if transfer.ID != "" {
-			response.Transfer = toTransferResponse(transfer)
-		}
-		writeJSON(w, status, response)
+		writeJSON(w, status, transferAPIResponse{Error: responseError})
 		return
 	}
 
@@ -188,6 +189,30 @@ func logTransferOutcome(
 	default:
 		slog.Warn("transfer request rejected", attrs...)
 	}
+}
+
+func encodeTransferResponse(transfer domain.Transfer, transferErr error) (int, []byte, error) {
+	status := http.StatusCreated
+	response := transferAPIResponse{Transfer: toTransferResponse(transfer)}
+	if transferErr != nil {
+		var responseError *apiError
+		status, responseError = mapTransferError(transferErr)
+		response = transferAPIResponse{Error: responseError}
+		if transfer.ID != "" {
+			response.Transfer = toTransferResponse(transfer)
+		}
+	}
+	body, err := json.Marshal(response)
+	if err != nil {
+		return 0, nil, err
+	}
+	return status, append(body, '\\n'), nil
+}
+
+func writeStoredJSON(w http.ResponseWriter, status int, body []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
 }
 
 func writeDecodeError(w http.ResponseWriter, err error) {
