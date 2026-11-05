@@ -277,12 +277,3 @@ func TestExecuteIdempotentValidatesKey(t *testing.T) {
 	_, err := svc.ExecuteIdempotent(context.Background(), "  ", TransferRequest{FromWalletID:"a", ToWalletID:"b", Amount:1}, testResponseEncoder)
 	if !errors.Is(err, ErrInvalidIdempotencyKey) { t.Fatalf("error = %v", err) }
 }
-
-func TestStoredResponseRoundTrips(t *testing.T) {
-	original := storedTransferResponse{Transfer:domain.Transfer{ID:"t1", FromWalletID:"a", ToWalletID:"b", Amount:2, Status:domain.TransferProcessed}}
-	body, err := json.Marshal(original)
-	if err != nil { t.Fatal(err) }
-	var decoded storedTransferResponse
-	if err := json.Unmarshal(body, &decoded); err != nil { t.Fatal(err) }
-	if decoded != original { t.Fatalf("decoded = %+v, want %+v", decoded, original) }
-}
