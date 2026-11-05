@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 
 	"github.com/Robustrade/wallet-transfer-assignment/internal/db"
 	"github.com/Robustrade/wallet-transfer-assignment/internal/domain"
@@ -39,6 +40,8 @@ func NewTransferService(conn *sql.DB, log *slog.Logger) *TransferService {
 	}
 	return &TransferService{db: conn, log: log}
 }
+
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // errKeyAlreadyReserved rolls back the reservation transaction when another request won.
 var errKeyAlreadyReserved = errors.New("idempotency key already reserved")
@@ -74,6 +77,9 @@ func (s *TransferService) CreateTransfer(ctx context.Context, cmd domain.Transfe
 
 // GetTransfer returns one transfer.
 func (s *TransferService) GetTransfer(ctx context.Context, id string) (domain.Transfer, error) {
+	if !uuidPattern.MatchString(id) {
+		return domain.Transfer{}, fmt.Errorf("%w: %s", domain.ErrTransferNotFound, id)
+	}
 	t, err := s.transfers.FindByID(ctx, s.db, id)
 	if err != nil {
 		return domain.Transfer{}, err
