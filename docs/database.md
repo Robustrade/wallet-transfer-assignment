@@ -22,17 +22,15 @@ The database package validates these settings and provides an `Open` helper that
 
 ## Migrations
 
-Apply migrations in numeric order using a PostgreSQL client. For a fresh database:
+The application runs the embedded `*.up.sql` migrations automatically at startup through `migrations.Apply`. It applies migrations in numeric order and records each successful migration in `schema_migrations` in the same transaction as the schema changes. For a fresh database, start the service with a valid `DATABASE_URL`; do not run the up SQL file manually, as that would create the tables without recording migration history.
 
-```sh
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/000001_create_wallet_transfer_tables.up.sql
-```
-
-To roll back this initial schema:
+To roll back the initial schema manually, run the matching down migration:
 
 ```sh
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/000001_create_wallet_transfer_tables.down.sql
 ```
+
+The down migration drops the application tables and removes version 1 from `schema_migrations` atomically. On the next application startup, `migrations.Apply` will therefore apply the initial migration again. Run this rollback only when the service is stopped and you intend to remove the schema and its data.
 
 The up migration creates wallets, transfers, ledger entries, and idempotency records. It includes database constraints for non-negative wallet balances, positive transfer/ledger amounts, valid transfer and ledger states, distinct transfer wallets, and unique debit/credit entry types per transfer.
 
