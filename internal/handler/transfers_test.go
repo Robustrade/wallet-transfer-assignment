@@ -24,7 +24,7 @@ func (f transferExecutorFunc) ExecuteIdempotent(ctx context.Context, key string,
 }
 
 func completedResponse(transfer domain.Transfer) service.IdempotentResponse {
-	body, _ := encodeTransferResponse(transfer, nil)
+	_, body, _ := encodeTransferResponse(transfer, nil)
 	return service.IdempotentResponse{Transfer: transfer, StatusCode: http.StatusCreated, Body: body}
 }
 
