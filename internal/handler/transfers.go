@@ -206,7 +206,7 @@ func encodeTransferResponse(transfer domain.Transfer, transferErr error) (int, [
 	if err != nil {
 		return 0, nil, err
 	}
-	return status, append(body, '\\n'), nil
+	return status, append(body, '\n'), nil
 }
 
 func writeStoredJSON(w http.ResponseWriter, status int, body []byte) {
