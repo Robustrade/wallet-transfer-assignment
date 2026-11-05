@@ -1,0 +1,16 @@
+run:
+  timeout: 3m
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - gosimple
+    - bodyclose
+    - errorlint
+    - gofmt
+    - misspell
+    - sqlclosecheck
+    - rowserrcheck
