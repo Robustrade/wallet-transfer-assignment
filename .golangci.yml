@@ -1,0 +1,42 @@
+# golangci-lint v1.64.x configuration (matches the version pinned in CI).
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - gosimple
+    - unused
+    - ineffassign
+    - bodyclose
+    - errorlint
+    - misspell
+    - gofmt
+    - goimports
+    - revive
+    - noctx
+    - rowserrcheck
+    - unconvert
+    - gocritic
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/Robustrade/wallet-transfer-assignment
+  revive:
+    rules:
+      - name: exported
+      - name: package-comments
+      - name: var-naming
+      - name: error-return
+      - name: error-naming
+      - name: errorf
+      - name: context-as-argument
+      - name: unused-parameter
+
+issues:
+  exclude-use-default: false
+  exclude-rules:
+    - path: _test\.go
+      linters: [noctx]

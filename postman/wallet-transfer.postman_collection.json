@@ -1,0 +1,550 @@
+{
+  "info": {
+    "_postman_id": "8f3b6a52-2c1e-4f6e-9a57-0d6c1b2e7a10",
+    "name": "Wallet Transfer Service",
+    "description": "Requests and assertions for the wallet transfer API.\n\n**Start the stack first:** `make up` (API on http://localhost:8080, seeded wallets `wallet_1`=10000, `wallet_2`=5000, `wallet_3`=0).\n\n**Run everything:** Collection → Run. Each run uses fresh idempotency keys and is balance-neutral (the last request moves the money back), so it can be re-run any time.\n\nChange `baseUrl` in the collection variables if you started the API on another port.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "runId", "value": "" },
+    { "key": "transferId", "value": "" },
+    { "key": "createdBody", "value": "" },
+    { "key": "failedTransferId", "value": "" },
+    { "key": "insufficientAmount", "value": "1" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Make sure keys are unique even when a single request is sent on its own.",
+          "if (!pm.collectionVariables.get('runId')) {",
+          "    pm.collectionVariables.set('runId', Date.now().toString());",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('response carries an X-Request-ID', () => {",
+          "    pm.response.to.have.header('X-Request-ID');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health",
+      "item": [
+        {
+          "name": "Liveness",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// New idempotency keys for every collection run.",
+                  "pm.collectionVariables.set('runId', Date.now().toString());",
+                  "",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('status is ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/healthz", "host": ["{{baseUrl}}"], "path": ["healthz"] },
+            "description": "The process is up."
+          }
+        },
+        {
+          "name": "Readiness (database reachable)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('status is ready', () => pm.expect(pm.response.json().status).to.eql('ready'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/readyz", "host": ["{{baseUrl}}"], "path": ["readyz"] },
+            "description": "Returns 503 when the database cannot be reached."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Wallets",
+      "item": [
+        {
+          "name": "Get wallet_1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const w = pm.response.json();",
+                  "pm.test('has id, integer balance and updatedAt', () => {",
+                  "    pm.expect(w.id).to.eql('wallet_1');",
+                  "    pm.expect(Number.isInteger(w.balance)).to.be.true;",
+                  "    pm.expect(w.balance).to.be.at.least(0);",
+                  "    pm.expect(w.updatedAt).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/wallets/wallet_1", "host": ["{{baseUrl}}"], "path": ["wallets", "wallet_1"] }
+          }
+        },
+        {
+          "name": "Get wallet_2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('id is wallet_2', () => pm.expect(pm.response.json().id).to.eql('wallet_2'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/wallets/wallet_2", "host": ["{{baseUrl}}"], "path": ["wallets", "wallet_2"] }
+          }
+        },
+        {
+          "name": "Get unknown wallet → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('WALLET_NOT_FOUND', () => pm.expect(pm.response.json().error.code).to.eql('WALLET_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/wallets/does_not_exist", "host": ["{{baseUrl}}"], "path": ["wallets", "does_not_exist"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Transfers & idempotency",
+      "item": [
+        {
+          "name": "Create transfer (wallet_1 → wallet_2, 100)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const t = pm.response.json();",
+                  "pm.test('transfer is PROCESSED', () => {",
+                  "    pm.expect(t.status).to.eql('PROCESSED');",
+                  "    pm.expect(t.failureReason).to.be.null;",
+                  "    pm.expect(t.amount).to.eql(100);",
+                  "});",
+                  "pm.test('not a replay', () => pm.response.to.not.have.header('Idempotent-Replayed'));",
+                  "pm.test('Location points at the transfer', () => {",
+                  "    pm.expect(pm.response.headers.get('Location')).to.eql('/transfers/' + t.id);",
+                  "});",
+                  "pm.collectionVariables.set('transferId', t.id);",
+                  "pm.collectionVariables.set('createdBody', pm.response.text());"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-ID", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-main\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 100\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] },
+            "description": "Executes the transfer once. Amounts are integers in minor units."
+          }
+        },
+        {
+          "name": "Retry same request → original result replayed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('same status code as the original (201)', () => pm.response.to.have.status(201));",
+                  "pm.test('marked as replay', () => pm.response.to.have.header('Idempotent-Replayed', 'true'));",
+                  "pm.test('body is byte-identical to the original', () => {",
+                  "    pm.expect(pm.response.text()).to.eql(pm.collectionVariables.get('createdBody'));",
+                  "});",
+                  "pm.test('same transfer id (no second transfer)', () => {",
+                  "    pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('transferId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-ID", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-main\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 100\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] },
+            "description": "Simulates a client retry after a lost response. No money moves."
+          }
+        },
+        {
+          "name": "Get transfer by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('matches the created transfer', () => {",
+                  "    pm.expect(pm.response.text().trim()).to.eql(pm.collectionVariables.get('createdBody').trim());",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/transfers/{{transferId}}", "host": ["{{baseUrl}}"], "path": ["transfers", "{{transferId}}"] }
+          }
+        },
+        {
+          "name": "Same key, different amount → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));",
+                  "pm.test('IDEMPOTENCY_KEY_REUSED', () => pm.expect(pm.response.json().error.code).to.eql('IDEMPOTENCY_KEY_REUSED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-main\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 999\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] },
+            "description": "A key is bound to its original payload; reusing it for a different request is rejected."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Business failures",
+      "item": [
+        {
+          "name": "Insufficient funds → 422, recorded as FAILED",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Ask for one unit more than wallet_3 holds, whatever its balance is.",
+                  "pm.sendRequest(pm.collectionVariables.get('baseUrl') + '/wallets/wallet_3', (err, res) => {",
+                  "    const balance = err ? 0 : res.json().balance;",
+                  "    pm.collectionVariables.set('insufficientAmount', String(balance + 1));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test('INSUFFICIENT_FUNDS', () => pm.expect(body.error.code).to.eql('INSUFFICIENT_FUNDS'));",
+                  "pm.test('failed transfer is returned', () => {",
+                  "    pm.expect(body.transfer.status).to.eql('FAILED');",
+                  "    pm.expect(body.transfer.failureReason).to.eql('INSUFFICIENT_FUNDS');",
+                  "});",
+                  "pm.collectionVariables.set('failedTransferId', body.transfer.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-broke\",\n  \"fromWalletId\": \"wallet_3\",\n  \"toWalletId\": \"wallet_1\",\n  \"amount\": {{insufficientAmount}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] },
+            "description": "Insufficient funds is a business outcome: the transfer is stored as FAILED, no ledger entries are written, and the result is replayed for the same key."
+          }
+        },
+        {
+          "name": "Retry insufficient funds → same failure replayed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 again', () => pm.response.to.have.status(422));",
+                  "pm.test('marked as replay', () => pm.response.to.have.header('Idempotent-Replayed', 'true'));",
+                  "pm.test('same failed transfer', () => {",
+                  "    pm.expect(pm.response.json().transfer.id).to.eql(pm.collectionVariables.get('failedTransferId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-broke\",\n  \"fromWalletId\": \"wallet_3\",\n  \"toWalletId\": \"wallet_1\",\n  \"amount\": {{insufficientAmount}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] }
+          }
+        },
+        {
+          "name": "Unknown destination wallet → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('WALLET_NOT_FOUND', () => pm.expect(pm.response.json().error.code).to.eql('WALLET_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-nowallet\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"does_not_exist\",\n  \"amount\": 10\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] },
+            "description": "Nothing is persisted, so the key is not consumed."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Validation & lookups",
+      "item": [
+        {
+          "name": "Same source and destination",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 VALIDATION_ERROR', () => {",
+            "    pm.response.to.have.status(400);",
+            "    pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-self\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_1\",\n  \"amount\": 10\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] }
+          }
+        },
+        {
+          "name": "Decimal amount",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 VALIDATION_ERROR', () => {",
+            "    pm.response.to.have.status(400);",
+            "    pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-decimal\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 10.5\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] }
+          }
+        },
+        {
+          "name": "Amount as a string",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 VALIDATION_ERROR', () => {",
+            "    pm.response.to.have.status(400);",
+            "    pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-string\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": \"100\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] }
+          }
+        },
+        {
+          "name": "Zero amount",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 VALIDATION_ERROR', () => {",
+            "    pm.response.to.have.status(400);",
+            "    pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-zero\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 0\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] }
+          }
+        },
+        {
+          "name": "Missing idempotencyKey",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 VALIDATION_ERROR', () => {",
+            "    pm.response.to.have.status(400);",
+            "    pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 10\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] }
+          }
+        },
+        {
+          "name": "Unknown field",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 VALIDATION_ERROR', () => {",
+            "    pm.response.to.have.status(400);",
+            "    pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-extra\",\n  \"fromWalletId\": \"wallet_1\",\n  \"toWalletId\": \"wallet_2\",\n  \"amount\": 10,\n  \"currency\": \"USD\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] }
+          }
+        },
+        {
+          "name": "Malformed transfer id",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 VALIDATION_ERROR', () => {",
+            "    pm.response.to.have.status(400);",
+            "    pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/transfers/not-a-uuid", "host": ["{{baseUrl}}"], "path": ["transfers", "not-a-uuid"] }
+          }
+        },
+        {
+          "name": "Unknown transfer id → 404",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('404 TRANSFER_NOT_FOUND', () => {",
+            "    pm.response.to.have.status(404);",
+            "    pm.expect(pm.response.json().error.code).to.eql('TRANSFER_NOT_FOUND');",
+            "});"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/transfers/00000000-0000-4000-8000-000000000000", "host": ["{{baseUrl}}"], "path": ["transfers", "00000000-0000-4000-8000-000000000000"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Cleanup",
+      "item": [
+        {
+          "name": "Move the 100 back (wallet_2 → wallet_1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('PROCESSED', () => pm.expect(pm.response.json().status).to.eql('PROCESSED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"postman-{{runId}}-cleanup\",\n  \"fromWalletId\": \"wallet_2\",\n  \"toWalletId\": \"wallet_1\",\n  \"amount\": 100\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] },
+            "description": "Keeps a full collection run balance-neutral."
+          }
+        }
+      ]
+    }
+  ]
+}

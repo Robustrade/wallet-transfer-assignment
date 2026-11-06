@@ -1,0 +1,10 @@
+.git
+.github
+.idea
+.vscode
+.DS_Store
+bin
+coverage
+coverage.out
+.env
+.env.*
