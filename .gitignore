@@ -1,7 +1,14 @@
 .DS_Store
 coverage/
+coverage.out
 dist/
 build/
+bin/
 .tmp/
 .env
 .env.*
+!.env.example
+
+# Postman app workspace state (local only); the collection file itself is tracked
+.postman/
+postman/*/
