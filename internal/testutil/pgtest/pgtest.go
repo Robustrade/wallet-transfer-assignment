@@ -2,7 +2,8 @@
 //
 // By default it starts a disposable postgres:16 container (Docker required). Set
 // TEST_DATABASE_URL to use an existing database instead, e.g. on CI runners
-// without Docker. Run `go test -short` to skip database tests entirely.
+// without Docker; each test package then works in its own temporary schema, which
+// is dropped afterwards. Run `go test -short` to skip database tests entirely.
 package pgtest
 
 import (
@@ -10,9 +11,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
@@ -63,11 +67,27 @@ func run(m *testing.M) (int, error) {
 		}
 	}
 
+	// Each test package gets its own schema. `go test ./...` runs package binaries
+	// concurrently, so with a shared TEST_DATABASE_URL one package's TRUNCATE would
+	// otherwise delete another package's rows mid-test. It also leaves any existing
+	// tables in that database untouched.
+	schema := "pgtest_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	admin, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return 0, fmt.Errorf("connect: %w", err)
+	}
+	defer admin.Close(ctx)
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		return 0, fmt.Errorf("create test schema: %w", err)
+	}
+	defer func() { _, _ = admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE") }()
+
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		return 0, fmt.Errorf("parse database url: %w", err)
 	}
-	cfg.MaxConns = 32 // enough for the concurrency tests to actually contend
+	cfg.ConnConfig.RuntimeParams["search_path"] = schema // migrations and queries use unqualified names
+	cfg.MaxConns = 32                                    // enough for the concurrency tests to actually contend
 	if pool, err = pgxpool.NewWithConfig(ctx, cfg); err != nil {
 		return 0, fmt.Errorf("connect: %w", err)
 	}
