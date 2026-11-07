@@ -1,0 +1,29 @@
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - gosimple
+    - errorlint      # wrapped-error comparisons must use errors.Is / errors.As
+    - bodyclose
+    - rowserrcheck   # rows.Err() must be checked
+    - sqlclosecheck
+    - noctx
+    - gocritic
+    - misspell
+    - revive
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        disabled: true   # internal packages; doc comments where they add value, not everywhere
+
+issues:
+  exclude-dirs:
+    - docs
