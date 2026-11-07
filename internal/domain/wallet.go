@@ -10,7 +10,7 @@ type Wallet struct {
 
 // CanDebit reports whether the wallet can pay amount without going negative.
 func (w Wallet) CanDebit(amount int64) bool {
-	return false // TODO: implement
+	return w.Balance >= amount
 }
 
 type EntryType string
