@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/celinagupta/wallet-transfer-assignment/migrations"
 )
 
 type config struct {
@@ -55,6 +58,11 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
+
+	if err := migrations.Up(ctx, stdlib.OpenDBFromPool(pool)); err != nil {
+		return err
+	}
+	logger.Info("migrations applied")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
