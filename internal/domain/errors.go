@@ -8,6 +8,9 @@ var (
 	ErrWalletNotFound       = errors.New("wallet not found")
 	ErrIdempotencyKeyReused = errors.New("idempotency key reused with a different request")
 	ErrInvalidTransition    = errors.New("invalid transfer status transition")
+	// ErrTemporarilyUnavailable means the attempt was rolled back (lock or statement
+	// timeout, deadlock, serialization failure) and can be retried with the same key.
+	ErrTemporarilyUnavailable = errors.New("temporarily unavailable, retry")
 )
 
 // ValidationError describes one invalid request field. It wraps ErrValidation,
