@@ -5,3 +5,9 @@ build/
 .tmp/
 .env
 .env.*
+
+# Go build output
+/server
+/bin/
+*.test
+coverage.out
