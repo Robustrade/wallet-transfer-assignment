@@ -126,6 +126,29 @@ func TestWithinTxRollsBackOnError(t *testing.T) {
 	assert.Equal(t, int64(100), pgtest.Balance(t, pool, "a"))
 }
 
+func TestWithinTxReleasesLocksWhenCallbackPanics(t *testing.T) {
+	pool := pgtest.Pool(t)
+	pgtest.SeedWallets(t, pool, map[string]int64{"a": 100})
+	ctx := context.Background()
+
+	func() {
+		defer func() { _ = recover() }()
+		_ = postgres.NewStore(pool).WithinTx(ctx, func(repo repository.Repository) error {
+			_, err := repo.LockWallets(ctx, "a")
+			require.NoError(t, err)
+			panic("bug in callback")
+		})
+	}()
+
+	// If the panicking transaction were left open, this would hit the lock timeout.
+	err := postgres.NewStore(pool).WithTimeouts(200*time.Millisecond, time.Second).
+		WithinTx(ctx, func(repo repository.Repository) error {
+			_, err := repo.LockWallets(ctx, "a")
+			return err
+		})
+	require.NoError(t, err, "the wallet lock must be released after a panic")
+}
+
 func TestLockTimeoutIsReportedAsRetryable(t *testing.T) {
 	pool := pgtest.Pool(t)
 	pgtest.SeedWallets(t, pool, map[string]int64{"a": 100})

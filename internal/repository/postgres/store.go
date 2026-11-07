@@ -47,29 +47,27 @@ func (s *Store) WithTimeouts(lock, statement time.Duration) *Store {
 }
 
 // WithinTx runs fn in a READ COMMITTED transaction with lock and statement timeouts.
-func (s *Store) WithinTx(ctx context.Context, fn func(repo repository.Repository) error) (err error) {
+func (s *Store) WithinTx(ctx context.Context, fn func(repo repository.Repository) error) error {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return mapError(fmt.Errorf("begin transaction: %w", err))
 	}
-	defer func() {
-		if err != nil {
-			// The error being returned matters more than a failed rollback; the
-			// connection is discarded by pgx if rollback fails.
-			_ = tx.Rollback(context.WithoutCancel(ctx))
-		}
-	}()
+	// Always roll back on exit, including when fn panics or calls runtime.Goexit;
+	// otherwise the wallet locks and the pooled connection would never be released.
+	// After a successful Commit this is a no-op (pgx returns ErrTxClosed). It runs
+	// with a non-cancelled context so a cancelled request still releases its locks.
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 
 	// SET LOCAL does not accept bind parameters; the values are integers we control.
-	if _, err = tx.Exec(ctx, fmt.Sprintf("SET LOCAL lock_timeout = %d; SET LOCAL statement_timeout = %d",
+	if _, err := tx.Exec(ctx, fmt.Sprintf("SET LOCAL lock_timeout = %d; SET LOCAL statement_timeout = %d",
 		s.lockTimeout.Milliseconds(), s.statementTimeout.Milliseconds())); err != nil {
 		return mapError(fmt.Errorf("set transaction timeouts: %w", err))
 	}
 
-	if err = fn(&repo{q: tx}); err != nil {
+	if err := fn(&repo{q: tx}); err != nil {
 		return mapError(err)
 	}
-	if err = tx.Commit(ctx); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return mapError(fmt.Errorf("commit: %w", err))
 	}
 	return nil
