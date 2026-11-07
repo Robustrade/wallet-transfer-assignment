@@ -4,6 +4,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -37,7 +38,14 @@ type TransferRequest struct {
 // Validate checks the request's own fields. Whether the wallets exist and whether
 // the source can afford the amount are decided later, inside the transaction.
 func (r TransferRequest) Validate() error {
+	const nul = "\x00" // PostgreSQL TEXT cannot store NUL characters
 	switch {
+	case strings.Contains(r.IdempotencyKey, nul):
+		return &ValidationError{Field: "idempotencyKey", Message: "must not contain NUL characters"}
+	case strings.Contains(r.FromWalletID, nul):
+		return &ValidationError{Field: "fromWalletId", Message: "must not contain NUL characters"}
+	case strings.Contains(r.ToWalletID, nul):
+		return &ValidationError{Field: "toWalletId", Message: "must not contain NUL characters"}
 	case utf8.RuneCountInString(r.IdempotencyKey) > MaxIdempotencyKeyLength:
 		return &ValidationError{Field: "idempotencyKey", Message: fmt.Sprintf("must be at most %d characters", MaxIdempotencyKeyLength)}
 	case r.FromWalletID == "":

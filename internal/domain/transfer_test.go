@@ -42,6 +42,10 @@ func TestTransferRequestValidate(t *testing.T) {
 		{name: "missing source wallet", wantField: "fromWalletId", mutate: func(r *domain.TransferRequest) { r.FromWalletID = "" }},
 		{name: "missing destination wallet", wantField: "toWalletId", mutate: func(r *domain.TransferRequest) { r.ToWalletID = "" }},
 		{name: "same source and destination", wantField: "toWalletId", mutate: func(r *domain.TransferRequest) { r.ToWalletID = r.FromWalletID }},
+		// PostgreSQL TEXT cannot store NUL; reject it here instead of failing in the database.
+		{name: "NUL in idempotency key", wantField: "idempotencyKey", mutate: func(r *domain.TransferRequest) { r.IdempotencyKey = "a\x00b" }},
+		{name: "NUL in source wallet", wantField: "fromWalletId", mutate: func(r *domain.TransferRequest) { r.FromWalletID = "wallet\x001" }},
+		{name: "NUL in destination wallet", wantField: "toWalletId", mutate: func(r *domain.TransferRequest) { r.ToWalletID = "wallet\x002" }},
 		{name: "zero amount", wantField: "amount", mutate: func(r *domain.TransferRequest) { r.Amount = 0 }},
 		{name: "negative amount", wantField: "amount", mutate: func(r *domain.TransferRequest) { r.Amount = -5 }},
 	}
