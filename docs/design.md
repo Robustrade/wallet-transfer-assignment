@@ -153,6 +153,7 @@ wallet. A single conditional `UPDATE … WHERE balance >= $amount` works, but it
 cmd/server/                    wiring, config, graceful shutdown
 internal/domain/               Transfer, Wallet, status rules, validation, errors (no I/O)
 internal/service/              transfer workflow + idempotency; owns the transaction
+internal/repository/           interfaces the service depends on (Repository, TxManager)
 internal/repository/postgres/  SQL only, maps Postgres errors to domain errors
 internal/handler/              HTTP decode/validate → service → status codes
 migrations/                    SQL, embedded and applied at startup
