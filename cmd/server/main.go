@@ -14,6 +14,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/celinagupta/wallet-transfer-assignment/internal/handler"
+	"github.com/celinagupta/wallet-transfer-assignment/internal/repository/postgres"
+	"github.com/celinagupta/wallet-transfer-assignment/internal/service"
 	"github.com/celinagupta/wallet-transfer-assignment/migrations"
 )
 
@@ -72,6 +75,9 @@ func run(logger *slog.Logger) error {
 		}
 		w.WriteHeader(http.StatusOK)
 	})
+
+	transfers := service.NewTransferService(postgres.NewStore(pool), logger)
+	handler.NewTransferHandler(transfers, logger).Register(mux)
 
 	srv := &http.Server{
 		Addr:              cfg.httpAddr,
