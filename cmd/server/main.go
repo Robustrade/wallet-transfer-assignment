@@ -83,6 +83,12 @@ func run(logger *slog.Logger) error {
 		Addr:              cfg.httpAddr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
+		// ReadTimeout also bounds the body, so a client cannot stall after the headers.
+		ReadTimeout: 10 * time.Second,
+		// Longer than the per-transaction lock (2s) and statement (5s) timeouts, so a
+		// slow transfer still gets its response written.
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	errCh := make(chan error, 1)
