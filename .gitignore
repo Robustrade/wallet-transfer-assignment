@@ -1,5 +1,8 @@
 .DS_Store
 coverage/
+profiles/
+*.test
+*.test.exe
 dist/
 build/
 .tmp/
