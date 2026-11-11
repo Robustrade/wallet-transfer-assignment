@@ -22,7 +22,7 @@ Out of scope: creating or funding wallets (they are seeded), multiple currencies
 | Language | Go | The CI pipeline targets Go (`setup-go`, `golangci-lint`) |
 | Database | PostgreSQL 16 | Preferred by the spec. Row-level locks and `ON CONFLICT` give the guarantees we need |
 | Driver | `pgx/v5` (pool) | Native Postgres driver with typed error codes |
-| HTTP | standard library `net/http` | Go 1.22+ routing patterns are enough; a framework adds nothing here |
+| HTTP | Gin | Widely used; request binding and validation keep handlers thin; middleware for request IDs and logging |
 | Migrations | embedded SQL, applied at startup | One fewer moving part |
 | Logging | `log/slog` (JSON) | Structured, standard library |
 | Tests | `testing` + testcontainers-go | Concurrency and locking can only be proven against real Postgres |
