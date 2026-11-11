@@ -1,35 +1,47 @@
-# Wallet Transfer Assignment Repository
+# Wallet Transfer Service
 
-This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
+A wallet transfer API built with Go 1.24, `net/http`, `log/slog`, GORM, and PostgreSQL.
 
-## Included
+## Run locally
 
-- `ASSIGNMENT.md` - candidate-facing prompt
-- `.github/pull_request_template.md` - required PR structure
-- `.github/workflows/ci.yml` - lint, format, test placeholder workflow
-- `.github/workflows/sonarqube.yml` - SonarQube pull request analysis
-- `.github/copilot-instructions.md` - repository-level Copilot review guidance
-- `evaluation_guide.md` - reviewer rubric
-- `branch-protection-checklist.md` - GitHub setup checklist
+Follow [LOCAL_SETUP.md](./LOCAL_SETUP.md) for sequential **PowerShell** commands:
 
-## Intended use
+1. Install Go and PostgreSQL and start the database service.
+2. Copy [`.env.example`](./.env.example) to `.env` and set your credentials.
+3. Load `.env` into the current terminal; the application does not load it automatically.
+4. Run `migrations/setup.sql` through the documented setup command to create the databases, apply the schema, and seed wallets.
+5. Start the server in the same terminal:
 
-1. Mark this repository as a GitHub template repository.
-2. Create one private repository per candidate from the template.
-3. Add the candidate as a collaborator.
-4. Ask them to submit via a pull request into `main`.
-5. Enable required checks, SonarQube, and Copilot review in GitHub.
+```powershell
+go run ./cmd
+```
 
-## Notes
+The default address is `http://127.0.0.1:8080`. Keep `wallet` and `wallet_test` separate. On later launches, reload `.env` and start the server.
 
-- Copilot automatic pull request review is configured in GitHub repository or organization settings, not purely through files in the repo.
-- The `copilot-instructions.md` file included here provides repository-specific review guidance once Copilot review is enabled.
-- The CI workflow is language-agnostic by default and expects you to set the `LINT_CMD`, `FORMAT_CHECK_CMD`, and `TEST_CMD` repository variables or replace the commands directly.
+## Try a transfer
 
-## How to Submit Assignment
+In a second PowerShell terminal:
 
-1. **Fork this repository** to your own GitHub account.
-2. Complete the assignment described in [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-3. **Raise a Pull Request** back to this repository (`main` branch) with your full solution.
+```powershell
+$request = @{
+    Uri = 'http://localhost:8080/transfers'
+    Method = 'Post'
+    ContentType = 'application/json'
+    Body = '{"idempotencyKey":"abc123","fromWalletId":"wallet_1","toWalletId":"wallet_2","amount":100}'
+}
+Invoke-WebRequest @request
+```
 
-Your PR branch should be named: `solution/<your-name>` (e.g., `solution/jane-doe`).
+Transfers update balances and record matching ledger entries atomically. Reusing the same key and payload replays the saved response; a different payload returns `409`. Successful transfers return `201`; insufficient funds returns `422`. Amounts are positive integer minor units.
+
+## Verify
+
+After database setup and loading `.env`, enable CGO and put GCC on PATH as described in [LOCAL_SETUP.md](./LOCAL_SETUP.md#checks), then run:
+
+```powershell
+go test -race -count=1 ./...
+```
+
+With GNU Make and Bash available, `make` runs formatting, lint, vet, and race tests. Latest verification: **61 tests passed with no races**. Detailed results and profiling findings: [VERIFICATION.md](./VERIFICATION.md).
+
+Database errors, URL encoding, missing configuration, and compiler setup are covered in [troubleshooting](./LOCAL_SETUP.md#troubleshooting). The technology, behavior, and scope summary is in [PR_DESCRIPTION.md](./PR_DESCRIPTION.md). Assignment requirements: [ASSIGNMENT.md](./ASSIGNMENT.md).

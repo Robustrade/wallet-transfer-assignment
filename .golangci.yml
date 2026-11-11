@@ -1,0 +1,41 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose     # Checks that HTTP response bodies are closed
+    - errorlint     # Ensures proper error wrapping (errors.Is / errors.As)
+    - gosec         # Inspects source code for security problems
+    - misspell      # Finds commonly misspelled English words
+    - revive        # Fast, configurable drop-in replacement for golint
+    - unconvert     # Removes unnecessary type conversions
+    - rowserrcheck
+    - sqlclosecheck
+    - noctx
+    - gocritic
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+    gosec:
+      excludes:
+        - G404      # Example: allow math/rand when crypto/rand isn't needed
+  exclusions:
+    paths:
+      - docs
+    presets:
+      - comments
+      - common-false-positives
+    rules:
+      # Relax strict checks in test files
+      - linters:
+          - gosec
+        path: _test\.go
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+run:
+  timeout: 5m
