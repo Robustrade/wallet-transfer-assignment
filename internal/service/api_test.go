@@ -10,7 +10,7 @@ import (
 
 	"wallet-transfer-assignment/internal/domain"
 	"wallet-transfer-assignment/internal/handler"
-	"wallet-transfer-assignment/internal/repository/postgres"
+	"wallet-transfer-assignment/internal/repository"
 )
 
 func (f fixture) post(request domain.TransferRequest) *httptest.ResponseRecorder {
@@ -31,7 +31,7 @@ func (f fixture) httpRequest(request domain.TransferRequest) *http.Request {
 
 func TestAPI_CreateAndReplayUseProductionRouter(t *testing.T) {
 	f := setup(t)
-	if err := postgres.VerifySchema(f.ctx, f.db); err != nil {
+	if err := repository.VerifySchema(f.ctx, f.db); err != nil {
 		t.Fatal(err)
 	}
 	first := f.post(transferRequest("k1", 100))

@@ -71,14 +71,13 @@ func setup(t *testing.T) fixture {
 	query.Set("application_name", schema)
 	u.RawQuery = query.Encode()
 	db := openTestDB(t, ctx, u.String())
-	for _, name := range []string{"000001_initial.up.sql", "000002_transfer_uuid.up.sql"} {
-		migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := db.WithContext(ctx).Exec(string(migration)).Error; err != nil {
-			t.Fatalf("apply %s: %v", name, err)
-		}
+	name := "000001_initial.up.sql"
+	migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithContext(ctx).Exec(string(migration)).Error; err != nil {
+		t.Fatalf("apply %s: %v", name, err)
 	}
 	f := fixture{t: t, ctx: ctx, db: db, svc: service.NewTransferService(db, 5*time.Second, testMaxTransferAmount), dsn: u.String(), application: schema}
 	f.exec("INSERT INTO wallets(id,opening_balance,balance) VALUES ('wallet_1',1000,1000),('wallet_2',500,500)")

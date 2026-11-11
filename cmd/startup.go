@@ -12,7 +12,7 @@ import (
 
 	"wallet-transfer-assignment/internal/config"
 	"wallet-transfer-assignment/internal/handler"
-	"wallet-transfer-assignment/internal/repository/postgres"
+	"wallet-transfer-assignment/internal/repository"
 	"wallet-transfer-assignment/internal/service"
 )
 
@@ -22,7 +22,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return err
 	}
 
-	db, err := postgres.Init(ctx, cfg.DatabaseURL, cfg.OperationTimeout)
+	db, err := repository.Init(ctx, cfg.DatabaseURL, cfg.OperationTimeout)
 	if err != nil {
 		return err
 	}

@@ -17,7 +17,7 @@ CREATE TABLE wallets (
 );
 
 CREATE TABLE transfers (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     from_wallet_id TEXT NOT NULL REFERENCES wallets(id),
     to_wallet_id TEXT NOT NULL REFERENCES wallets(id),
     amount BIGINT NOT NULL CHECK (amount > 0),
@@ -145,5 +145,6 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION validate_transfer_co
 CREATE CONSTRAINT TRIGGER validate_idempotency_commit AFTER INSERT OR UPDATE ON idempotency_records
 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION validate_transfer_commit();
 
-INSERT INTO schema_migrations (version, dirty) VALUES (1, false);
+-- Version 2 preserves compatibility with databases created before consolidation.
+INSERT INTO schema_migrations (version, dirty) VALUES (2, false);
 COMMIT;

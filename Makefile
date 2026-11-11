@@ -1,7 +1,7 @@
 PROFILE_DIR := profiles
 SHELL := bash
-# Override when the application entry point is added elsewhere.
-APP_PACKAGE ?= ./cmd/server
+# Override to run a different application package.
+APP_PACKAGE ?= ./cmd
 # Profiling targets one package; override with a package containing benchmarks.
 PROFILE_PACKAGE ?= ./internal/service
 

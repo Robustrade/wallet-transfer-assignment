@@ -13,7 +13,7 @@ import (
 
 	"wallet-transfer-assignment/internal/appErrors"
 	"wallet-transfer-assignment/internal/domain"
-	"wallet-transfer-assignment/internal/repository/postgres"
+	"wallet-transfer-assignment/internal/repository"
 )
 
 func (s *TransferService) CreateTransfer(ctx context.Context, request domain.TransferRequest) (TransferResult, error) {
@@ -38,7 +38,7 @@ func (s *TransferService) CreateTransfer(ctx context.Context, request domain.Tra
 
 func (s *TransferService) findOrReserve(ctx context.Context, request domain.TransferRequest) (domain.IdempotencyRecord, error) {
 	db := s.db.WithContext(ctx)
-	record, found, err := postgres.FindIdempotencyRecord(db, request.IdempotencyKey)
+	record, found, err := repository.FindIdempotencyRecord(db, request.IdempotencyKey)
 	if err != nil || found {
 		return record, err
 	}
@@ -47,7 +47,7 @@ func (s *TransferService) findOrReserve(ctx context.Context, request domain.Tran
 		return record, err
 	}
 	// reserveTransfer's deferred rollback has removed the losing tentative row.
-	record, found, err = postgres.FindIdempotencyRecord(db, request.IdempotencyKey)
+	record, found, err = repository.FindIdempotencyRecord(db, request.IdempotencyKey)
 	if err != nil {
 		return record, err
 	}
@@ -64,18 +64,18 @@ func (s *TransferService) reserveTransfer(ctx context.Context, request domain.Tr
 		return record, false, tx.Error
 	}
 	defer func() { _ = tx.Rollback().Error }()
-	if err := postgres.SetTransactionTimeouts(tx, min(s.operationTimeout, 2*time.Second), min(s.operationTimeout, 4*time.Second)); err != nil {
+	if err := repository.SetTransactionTimeouts(tx, min(s.operationTimeout, 2*time.Second), min(s.operationTimeout, 4*time.Second)); err != nil {
 		return record, false, err
 	}
-	if err := postgres.CheckWallets(tx, request.FromWalletID, request.ToWalletID); err != nil {
+	if err := repository.CheckWallets(tx, request.FromWalletID, request.ToWalletID); err != nil {
 		return record, false, err
 	}
-	id, err := postgres.CreatePendingTransfer(tx, request)
+	id, err := repository.CreatePendingTransfer(tx, request)
 	if err != nil {
 		return record, false, err
 	}
 	record = domain.IdempotencyRecord{IdempotencyKey: request.IdempotencyKey, RequestHash: request.Hash(), TransferID: id}
-	created, err := postgres.InsertIdempotencyRecord(tx, record)
+	created, err := repository.InsertIdempotencyRecord(tx, record)
 	if err != nil || !created {
 		return record, false, err
 	}
@@ -87,7 +87,7 @@ func (s *TransferService) reserveTransfer(ctx context.Context, request domain.Tr
 
 func (s *TransferService) pendingOrReplay(ctx context.Context, id string, cause error) (TransferResult, error) {
 	db := s.db.WithContext(ctx)
-	transfer, err := postgres.FindTransfer(db, id)
+	transfer, err := repository.FindTransfer(db, id)
 	if err != nil {
 		return TransferResult{}, cause
 	}
@@ -102,7 +102,7 @@ func (s *TransferService) pendingOrReplay(ctx context.Context, id string, cause 
 }
 
 func replayResult(db *gorm.DB, id string) (TransferResult, error) {
-	status, body, err := postgres.LoadTransferResponse(db, id)
+	status, body, err := repository.LoadTransferResponse(db, id)
 	if err != nil {
 		return TransferResult{}, processingError(err)
 	}

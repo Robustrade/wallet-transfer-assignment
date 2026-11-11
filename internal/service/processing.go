@@ -20,7 +20,7 @@ import (
 
 	"wallet-transfer-assignment/internal/appErrors"
 	"wallet-transfer-assignment/internal/domain"
-	"wallet-transfer-assignment/internal/repository/postgres"
+	"wallet-transfer-assignment/internal/repository"
 )
 
 type TransferService struct {
@@ -46,10 +46,10 @@ func (s *TransferService) ProcessTransfer(ctx context.Context, id string) (Trans
 		return TransferResult{}, processingError(tx.Error)
 	}
 	defer func() { _ = tx.Rollback().Error }()
-	if err := postgres.SetTransactionTimeouts(tx, min(s.operationTimeout, 2*time.Second), min(s.operationTimeout, 4*time.Second)); err != nil {
+	if err := repository.SetTransactionTimeouts(tx, min(s.operationTimeout, 2*time.Second), min(s.operationTimeout, 4*time.Second)); err != nil {
 		return TransferResult{}, processingError(err)
 	}
-	transfer, err := postgres.LockTransfer(tx, id)
+	transfer, err := repository.LockTransfer(tx, id)
 	if err != nil {
 		return TransferResult{}, processingError(err)
 	}
@@ -64,7 +64,7 @@ func (s *TransferService) ProcessTransfer(ctx context.Context, id string) (Trans
 		return TransferResult{}, err
 	}
 	if err := tx.Commit().Error; err != nil {
-		// The connection may have failed after PostgreSQL committed. Never return
+		// The connection may have failed after repositoryQL committed. Never return
 		// a terminal result or convert this into a persisted business failure.
 		return TransferResult{}, fmt.Errorf("%w: commit transfer: %w", appErrors.ErrServiceUnavailable, err)
 	}
@@ -98,7 +98,7 @@ func processPendingTransfer(tx *gorm.DB, transfer domain.Transfer) (TransferResu
 	if err != nil {
 		return TransferResult{}, err
 	}
-	if err := postgres.CompleteTransfer(tx, transfer, result.StatusCode, result.Body); err != nil {
+	if err := repository.CompleteTransfer(tx, transfer, result.StatusCode, result.Body); err != nil {
 		return TransferResult{}, processingError(err)
 	}
 	return result, nil
@@ -109,11 +109,11 @@ func lockWallets(tx *gorm.DB, transfer domain.Transfer) (domain.Wallet, domain.W
 	if firstID > secondID {
 		firstID, secondID = secondID, firstID
 	}
-	first, err := postgres.LockWallet(tx, firstID)
+	first, err := repository.LockWallet(tx, firstID)
 	if err != nil {
 		return domain.Wallet{}, domain.Wallet{}, err
 	}
-	second, err := postgres.LockWallet(tx, secondID)
+	second, err := repository.LockWallet(tx, secondID)
 	if err != nil {
 		return domain.Wallet{}, domain.Wallet{}, err
 	}
@@ -124,17 +124,17 @@ func lockWallets(tx *gorm.DB, transfer domain.Transfer) (domain.Wallet, domain.W
 }
 
 func moveMoney(tx *gorm.DB, transfer domain.Transfer, sourceBalance, destinationBalance int64) error {
-	if err := postgres.UpdateWalletBalance(tx, transfer.FromWalletID, sourceBalance-transfer.Amount); err != nil {
+	if err := repository.UpdateWalletBalance(tx, transfer.FromWalletID, sourceBalance-transfer.Amount); err != nil {
 		return err
 	}
-	if err := postgres.UpdateWalletBalance(tx, transfer.ToWalletID, destinationBalance+transfer.Amount); err != nil {
+	if err := repository.UpdateWalletBalance(tx, transfer.ToWalletID, destinationBalance+transfer.Amount); err != nil {
 		return err
 	}
 	entries := []domain.LedgerEntry{
 		{TransferID: transfer.ID, WalletID: transfer.FromWalletID, Type: domain.Debit, Amount: transfer.Amount},
 		{TransferID: transfer.ID, WalletID: transfer.ToWalletID, Type: domain.Credit, Amount: transfer.Amount},
 	}
-	return postgres.InsertLedgerEntries(tx, entries)
+	return repository.InsertLedgerEntries(tx, entries)
 }
 
 func terminalResult(transfer domain.Transfer) (TransferResult, error) {
