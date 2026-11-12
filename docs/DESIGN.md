@@ -13,7 +13,7 @@ Guarantees:
 - **No double spending.** A wallet balance never goes below zero, including under concurrent debits.
 - **Balanced ledger.** Every processed transfer has exactly one DEBIT and one CREDIT for the same amount.
 
-Out of scope: creating or funding wallets (they are seeded), multiple currencies, authentication, and async or external payment rails.
+Out of scope: funding wallets beyond an opening balance (wallets are created through `POST /wallets` with an initial balance), multiple currencies, authentication, and async or external payment rails.
 
 ## 2. Technology
 
@@ -21,9 +21,10 @@ Out of scope: creating or funding wallets (they are seeded), multiple currencies
 |---|---|---|
 | Language | Go | The CI pipeline targets Go (`setup-go`, `golangci-lint`) |
 | Database | PostgreSQL 16 | Preferred by the spec. Row-level locks and `ON CONFLICT` give the guarantees we need |
-| Driver | `pgx/v5` (pool) | Native Postgres driver with typed error codes |
+| Data access | GORM (pgx/v5 underneath) | Concise queries with explicit support for transactions, `FOR UPDATE` and `ON CONFLICT`; GORM models stay in the repository layer |
 | HTTP | Gin | Widely used; request binding and validation keep handlers thin; middleware for request IDs and logging |
-| Migrations | embedded SQL, applied at startup | One fewer moving part |
+| Migrations | golang-migrate, versioned SQL files embedded with `go:embed`, applied at startup | Schema is explicit and reviewable; each change runs exactly once and is recorded in `schema_migrations` |
+| Configuration | environment variables, loaded from `.env` via godotenv | No settings or credentials in code; `.env.example` documents every variable |
 | Logging | `log/slog` (JSON) | Structured, standard library |
 | Tests | `testing` + testcontainers-go | Concurrency and locking can only be proven against real Postgres |
 
@@ -70,11 +71,25 @@ Transfer body:
 
 Error body: `{"error": {"code": "INSUFFICIENT_FUNDS", "message": "…"}}`, with a `transfer` field added when a FAILED transfer was recorded.
 
+### `POST /wallets`
+
+```json
+{ "walletId": "wallet_1", "initialBalance": 2000 }
+```
+
+| Outcome | Status | Body |
+|---|---|---|
+| Wallet created | `201 Created` | `{ "walletId", "balance", "createdAt" }` |
+| Missing `walletId`, negative or non-integer `initialBalance` | `400 Bad Request` | error `VALIDATION_ERROR` |
+| Wallet ID already exists | `409 Conflict` | error `WALLET_ALREADY_EXISTS` |
+
+The client chooses the wallet ID. `initialBalance` is an opening balance and does not create ledger entries (see section 11).
+
 ### Read endpoints (optional enhancements)
 
 - `GET /transfers/{id}` returns a transfer
 - `GET /wallets/{id}` returns `{ "walletId", "balance", "updatedAt" }`
-- `GET /healthz` is a liveness check
+- `GET /healthz` checks that the service is up and the database is reachable (`503` otherwise)
 
 ## 4. Decisions on points the spec leaves open
 
@@ -87,6 +102,8 @@ Error body: `{"error": {"code": "INSUFFICIENT_FUNDS", "message": "…"}}`, with 
 | Stored or derived balance? | **Stored balance** on `wallets`, updated in the same transaction as the ledger | Reading a balance is O(1), and row locks on the wallet give a natural serialization point. The ledger stays the audit trail and can be reconciled against balances. |
 
 ## 5. Schema
+
+Summary below; the authoritative version, with every constraint explicitly named, is [`migrations/000001_create_tables.up.sql`](../migrations/000001_create_tables.up.sql).
 
 ```sql
 CREATE TABLE wallets (
@@ -229,12 +246,13 @@ PENDING ──> PROCESSED
 ## 8. Architecture
 
 ```text
-cmd/server/                  main: config, DB pool, migrations, HTTP server, graceful shutdown
-internal/domain/             Transfer, Wallet, LedgerEntry, state transitions, validation, domain errors
-internal/service/            transfer workflow, idempotency, transaction orchestration
-internal/repository/postgres/ SQL for each table + transaction manager
-internal/handler/            HTTP: decode/validate, call service, map errors to status codes
-migrations/                  SQL schema (embedded)
+cmd/server/                   main: config, migrations, DB pool, HTTP server, graceful shutdown
+internal/config/              settings from environment variables / .env
+internal/domain/              Transfer, Wallet, LedgerEntry, state transitions, validation, domain errors
+internal/service/             transfer workflow, idempotency, transaction orchestration
+internal/repository/postgres/ DB connection, migration runner, GORM models and queries, transaction manager
+internal/handler/             HTTP (Gin): decode/validate, call service, map errors to status codes
+migrations/                   versioned SQL schema (embedded)
 ```
 
 - **Handler.** Parses JSON, checks request shape, calls the service, writes the response. No business rules.
@@ -271,6 +289,7 @@ All tests run with `-race`. Integration tests are skipped with a clear message w
 ## 11. Assumptions and trade-offs
 
 - Single currency; amounts are integer minor units.
-- Wallets are pre-seeded with an opening balance. In production, funding would itself be a ledger-backed transfer from a funding or treasury account, so that `balance = Σcredits − Σdebits` holds per wallet.
+- Wallets are created through `POST /wallets` with a client-chosen ID and an opening balance, which is not recorded in the ledger. This is for setup and testing. In production, funding would be a ledger-backed deposit from a funding or treasury account, so that `balance = opening + Σcredits − Σdebits` reconciles exactly per wallet.
+- Migrations run at application startup for simplicity; production would typically run them as a separate deploy step.
 - Idempotency records are kept indefinitely; production would add a retention window.
 - Throughput per wallet is limited by row-lock serialization (see 6.2).
