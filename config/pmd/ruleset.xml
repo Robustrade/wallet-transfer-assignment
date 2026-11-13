@@ -11,6 +11,12 @@
     <!-- Noisy with the logging style used here. -->
     <exclude name="AvoidFieldNameMatchingMethodName"/>
     <exclude name="AvoidLiteralsInIfCondition"/>
+      <exclude name="AvoidDuplicateLiterals"/>
+  </rule>
+
+  <!-- Repeating literals is fine (and clearer) in tests, but is still checked in production code. -->
+  <rule ref="category/java/errorprone.xml/AvoidDuplicateLiterals">
+      <exclude-pattern>.*/src/test/.*</exclude-pattern>
   </rule>
 
   <rule ref="category/java/bestpractices.xml">
