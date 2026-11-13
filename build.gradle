@@ -1,0 +1,114 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.16'
+    id 'io.spring.dependency-management' version '1.1.7'
+
+    // Static analysis and quality gates (all wired into `./gradlew check`)
+    id 'com.diffplug.spotless' version '8.9.0'
+    id 'checkstyle'
+    id 'pmd'
+    id 'com.github.spotbugs' version '6.5.13'
+    id 'jacoco'
+}
+
+group = 'com.wallettransfer'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+    options.compilerArgs += ['-Xlint:all', '-parameters']
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    finalizedBy 'jacocoTestReport'
+}
+
+// ---------------------------------------------------------------------------
+// Static analysis
+// ---------------------------------------------------------------------------
+
+spotless {
+    java {
+        target 'src/**/*.java'
+        googleJavaFormat('1.28.0')
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+    format('misc') {
+        target '*.gradle', '.gitignore'
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
+checkstyle {
+    toolVersion = '11.1.0'
+    configFile = file('config/checkstyle/checkstyle.xml')
+    maxWarnings = 0
+}
+
+pmd {
+    toolVersion = '7.17.0'
+    ruleSetFiles = files('config/pmd/ruleset.xml')
+    ruleSets = []
+    consoleOutput = true
+    ignoreFailures = false
+}
+
+// Tests get the same rules except "avoid duplicate literals", which only adds noise there.
+tasks.named('pmdTest') {
+    ruleSetFiles = files('config/pmd/ruleset-test.xml')
+}
+
+spotbugs {
+    toolVersion = '4.9.3'
+    effort = com.github.spotbugs.snom.Effort.valueOf('MAX')
+    reportLevel = com.github.spotbugs.snom.Confidence.valueOf('MEDIUM')
+    excludeFilter = file('config/spotbugs/exclude.xml')
+}
+
+tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
+    reports {
+        html.required = true
+        xml.required = false
+    }
+}
+
+jacoco {
+    toolVersion = '0.8.13'
+}
+
+jacocoTestReport {
+    dependsOn 'test'
+    reports {
+        xml.required = true // consumed by SonarQube
+        html.required = true
+    }
+}

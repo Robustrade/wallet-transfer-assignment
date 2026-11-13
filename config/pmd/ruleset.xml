@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<ruleset name="wallet-transfer"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+  <description>Bug-prone, security and performance rules; style is owned by Spotless/Checkstyle.</description>
+
+  <rule ref="category/java/errorprone.xml">
+    <!-- Spring beans and DTO records are not Serializable on purpose. -->
+    <exclude name="MissingSerialVersionUID"/>
+    <!-- Noisy with the logging style used here. -->
+    <exclude name="AvoidFieldNameMatchingMethodName"/>
+    <exclude name="AvoidLiteralsInIfCondition"/>
+  </rule>
+
+  <rule ref="category/java/bestpractices.xml">
+    <exclude name="GuardLogStatement"/>
+    <!-- Assertion-message rules fight the AssertJ style used in the tests. -->
+    <exclude name="UnitTestAssertionsShouldIncludeMessage"/>
+    <exclude name="UnitTestContainsTooManyAsserts"/>
+    <exclude name="LiteralsFirstInComparisons"/>
+  </rule>
+
+  <rule ref="category/java/security.xml"/>
+  <rule ref="category/java/multithreading.xml">
+    <exclude name="DoNotUseThreads"/>
+    <exclude name="AvoidUsingVolatile"/>
+  </rule>
+  <rule ref="category/java/performance.xml">
+    <exclude name="AvoidInstantiatingObjectsInLoops"/>
+    <exclude name="RedundantFieldInitializer"/>
+  </rule>
+</ruleset>
