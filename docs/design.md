@@ -18,6 +18,11 @@ Move money between two wallets with:
 |-------------|------------------------------------------------|-----|
 | Language    | Java 21, Spring Boot 3.5, Gradle               | Mainstream JVM stack; records and sealed types keep the domain small |
 | Database    | PostgreSQL 16                                  | Preferred by the assignment; row-level locks and `ON CONFLICT` give us the primitives we need |
+| Migrations  | Flyway (`src/main/resources/db/migration`)     | Versioned, reviewable schema |
+| Data access | Spring `JdbcClient` (plain SQL)                | The SQL *is* the concurrency design (locks, guarded updates); an ORM would hide it |
+| Tests       | JUnit 5, AssertJ, MockMvc, Testcontainers      | Tests run against a **real PostgreSQL**, so locking and constraint behaviour is genuinely exercised |
+| Money       | `long` minor units (e.g. cents)                | No floating point; `amount > 0` enforced in the domain **and** by a `CHECK` |
+| IDs         | UUIDs for transfers and ledger rows            | Generated in the service layer |
 
 ## 3. API contract
 
@@ -41,6 +46,15 @@ possible; that is the documented semantic).
 
 Error body: `{ "error": { "code": "...", "message": "..." } }`.
 
+### Supporting endpoints
+
+- `POST /wallets` `{ "id": "wallet_1", "openingBalance": 1000 }` — create a wallet (201, 409 if it exists).
+- `GET /wallets/{id}` — wallet with current balance (optional enhancement).
+- `GET /transfers/{id}` — fetch a transfer.
+- `GET /actuator/health` — liveness/readiness.
+
+Wallets must exist before they can be transferred between. `openingBalance` is funded from
+*outside* the system (see assumptions).
 
 ## 4. Data model
 
@@ -51,6 +65,27 @@ transfers           (id PK, idempotency_key, from_wallet_id FK, to_wallet_id FK,
 ledger_entries      (id PK, transfer_id FK, wallet_id FK, type DEBIT|CREDIT, amount > 0, created_at,
                      UNIQUE (transfer_id, type))
 idempotency_records (key PK, request_hash, transfer_id FK UNIQUE DEFERRABLE INITIALLY DEFERRED, created_at)
+```
+
+Integrity the **database** enforces (not just application code):
+
+- `balance >= 0` — a debit that would overdraw fails even if application logic is buggy.
+- `UNIQUE (transfer_id, type)` — at most one DEBIT and one CREDIT per transfer.
+- `idempotency_records.key` is the primary key — two racing requests with one key cannot both claim it.
+- Foreign keys — ledger rows cannot exist without a transfer / wallet.
+- `CHECK` constraints on amount, state, `from <> to`, and "failure reason present iff FAILED".
+- Ledger rows are append-only (a trigger rejects `UPDATE`/`DELETE`).
+
+Indexes: `ledger_entries(wallet_id, created_at)` for history and reconciliation,
+`transfers(from_wallet_id, created_at)` / `transfers(to_wallet_id, created_at)` for per-wallet
+listing. Primary keys cover the idempotency lookup.
+
+Balance strategy: **stored balance**, updated in the same transaction as the ledger entries.
+Invariants checkable at any time (and asserted by the tests after every scenario):
+
+```text
+wallet.balance = wallet.opening_balance + SUM(credits) - SUM(debits)
+SUM(all DEBIT amounts) = SUM(all CREDIT amounts)
 ```
 
 ## 5. State machine
@@ -74,7 +109,7 @@ The whole workflow runs in **one database transaction** at `READ COMMITTED`:
    (a missing row means unknown wallet → 404 and the whole transaction, including the claim, rolls back)
 3. insert the `transfers` row (`PENDING`)
 4. guarded debit: `UPDATE wallets SET balance = balance - :amt WHERE id = :from AND balance >= :amt`
-    - 0 rows affected → insufficient funds → mark `FAILED`, commit (the outcome is recorded)
+   - 0 rows affected → insufficient funds → mark `FAILED`, commit (the outcome is recorded)
 5. credit: `UPDATE wallets SET balance = balance + :amt WHERE id = :to`
 6. insert the DEBIT and CREDIT ledger entries
 7. mark `PROCESSED`, commit
@@ -101,12 +136,12 @@ Why this is safe:
   `DEFERRABLE INITIALLY DEFERRED` so the key can be claimed first and the transfer inserted later
   in the same transaction.
 - **Detection and race handling:** `INSERT ... ON CONFLICT (key) DO NOTHING`.
-    - 1 row inserted → this request owns the key and executes the transfer.
-    - 0 rows → another request owns it: load its record and return the original result.
-    - If two requests race with a new key, PostgreSQL makes the second `INSERT` **wait** on the
-      unique index until the first commits or rolls back. After a commit the second sees a conflict
-      and replays; after a rollback it simply becomes the owner. No application-level retry loop or
-      exception juggling is needed.
+  - 1 row inserted → this request owns the key and executes the transfer.
+  - 0 rows → another request owns it: load its record and return the original result.
+  - If two requests race with a new key, PostgreSQL makes the second `INSERT` **wait** on the
+    unique index until the first commits or rolls back. After a commit the second sees a conflict
+    and replays; after a rollback it simply becomes the owner. No application-level retry loop or
+    exception juggling is needed.
 - **Same result:** replay returns the stored transfer (including a stored `FAILED`).
 - **Payload mismatch:** `request_hash` = SHA-256 over (from, to, amount); a different payload under
   the same key → 409 rather than silently returning an unrelated result.
@@ -115,5 +150,47 @@ Why this is safe:
 - **Failed transfers are final for that key.** To retry after insufficient funds the client uses a
   new key (the usual convention for idempotent APIs).
 
-- **Same key, different payload (`request_hash` differs):** reject with `409
-  IDEMPOTENCY_KEY_REUSED`. Nothing is mutated — this request never reaches step 2.
+## 8. Failure modes
+
+| Failure | Behaviour |
+|---------|-----------|
+| Client times out, request actually committed | Retry with same key returns the original result |
+| Crash mid-transaction | Rolled back; retry executes normally |
+| Two identical requests race | One executes, the other waits and replays its result |
+| Two different transfers debit the same wallet | Serialised by the row lock; the later one fails with `INSUFFICIENT_FUNDS` if funds ran out |
+| `A->B` and `B->A` at the same time | Locks taken in id order, no deadlock |
+| Unknown wallet | 404, nothing persisted |
+| Same key, different payload | 409, nothing changed |
+| Database unavailable | 500 with an opaque body; nothing partially applied |
+
+## 9. Assumptions and trade-offs
+
+- Single currency, integer minor units.
+- `openingBalance` is funded outside the system; deposits/withdrawals are out of scope.
+- No authentication, so idempotency keys are global rather than per-caller (in production the
+  unique key would be `(client_id, key)`).
+- Idempotency records never expire (no TTL job).
+- Row locks limit throughput per *wallet*, not globally. A single extremely hot wallet is a
+  bottleneck by nature (one balance); sharding or batching would be the next step.
+
+## 10. Observability
+
+- `key=value` log lines at the service boundary: one INFO line per outcome (`transfer processed`,
+  `transfer failed` with the reason, `transfer replayed` with the key and stored state), carrying
+  ids and amounts only. Unexpected exceptions are logged at ERROR with the stack trace and returned
+  to the client as an opaque 500. Request bodies are not logged.
+- `GET /actuator/health` (the only exposed Actuator endpoint) reports liveness including the
+  database check. Metrics and tracing are out of scope.
+
+## 11. Testing strategy (TDD: red → green → refactor)
+
+- **Domain:** state-machine transitions, validation rules (plain unit tests, no Spring).
+- **Repository:** against a real PostgreSQL (Testcontainers): constraints, guarded debit, uniqueness, rollback.
+- **Service:** behaviour-level: happy path, ledger has two balanced entries, insufficient funds is
+  recorded as `FAILED`, replay returns the original result without moving money twice, payload
+  mismatch, unknown wallet.
+- **Concurrency:** N threads debiting one wallet (balance never negative, exactly
+  `floor(balance/amount)` succeed, ledger balances); N threads using the **same** idempotency key
+  (exactly one transfer, one pair of ledger rows); opposing transfers (no deadlock).
+- **API:** MockMvc against the full stack for status codes and JSON.
+- **Invariant helper** used after every scenario: balances reconcile with the ledger.
