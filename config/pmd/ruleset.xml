@@ -24,7 +24,15 @@
     <!-- Assertion-message rules fight the AssertJ style used in the tests. -->
     <exclude name="UnitTestAssertionsShouldIncludeMessage"/>
     <exclude name="UnitTestContainsTooManyAsserts"/>
-    <exclude name="LiteralsFirstInComparisons"/>
+    <exclude name="LiteralsFirstInComparisons"/><!-- Re-declared below with MockMvc's andExpect registered as an assertion. -->
+    <exclude name="UnitTestShouldIncludeAssert"/>
+  </rule>
+
+  <!-- MockMvc verifies responses through andExpect(...), which PMD does not know is an assertion. -->
+  <rule ref="category/java/bestpractices.xml/UnitTestShouldIncludeAssert">
+      <properties>
+          <property name="extraAssertMethodNames" value="andExpect"/>
+      </properties>
   </rule>
 
   <rule ref="category/java/security.xml"/>
