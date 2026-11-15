@@ -2,6 +2,7 @@ package controller_test
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"testing"
 
@@ -229,6 +230,30 @@ func TestCreateTransfer_UnknownWalletDoesNotConsumeKey(t *testing.T) {
 	}
 	if retry.Header().Get("Idempotent-Replayed") != "" {
 		t.Error("retry should execute fresh, not be marked as replayed")
+	}
+}
+
+func TestCreateTransfer_CreditOverflowIsRejectedWithoutChanges(t *testing.T) {
+	testutil.ResetDatabase(t)
+	createWallet(t, "wallet_1", 100)
+	createWallet(t, "full_wallet", math.MaxInt64)
+
+	rec := postJSON(t, "/transfers", transferJSON("key-1", "wallet_1", "full_wallet", 1))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[transferErrorBody](t, rec)
+	if body.Error.Code != "VALIDATION_ERROR" || body.Error.Field != "amount" {
+		t.Errorf("error = %+v, want VALIDATION_ERROR on field amount", body.Error)
+	}
+	assertBalance(t, "wallet_1", 100)
+	assertBalance(t, "full_wallet", math.MaxInt64)
+	if n := countRows(t, "transfers"); n != 0 {
+		t.Errorf("transfers = %d, want 0 (the transaction must roll back)", n)
+	}
+	if n := countRows(t, "idempotency_records"); n != 0 {
+		t.Errorf("idempotency records = %d, want 0 (key must not be consumed)", n)
 	}
 }
 

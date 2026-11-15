@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -31,6 +32,9 @@ func (w *Wallet) Debit(amount int64) error {
 func (w *Wallet) Credit(amount int64) error {
 	if amount <= 0 {
 		return newValidationError("amount", "must be greater than zero")
+	}
+	if w.Balance > math.MaxInt64-amount {
+		return newValidationError("amount", "would exceed the maximum wallet balance")
 	}
 	w.Balance += amount
 	return nil

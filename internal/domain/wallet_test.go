@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"testing"
 
@@ -100,6 +101,31 @@ func TestWallet_CreditIncreasesBalance(t *testing.T) {
 	}
 	if wallet.Balance != 1250 {
 		t.Errorf("Balance = %d, want 1250", wallet.Balance)
+	}
+}
+
+func TestWallet_CreditUpToMaximumBalance(t *testing.T) {
+	wallet := newWallet(t, math.MaxInt64-1)
+
+	if err := wallet.Credit(1); err != nil {
+		t.Fatalf("Credit: unexpected error: %v", err)
+	}
+	if wallet.Balance != math.MaxInt64 {
+		t.Errorf("Balance = %d, want %d", wallet.Balance, int64(math.MaxInt64))
+	}
+}
+
+func TestWallet_CreditRejectsOverflow(t *testing.T) {
+	wallet := newWallet(t, math.MaxInt64)
+
+	err := wallet.Credit(1)
+
+	var validationErr *domain.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want *domain.ValidationError", err)
+	}
+	if wallet.Balance != math.MaxInt64 {
+		t.Errorf("Balance = %d, want it unchanged at %d", wallet.Balance, int64(math.MaxInt64))
 	}
 }
 
