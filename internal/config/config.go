@@ -14,8 +14,9 @@ import (
 
 // Config holds all application settings.
 type Config struct {
-	Port string
-	DB   DBConfig
+	Port    string
+	GinMode string
+	DB      DBConfig
 }
 
 // DBConfig holds the PostgreSQL connection settings.
@@ -59,6 +60,15 @@ func Load() (Config, error) {
 
 	if len(missing) > 0 {
 		return Config{}, fmt.Errorf("missing required environment variables: %s", strings.Join(missing, ", "))
+	}
+
+	cfg.GinMode = os.Getenv("GIN_MODE")
+	switch cfg.GinMode {
+	case "":
+		cfg.GinMode = "release"
+	case "debug", "release", "test":
+	default:
+		return Config{}, fmt.Errorf("GIN_MODE must be debug, release or test, got %q", cfg.GinMode)
 	}
 	return cfg, nil
 }
