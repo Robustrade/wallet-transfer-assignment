@@ -20,13 +20,13 @@ func NewTransfer(id string, req TransferRequest) (*Transfer, error) {
 
 func (r TransferRequest) validate() error {
 	switch {
-	case r.IdempotencyKey == "":
+	case isBlank(r.IdempotencyKey):
 		return newValidationError("idempotencyKey", "is required")
 	case len(r.IdempotencyKey) > maxIdentifierLength:
 		return newValidationError("idempotencyKey", fmt.Sprintf("must be at most %d characters", maxIdentifierLength))
-	case r.FromWalletID == "":
+	case isBlank(r.FromWalletID):
 		return newValidationError("fromWalletId", "is required")
-	case r.ToWalletID == "":
+	case isBlank(r.ToWalletID):
 		return newValidationError("toWalletId", "is required")
 	case r.FromWalletID == r.ToWalletID:
 		return newValidationError("toWalletId", "must be different from fromWalletId")

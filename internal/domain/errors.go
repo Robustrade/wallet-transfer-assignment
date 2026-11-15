@@ -22,4 +22,8 @@ var (
 	ErrInvalidStatusTransition = errors.New("invalid transfer status transition")
 	ErrTransferNotProcessed    = errors.New("transfer is not processed")
 	ErrInsufficientFunds       = errors.New("insufficient funds")
+	ErrWalletNotFound          = errors.New("wallet not found")
+	ErrWalletAlreadyExists     = errors.New("wallet already exists")
+	ErrIdempotencyKeyReused    = errors.New("idempotency key was already used with a different request")
+	ErrServiceBusy             = errors.New("the wallet is busy, please retry")
 )

@@ -56,6 +56,9 @@ func TestNewTransfer_RejectsInvalidRequests(t *testing.T) {
 		wantField string
 	}{
 		{"missing idempotency key", func(r *domain.TransferRequest) { r.IdempotencyKey = "" }, "idempotencyKey"},
+		{"whitespace-only idempotency key", func(r *domain.TransferRequest) { r.IdempotencyKey = "   " }, "idempotencyKey"},
+		{"whitespace-only source wallet", func(r *domain.TransferRequest) { r.FromWalletID = "  " }, "fromWalletId"},
+		{"whitespace-only destination wallet", func(r *domain.TransferRequest) { r.ToWalletID = "  " }, "toWalletId"},
 		{"idempotency key too long", func(r *domain.TransferRequest) { r.IdempotencyKey = strings.Repeat("k", 256) }, "idempotencyKey"},
 		{"missing source wallet", func(r *domain.TransferRequest) { r.FromWalletID = "" }, "fromWalletId"},
 		{"missing destination wallet", func(r *domain.TransferRequest) { r.ToWalletID = "" }, "toWalletId"},

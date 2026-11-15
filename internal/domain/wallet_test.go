@@ -37,6 +37,7 @@ func TestNewWallet_RejectsInvalidInput(t *testing.T) {
 		wantField string
 	}{
 		{"missing id", "", 100, "walletId"},
+		{"whitespace-only id", "   ", 100, "walletId"},
 		{"id too long", strings.Repeat("w", 256), 100, "walletId"},
 		{"negative initial balance", "wallet_1", -1, "initialBalance"},
 	}

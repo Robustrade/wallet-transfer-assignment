@@ -1,10 +1,13 @@
 package domain
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func NewWallet(id string, initialBalance int64) (*Wallet, error) {
 	switch {
-	case id == "":
+	case isBlank(id):
 		return nil, newValidationError("walletId", "is required")
 	case len(id) > maxIdentifierLength:
 		return nil, newValidationError("walletId", fmt.Sprintf("must be at most %d characters", maxIdentifierLength))
@@ -31,4 +34,8 @@ func (w *Wallet) Credit(amount int64) error {
 	}
 	w.Balance += amount
 	return nil
+}
+
+func isBlank(s string) bool {
+	return strings.TrimSpace(s) == ""
 }
