@@ -12,12 +12,7 @@ CREATE TABLE wallets (
 CREATE TABLE idempotency_records (
     key            TEXT        PRIMARY KEY,
     request_hash   TEXT        NOT NULL,
-    response_code  INT,
-    response_body  JSONB,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-    CONSTRAINT idempotency_records_response_complete
-        CHECK ((response_code IS NULL) = (response_body IS NULL))
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE transfers (
