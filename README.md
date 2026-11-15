@@ -63,7 +63,7 @@ make test   # go test ./... -race -count=1 (Docker must be running)
 - **API tests:** real HTTP requests against a real Postgres: wallet creation, transfers, insufficient funds, retries, idempotency key reuse, unknown wallets, invalid input.
 - **Concurrency tests:** 20 simultaneous debits on one wallet (exactly the affordable number succeed), 20 simultaneous retries with one key (executes once), simultaneous A→B and B→A transfers (no deadlock).
 
-Each test package starts its own throwaway Postgres with testcontainers. If Docker isn't running, the database tests are skipped with a message.
+Each test package starts its own throwaway Postgres with testcontainers. If the container can't start (for example, Docker isn't running), the tests fail with a clear message. To skip the database tests deliberately, run `SKIP_DB_TESTS=1 make test`.
 
 ## Lint and format
 

@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"log"
+	"os"
 	"testing"
 	"time"
 
@@ -27,8 +28,12 @@ func RunWithDatabase(m *testing.M) int {
 		),
 	)
 	if err != nil {
-		log.Printf("SKIPPING database tests: could not start a Postgres container (is Docker running?): %v", err)
-		return 0
+		if os.Getenv("SKIP_DB_TESTS") == "1" {
+			log.Printf("SKIPPING database tests (SKIP_DB_TESTS=1): could not start a Postgres container: %v", err)
+			return 0
+		}
+		log.Printf("could not start a Postgres container for tests (is Docker running? set SKIP_DB_TESTS=1 to skip): %v", err)
+		return 1
 	}
 	defer func() { _ = container.Terminate(ctx) }()
 

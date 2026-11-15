@@ -296,7 +296,7 @@ Red → green: tests for each behaviour were written before the code that satisf
   - concurrent `A→B` and `B→A` transfers: all complete, no deadlock, total money conserved
   - Verified to be meaningful: with `FOR UPDATE` removed, the first test fails (all 20 "succeed", balances suffer lost updates, ledger and balances disagree).
 
-All tests run with `-race`. Each test package starts its own throwaway Postgres via testcontainers; if Docker is unavailable the database tests are skipped with a clear message.
+All tests run with `-race`. Each test package starts its own throwaway Postgres via testcontainers. If the container cannot start, the tests fail rather than silently passing; skipping the database tests requires an explicit `SKIP_DB_TESTS=1`.
 
 ## 11. Assumptions and trade-offs
 
