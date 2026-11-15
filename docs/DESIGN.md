@@ -1,6 +1,6 @@
 # Wallet Transfer Service — Design Note
 
-Status: draft, written before implementation. It is updated as the implementation lands.
+Written before implementation and kept up to date as the implementation landed.
 
 ## 1. Problem statement
 
@@ -13,7 +13,7 @@ Guarantees:
 - **No double spending.** A wallet balance never goes below zero, including under concurrent debits.
 - **Balanced ledger.** Every processed transfer has exactly one DEBIT and one CREDIT for the same amount.
 
-Out of scope: funding wallets beyond an opening balance (wallets are created through `POST /wallets` with an initial balance), multiple currencies, authentication, and async or external payment rails.
+Out of scope: funding wallets beyond an opening balance (wallets are created through `POST /create-wallet` with an initial balance), multiple currencies, authentication, and async or external payment rails.
 
 ## 2. Technology
 
@@ -22,7 +22,7 @@ Out of scope: funding wallets beyond an opening balance (wallets are created thr
 | Language | Go | The CI pipeline targets Go (`setup-go`, `golangci-lint`) |
 | Database | PostgreSQL 16 | Preferred by the spec. Row-level locks and `ON CONFLICT` give the guarantees we need |
 | Data access | GORM (pgx/v5 underneath) | Concise queries with explicit support for transactions, `FOR UPDATE` and `ON CONFLICT`; GORM models stay in the repository layer |
-| HTTP | Gin | Widely used; request binding and validation keep handlers thin; middleware for request IDs and logging |
+| HTTP | Gin | Widely used; request binding keeps controllers thin; middleware for request IDs and logging |
 | Migrations | golang-migrate, versioned SQL files embedded with `go:embed`, applied at startup | Schema is explicit and reviewable; each change runs exactly once and is recorded in `schema_migrations` |
 | Configuration | environment variables, loaded from `.env` via godotenv | No settings or credentials in code; `.env.example` documents every variable |
 | Logging | `log/slog` (JSON) | Structured, standard library |
@@ -30,7 +30,7 @@ Out of scope: funding wallets beyond an opening balance (wallets are created thr
 
 ## 3. API contract
 
-All amounts are **positive integers in minor units** (e.g. cents). Fractional or non-numeric amounts are rejected.
+All amounts are **positive integers in minor units** (e.g. cents). Fractional or non-numeric amounts are rejected. Every response carries an `X-Request-ID` header (the client's value if it sent one, otherwise a generated UUID).
 
 ### `POST /transfers`
 
@@ -47,12 +47,13 @@ All amounts are **positive integers in minor units** (e.g. cents). Fractional or
 |---|---|---|
 | Transfer processed | `201 Created` | transfer (`status: "PROCESSED"`) |
 | Insufficient funds | `422 Unprocessable Entity` | error `INSUFFICIENT_FUNDS` + transfer (`status: "FAILED"`) |
-| Invalid request (missing fields, `amount <= 0`, same wallet, bad key) | `400 Bad Request` | error `VALIDATION_ERROR` |
+| Invalid request (missing fields, `amount <= 0`, same wallet, blank or too-long key) | `400 Bad Request` | error `VALIDATION_ERROR` with the offending `field` |
 | Wallet does not exist | `404 Not Found` | error `WALLET_NOT_FOUND` |
 | Key reused with a different payload | `409 Conflict` | error `IDEMPOTENCY_KEY_REUSED` |
-| Unexpected or database failure | `500` / `503` | error `INTERNAL` (nothing persisted, safe to retry) |
+| Wallet locked for longer than the lock timeout | `503 Service Unavailable` | error `SERVICE_BUSY` (nothing persisted, safe to retry) |
+| Unexpected or database failure | `500 Internal Server Error` | error `INTERNAL` (nothing persisted, safe to retry) |
 
-A replayed response has the **same status code and body** as the original, plus the header `Idempotent-Replayed: true`.
+A retry with the same key and payload gets the **same status code and body** as the original, plus the header `Idempotent-Replayed: true`.
 
 Transfer body:
 
@@ -65,13 +66,13 @@ Transfer body:
   "amount": 100,
   "status": "PROCESSED",
   "failureReason": null,
-  "createdAt": "2026-11-10T10:00:00Z"
+  "createdAt": "2026-11-10T10:00:00.123456Z"
 }
 ```
 
-Error body: `{"error": {"code": "INSUFFICIENT_FUNDS", "message": "…"}}`, with a `transfer` field added when a FAILED transfer was recorded.
+Error body: `{"error": {"code": "INSUFFICIENT_FUNDS", "message": "…"}}`, with a `field` for validation errors and a `transfer` field when a FAILED transfer was recorded.
 
-### `POST /wallets`
+### `POST /create-wallet`
 
 ```json
 { "walletId": "wallet_1", "initialBalance": 2000 }
@@ -79,27 +80,26 @@ Error body: `{"error": {"code": "INSUFFICIENT_FUNDS", "message": "…"}}`, with 
 
 | Outcome | Status | Body |
 |---|---|---|
-| Wallet created | `201 Created` | `{ "walletId", "balance", "createdAt" }` |
-| Missing `walletId`, negative or non-integer `initialBalance` | `400 Bad Request` | error `VALIDATION_ERROR` |
+| Wallet created | `201 Created` | `{ "walletId", "balance", "createdAt", "updatedAt" }` |
+| Missing or blank `walletId`, missing, negative or non-integer `initialBalance` | `400 Bad Request` | error `VALIDATION_ERROR` |
 | Wallet ID already exists | `409 Conflict` | error `WALLET_ALREADY_EXISTS` |
 
 The client chooses the wallet ID. `initialBalance` is an opening balance and does not create ledger entries (see section 11).
 
-### Read endpoints (optional enhancements)
+### `GET /healthz`
 
-- `GET /transfers/{id}` returns a transfer
-- `GET /wallets/{id}` returns `{ "walletId", "balance", "updatedAt" }`
-- `GET /healthz` checks that the service is up and the database is reachable (`503` otherwise)
+Returns `200 {"status":"ok"}` when the service is up and the database is reachable, `503` otherwise.
 
 ## 4. Decisions on points the spec leaves open
 
 | Question | Decision | Reasoning from the spec |
 |---|---|---|
 | Is `idempotencyKey` required? | **Required** (400 if missing) | The spec only defines exactly-once "when an idempotencyKey is provided", yet also requires correct behaviour "under retries and duplicate delivery". A transfer without a key cannot be retried safely, so it is not accepted. |
-| What happens on insufficient funds? | Transfer recorded as **FAILED** and the outcome stored for replay | Uses the `PENDING -> FAILED` lifecycle from the spec. A retry returns the original failure instead of silently succeeding later, which matches "return the original result". |
+| What happens on insufficient funds? | Transfer recorded as **FAILED**; retries return that same failure | Uses the `PENDING -> FAILED` lifecycle from the spec. A retry returns the original failure instead of silently succeeding later, which matches "return the original result". |
 | What happens when a wallet doesn't exist? | **404, nothing persisted** | Treated as request validation that fails before execution starts, like a 400. Industry practice (e.g. Stripe) is to save idempotent results only once execution begins. It also keeps foreign keys strict: no transfer can reference a missing wallet. |
 | Same key, different payload? | **409**, original untouched | A key identifies one intent. Reusing it for a different transfer is a client bug and must not be hidden. |
 | Stored or derived balance? | **Stored balance** on `wallets`, updated in the same transaction as the ledger | Reading a balance is O(1), and row locks on the wallet give a natural serialization point. The ledger stays the audit trail and can be reconciled against balances. |
+| Store the raw response, or rebuild it on replay? | **Rebuild** from the stored transfer row | The transfer row already holds every field of the response, so the replay is identical without duplicating data, and the service stays free of HTTP concerns. |
 
 ## 5. Schema
 
@@ -116,8 +116,6 @@ CREATE TABLE wallets (
 CREATE TABLE idempotency_records (
     key            TEXT PRIMARY KEY,
     request_hash   TEXT        NOT NULL,          -- SHA-256 of (from, to, amount)
-    response_code  INT,                           -- set before commit
-    response_body  JSONB,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -161,44 +159,46 @@ What the database enforces on its own, even if application code has a bug:
 | No self-transfer, no zero or negative amount | `CHECK` constraints |
 | Only valid statuses; a failure reason exactly when FAILED | `CHECK` constraints |
 
-Money is `BIGINT` minor units, never floating point.
+Money is `BIGINT` minor units, never floating point. Transfer IDs are UUIDs generated by the service, so they are not guessable and are known before the insert.
 
 ## 6. Transfer workflow
 
-Everything below runs in **one database transaction** at `READ COMMITTED`, with `SET LOCAL lock_timeout` so a stuck lock fails fast instead of hanging the request.
+The request is validated by the domain first (bad input never opens a transaction). Everything else runs in **one database transaction** at `READ COMMITTED`:
 
 ```text
 BEGIN
+ 0. SET LOCAL lock_timeout = '5s'
  1. INSERT INTO idempotency_records (key, request_hash)
       ON CONFLICT (key) DO NOTHING
     -> 0 rows inserted: key already used
-         load record; hash differs  -> ROLLBACK, 409
-                      hash matches  -> ROLLBACK, replay stored response
- 2. SELECT id, balance FROM wallets
+         hash differs  -> ROLLBACK, 409
+         hash matches  -> load the transfer by idempotency key, COMMIT (nothing written), replay it
+ 2. SELECT * FROM wallets
       WHERE id IN (from, to) ORDER BY id FOR UPDATE
-    -> fewer than 2 rows            -> ROLLBACK, 404 (key not consumed)
+    -> fewer than 2 rows -> ROLLBACK, 404 (key not consumed)
  3. INSERT INTO transfers (..., status = 'PENDING')
  4. if from.balance < amount:
         UPDATE transfers SET status = 'FAILED', failure_reason = 'INSUFFICIENT_FUNDS'
           WHERE id = $1 AND status = 'PENDING'
     else:
-        UPDATE wallets SET balance = balance - amount WHERE id = from
-        UPDATE wallets SET balance = balance + amount WHERE id = to
+        UPDATE wallets SET balance = <new balance> WHERE id = from
+        UPDATE wallets SET balance = <new balance> WHERE id = to
         INSERT ledger_entries (DEBIT from), (CREDIT to)
         UPDATE transfers SET status = 'PROCESSED'
           WHERE id = $1 AND status = 'PENDING'
- 5. UPDATE idempotency_records SET response_code, response_body
 COMMIT
 ```
 
+New balances are computed by the domain (`Wallet.Debit` / `Wallet.Credit`) from the values read under the row lock, so no other transaction can change them in between.
+
 ### 6.1 Idempotency
 
-- **Storage.** The key is the primary key of `idempotency_records`, stored with a hash of the payload and the exact response sent. It lives in Postgres, so it survives restarts and works across multiple instances.
+- **Storage.** The key is the primary key of `idempotency_records`, stored with a SHA-256 fingerprint of the payload. It lives in Postgres, so it survives restarts and works across multiple instances.
 - **Detecting duplicates.** `INSERT … ON CONFLICT DO NOTHING` on the primary key is atomic. There is no check-then-insert race.
-- **Concurrent duplicates.** If request B with key K arrives while request A (same K) is still running, B's insert **waits on the unique index** until A finishes. If A commits, B sees the record and replays A's response. If A rolls back, B's insert succeeds and B executes normally. Exactly one of them executes.
-- **Returning the original result.** The stored status code and body are returned unchanged.
+- **Concurrent duplicates.** If request B with key K arrives while request A (same K) is still running, B's insert **waits on the unique index** until A finishes. If A commits, B sees the record and replays A's transfer. If A rolls back, B's insert succeeds and B executes normally. Exactly one of them executes.
+- **Returning the original result.** The transfer is loaded by its idempotency key and the response is rebuilt from it. Timestamps are stored and returned in UTC at microsecond precision, so the replayed body is byte-for-byte identical to the original.
 - **No duplicate side effects.** The record is written in the same transaction as the balance changes, so "key consumed" and "money moved" are never out of sync. In addition, `transfers.idempotency_key UNIQUE` makes a second transfer for one key impossible at the database level.
-- **Lost response.** If the transaction commits but the response never reaches the client, the client retries with the same key and receives the stored response. Nothing runs twice.
+- **Lost response.** If the transaction commits but the response never reaches the client, the client retries with the same key and receives the original result. Nothing runs twice.
 - **No stuck "in progress" state.** Because there is a single transaction, a crash or error mid-way rolls back everything, including the idempotency record. The client's retry then runs from scratch.
 
 ### 6.2 Concurrency
@@ -207,6 +207,7 @@ COMMIT
 
 - Two transfers debiting the same wallet are serialized on that wallet's row lock. The second reads the balance only after the first commits, so there is no read-then-write race and no double spending.
 - Locking in sorted order means `A→B` and `B→A` running at the same time both lock `A` first, so they cannot deadlock.
+- `lock_timeout` bounds how long a request waits for a lock; if it is exceeded (or Postgres reports a deadlock), the transaction rolls back and the client gets a retryable `503`.
 - The `CHECK (balance >= 0)` constraint is a second line of defence: even a buggy code path cannot commit an overdraft.
 
 Alternatives considered:
@@ -234,62 +235,75 @@ PENDING ──> PROCESSED
 
 | Failure | Behaviour |
 |---|---|
-| Duplicate request after success | Stored response replayed, no new side effects |
+| Duplicate request after success | Original transfer replayed, no new side effects |
 | Duplicate request while the original is running | Waits on the key, then replays (or executes if the original rolled back) |
 | Process crash / DB error before commit | Full rollback; key not consumed; retry runs from scratch |
-| Commit succeeded, response lost | Retry with the same key returns the stored response |
-| Insufficient funds | FAILED transfer recorded, 422 stored and replayed |
+| Commit succeeded, response lost | Retry with the same key returns the original result |
+| Insufficient funds | FAILED transfer recorded, 422; retries get the same 422 |
 | Unknown wallet | 404, nothing stored; retry re-evaluates |
 | Lock wait too long | `lock_timeout` aborts the transaction, 503, safe to retry |
 | Deadlock | Prevented by ordered locking; if Postgres still reports one, it rolls back and returns 503 (retryable) |
+| Shutdown during a request | SIGTERM/SIGINT stops new requests, in-flight requests get up to 3 s to finish, then the DB pool is closed |
 
 ## 8. Architecture
 
 ```text
-cmd/server/                   main: config, migrations, DB pool, HTTP server, graceful shutdown
-internal/config/              settings from environment variables / .env
-internal/domain/              Transfer, Wallet, LedgerEntry, state transitions, validation, domain errors
-internal/service/             transfer workflow, idempotency, transaction orchestration
-internal/repository/postgres/ DB connection, migration runner, GORM models and queries, transaction manager
-internal/handler/             HTTP (Gin): decode/validate, call service, map errors to status codes
-migrations/                   versioned SQL schema (embedded)
+cmd/server/            main: config, migrations, DB connection, middleware, routes, HTTP server, graceful shutdown
+internal/config/       settings from environment variables / .env
+internal/database/     shared GORM connection (database.DB) and migration runner
+internal/router/       every route (URL -> controller function)
+internal/middleware/   request ID + structured request logging
+internal/controller/   bind JSON, check request shape, call the service, respond
+internal/response/     shared success/error responses; domain error -> HTTP status mapping
+internal/service/      business logic: wallet creation, transfer workflow, idempotency, transactions
+internal/repository/   Repository interface, Postgres implementation (repository.Repo), GORM models
+internal/domain/       Transfer, Wallet, LedgerEntry, state transitions, validation, domain errors
+internal/testutil/     throwaway Postgres for tests (testcontainers)
+migrations/            versioned SQL schema (embedded)
 ```
 
-- **Handler.** Parses JSON, checks request shape, calls the service, writes the response. No business rules.
-- **Service.** Owns the transaction boundary (`txManager.WithinTx(ctx, fn)`), idempotency and the workflow above.
-- **Repository.** One focused method per query. No workflow decisions.
+- **Handler layer** (router + controller + response). Routes requests, parses JSON, checks request shape, calls the service and writes the response. No business rules. The spec's "handler" is split into these three small packages so that every URL is visible in one file and error-to-status mapping lives in one place.
+- **Service.** Owns the transaction boundary (`database.DB.Transaction(func(tx *gorm.DB) error { … })`), idempotency and the workflow above.
+- **Repository.** A `Repository` interface with one focused method per query, implemented for Postgres and exposed as `repository.Repo`. Every method takes the `*gorm.DB` to run on as its first argument, so inside a transaction the service passes `tx` and all statements share it. Postgres errors are translated to domain errors here (unique violation → already exists, lock timeout/deadlock → service busy). No workflow decisions.
 - **Domain.** Pure Go with no database or HTTP imports, so it is unit-testable in isolation.
 
-## 9. Observability
+## 9. Observability and operations
 
-- Structured JSON logs with `request_id`, `idempotency_key`, `transfer_id`, outcome and latency for every transfer.
-- Replays and key conflicts are logged distinctly.
-- `GET /healthz` for liveness. A natural next step (not implemented) is a transfer counter by outcome and a latency histogram.
+- **Structured JSON logs** (`log/slog`). Every request logs `request_id`, method, path, status, latency and client IP. Every transfer logs `request_id`, `transfer_id`, `idempotency_key`, final `status` and whether it was `replayed`.
+- **Request IDs.** Taken from `X-Request-ID` or generated, returned in the response header and attached to every log line, so one request can be traced end to end.
+- **Internal errors** are logged with the request ID and the underlying error; the client only sees a generic message.
+- **Health check:** `GET /healthz` pings the database.
+- **HTTP server timeouts** (read header 5 s, read 10 s, write 15 s, idle 60 s) and **graceful shutdown** on SIGTERM/SIGINT.
+- A natural next step (not implemented) is metrics: a transfer counter by outcome and a latency histogram.
 
 ## 10. Testing strategy
 
-Red → green: a failing test is written for each behaviour before the code that satisfies it.
+Red → green: tests for each behaviour were written before the code that satisfies it (the commit history shows tests landing first).
 
-- **Domain unit tests:** valid and invalid state transitions, request validation.
-- **Service and repository integration tests (real Postgres via testcontainers):**
-  - successful transfer moves balances, writes one DEBIT and one CREDIT, status PROCESSED
-  - insufficient funds gives FAILED, balances unchanged, no ledger entries
-  - same key, same payload: original result replayed, exactly one transfer
+- **Domain unit tests** (`internal/domain`): request validation (including blank values), allowed and forbidden state transitions, ledger entry generation, wallet debit/credit rules.
+- **API tests** (`internal/controller`, real HTTP through the router against real Postgres):
+  - wallet creation: success, zero balance, duplicate ID (409, original untouched), invalid input (nothing saved)
+  - successful transfer moves balances and writes exactly one DEBIT and one CREDIT
+  - insufficient funds: 422, FAILED transfer recorded, balances unchanged, no ledger entries
+  - retry with the same key: identical body, `Idempotent-Replayed: true`, money moved once
+  - retry of a failed transfer: same 422
   - same key, different payload: 409, no change
-  - unknown wallet: 404, key not consumed
-  - ledger invariant: total DEBIT = total CREDIT; total of all balances unchanged
-- **Concurrency tests:**
-  - N concurrent debits from one wallet: exactly `balance / amount` succeed, final balance correct, never negative
-  - N concurrent requests with the same key: exactly one transfer, all receive the same response
-  - concurrent `A→B` and `B→A` transfers complete without deadlock
-- **HTTP tests (`httptest`):** status codes, error bodies, `Idempotent-Replayed` header.
+  - unknown wallet: 404, key not consumed, the same key works once the wallet exists
+  - invalid input: 400 naming the field, nothing saved
+- **Concurrency tests** (`internal/service`, 20 goroutines released at the same instant):
+  - 20 debits of 100 from a wallet holding 1000: exactly 10 succeed, final balance 0, ledger balanced
+  - 20 requests with the same key: exactly one executes, all receive the same transfer
+  - concurrent `A→B` and `B→A` transfers: all complete, no deadlock, total money conserved
+  - Verified to be meaningful: with `FOR UPDATE` removed, the first test fails (all 20 "succeed", balances suffer lost updates, ledger and balances disagree).
 
-All tests run with `-race`. Integration tests are skipped with a clear message when Docker is unavailable.
+All tests run with `-race`. Each test package starts its own throwaway Postgres via testcontainers; if Docker is unavailable the database tests are skipped with a clear message.
 
 ## 11. Assumptions and trade-offs
 
 - Single currency; amounts are integer minor units.
-- Wallets are created through `POST /wallets` with a client-chosen ID and an opening balance, which is not recorded in the ledger. This is for setup and testing. In production, funding would be a ledger-backed deposit from a funding or treasury account, so that `balance = opening + Σcredits − Σdebits` reconciles exactly per wallet.
+- Wallets are created through `POST /create-wallet` with a client-chosen ID and an opening balance, which is not recorded in the ledger. This is for setup and testing. In production, funding would be a ledger-backed deposit from a funding or treasury account, so that `balance = opening + Σcredits − Σdebits` reconciles exactly per wallet.
+- The database connection is a package-level `database.DB`, and controllers create services directly. Transactional correctness does not depend on that global: every repository method receives the `*gorm.DB` (or `tx`) explicitly. The repository interface (`repository.Repo`) is the seam for substituting a fake in tests if needed.
+- Replays rebuild the response from the transfer row; if the response format changed later, a replay would use the new format. Storing raw responses would avoid that at the cost of duplicated data.
 - Migrations run at application startup for simplicity; production would typically run them as a separate deploy step.
 - Idempotency records are kept indefinitely; production would add a retention window.
 - Throughput per wallet is limited by row-lock serialization (see 6.2).
