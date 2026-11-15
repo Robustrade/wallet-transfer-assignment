@@ -3,5 +3,7 @@ coverage/
 dist/
 build/
 .tmp/
+/server
 .env
 .env.*
+!.env.example
