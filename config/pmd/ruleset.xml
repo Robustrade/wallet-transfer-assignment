@@ -15,9 +15,7 @@
   </rule>
 
   <!-- Repeating literals is fine (and clearer) in tests, but is still checked in production code. -->
-  <rule ref="category/java/errorprone.xml/AvoidDuplicateLiterals">
-      <exclude-pattern>.*/src/test/.*</exclude-pattern>
-  </rule>
+  <rule ref="category/java/errorprone.xml/AvoidDuplicateLiterals"/>
 
   <rule ref="category/java/bestpractices.xml">
     <exclude name="GuardLogStatement"/>
