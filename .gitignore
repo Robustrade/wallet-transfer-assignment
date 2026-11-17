@@ -5,3 +5,9 @@ build/
 .tmp/
 .env
 .env.*
+!.env.example
+
+# Built binaries
+/server
+*.exe
+
