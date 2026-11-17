@@ -69,7 +69,7 @@ func TestWalletRepository_DebitCreditAndLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	locked, err := repo.LockByIDs(txCtx, "b", "a") // order of args must not matter
 	if err != nil {

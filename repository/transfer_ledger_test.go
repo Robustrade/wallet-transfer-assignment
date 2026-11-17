@@ -54,7 +54,7 @@ func TestTransferProcessed_WithLedgerPair(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	tr, err := model.NewTransfer("key-ok", "from_w", "to_w", 30)
 	if err != nil {
@@ -128,7 +128,7 @@ func TestTransferProcessed_WithLedgerPair(t *testing.T) {
 
 	// second ledger pair for same transfer must fail unique constraint
 	txCtx2, tx2, _ := repository.BeginTx(ctx, pool)
-	defer tx2.Rollback(ctx)
+	defer func() { _ = tx2.Rollback(ctx) }()
 	if err := ledger.InsertPair(txCtx2, debit, credit); err == nil {
 		t.Fatal("expected unique violation on second ledger pair")
 	}
@@ -150,7 +150,7 @@ func TestTransferFailed_NoLedgerNoBalanceChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	tr, _ := model.NewTransfer("key-fail", "from_w", "to_w", 50)
 	if err := transfers.Insert(txCtx, tr); err != nil {

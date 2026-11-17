@@ -34,7 +34,7 @@ func (s *Service) CreateTransfer(ctx context.Context, idempotencyKey, fromWallet
 	if err != nil {
 		return dto.TransferOutcome{}, fmt.Errorf("begin: %w", err)
 	}
-	defer tx.Rollback(ctx) // no-op after a successful Commit
+	defer func() { _ = tx.Rollback(ctx) }() // no-op after a successful Commit
 
 	claimed, err := s.idem.Claim(txCtx, claim)
 	if err != nil {

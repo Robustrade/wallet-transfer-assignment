@@ -21,7 +21,7 @@ func (s *Service) CreateWallet(ctx context.Context, id string, balance int64) (d
 	if err != nil {
 		return dto.WalletView{}, fmt.Errorf("begin: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	if err := s.wallets.Create(txCtx, w); err != nil {
 		if errors.Is(err, model.ErrConflict) {

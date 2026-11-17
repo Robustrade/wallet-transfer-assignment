@@ -35,7 +35,7 @@ func TestIdempotencyRepository_ClaimReplayMismatch(t *testing.T) {
 	}
 
 	txCtx2, tx2, _ := repository.BeginTx(ctx, pool)
-	defer tx2.Rollback(ctx)
+	defer func() { _ = tx2.Rollback(ctx) }()
 	claimed, err = repo.Claim(txCtx2, rec)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestIdempotency_UnknownWalletRollbackReleasesKey(t *testing.T) {
 
 	// retry can claim again
 	txCtx2, tx2, _ := repository.BeginTx(ctx, pool)
-	defer tx2.Rollback(ctx)
+	defer func() { _ = tx2.Rollback(ctx) }()
 	claimed, err = repo.Claim(txCtx2, rec)
 	if err != nil || !claimed {
 		t.Fatalf("reclaim: %v %v", claimed, err)
@@ -130,7 +130,7 @@ func TestIdempotencyRepository_StoreResponseRejectsOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx2.Rollback(ctx)
+	defer func() { _ = tx2.Rollback(ctx) }()
 	err = repo.StoreResponse(txCtx2, "idem-once", 201, []byte(`{"status":"PROCESSED"}`))
 	if !errors.Is(err, model.ErrConflict) {
 		t.Fatalf("second store: %v, want ErrConflict", err)
