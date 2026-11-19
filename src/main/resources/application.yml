@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: wallet-transfer
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/wallet}
+    username: ${DB_USER:wallet}
+    password: ${DB_PASSWORD:wallet}
+  # Strict request parsing: a money API must reject what it does not understand.
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+      accept-float-as-int: false
+      fail-on-trailing-tokens: true
+    mapper:
+      allow-coercion-of-scalars: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

@@ -19,6 +19,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Build and test (produces classes and the JaCoCo coverage report)
+        run: chmod +x ./gradlew && ./gradlew test jacocoTestReport
+
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v5
         env:

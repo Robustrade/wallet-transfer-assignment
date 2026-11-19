@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <!--
+    EI_EXPOSE_REP / EI_EXPOSE_REP2 flag every reference to a mutable object held by a record or
+    a Spring-injected collaborator. Spring beans receive their dependencies by constructor
+    injection by design, so these two patterns are noise here.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+  </Match>
+
+  <!--
+    Tests of immutable types call a transition inside assertThatThrownBy(...) and, by design,
+    discard the result because the call is expected to throw. Production code is still checked.
+  -->
+  <Match>
+    <Class name="~.*Test(s)?(\$.*)?"/>
+    <Bug pattern="RV_RETURN_VALUE_IGNORED_INFERRED"/>
+  </Match>
+</FindBugsFilter>

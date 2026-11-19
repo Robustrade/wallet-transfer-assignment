@@ -5,3 +5,15 @@ build/
 .tmp/
 .env
 .env.*
+
+# Gradle / Java / IDE
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+*.log
+.idea/
+*.iml
+.vscode/
+out/
+HELP.md
+
