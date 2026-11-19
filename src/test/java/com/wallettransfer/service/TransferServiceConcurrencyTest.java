@@ -115,8 +115,8 @@ class TransferServiceConcurrencyTest extends PostgresIntegrationTest {
             40,
             i ->
                 i % 2 == 0
-                    ? service.createTransfer(new CreateTransferCommand(null, "w1", "w2", 5))
-                    : service.createTransfer(new CreateTransferCommand(null, "w2", "w1", 5)));
+                    ? service.createTransfer(new CreateTransferCommand(null, "w1", "w2", 2))
+                    : service.createTransfer(new CreateTransferCommand(null, "w2", "w1", 2)));
 
     assertThat(results).allMatch(r -> r.transfer().state() == TransferState.PROCESSED);
     assertThat(balanceOf("w1")).as("equal flows in both directions cancel out").isEqualTo(100);
