@@ -62,6 +62,7 @@ public class GlobalExceptionHandler {
     if (e instanceof ErrorResponse springError) {
       HttpStatusCode status = springError.getStatusCode();
       return ResponseEntity.status(status)
+          .headers(springError.getHeaders())
           .body(ApiError.of("HTTP_" + status.value(), "request rejected"));
     }
     LOG.error("Unhandled exception", e);

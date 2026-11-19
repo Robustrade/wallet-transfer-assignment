@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -54,6 +55,7 @@ class ErrorHandlingTest extends PostgresIntegrationTest {
   void anUnsupportedMethodIs405() throws Exception {
     mvc.perform(delete("/transfers/abc"))
         .andExpect(status().isMethodNotAllowed())
-        .andExpect(jsonPath("$.error.code").value("HTTP_405"));
+        .andExpect(jsonPath("$.error.code").value("HTTP_405"))
+        .andExpect(header().string("Allow", org.hamcrest.Matchers.containsString("GET")));
   }
 }
